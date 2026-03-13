@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { getSetting } from './db';
 import { getGalleryDlPath } from './binaries';
+import { getCookiePath } from './cookies';
 
 export interface GalleryDlFile {
   filePath: string;
@@ -37,9 +38,11 @@ export async function runGalleryDl(
   const jobDir = path.join(downloadPath, `gallerydl_${Date.now()}`);
   fs.mkdirSync(jobDir, { recursive: true });
 
+  const cookiePath = getCookiePath('gallerydl');
   const args = [
     '--write-metadata',
     '--directory', jobDir,
+    ...(fs.existsSync(cookiePath) ? ['--cookies', cookiePath] : []),
     ...(extraArgs ? extraArgs.split(/\s+/).filter(Boolean) : []),
     url,
   ];

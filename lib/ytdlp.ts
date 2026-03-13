@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { getSetting } from './db';
 import { getYtdlpPath, getFfmpegPath, checkBinary } from './binaries';
+import { getCookiePath } from './cookies';
 
 export interface YtdlpResult {
   filePath: string;
@@ -37,11 +38,13 @@ export async function runYtdlp(
   fs.mkdirSync(jobDir, { recursive: true });
 
   const ffmpegStatus = checkBinary('ffmpeg');
+  const cookiePath = getCookiePath('ytdlp');
   const args = [
     '--write-thumbnail',
     '--write-info-json',
     '--newline',
     ...(ffmpegStatus.exists ? ['--ffmpeg-location', getFfmpegPath()] : []),
+    ...(fs.existsSync(cookiePath) ? ['--cookies', cookiePath] : []),
     '-o', path.join(jobDir, '%(title)s.%(ext)s'),
     ...(extraArgs ? extraArgs.split(/\s+/).filter(Boolean) : []),
     url,
