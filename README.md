@@ -5,8 +5,9 @@ A self-hosted media downloader and library. Paste a URL, pick a downloader, and 
 ## Features
 
 - **Download queue** — Add URLs for yt-dlp (video) or gallery-dl (images); progress updates every 2 s
-- **Media library** — Browse your collection with search, type filter (video / image), and tag filters (any / all)
-- **Tags** — Attach and manage tags on any media item
+- **Albums** — Multi-image gallery-dl downloads are automatically grouped into a single album card
+- **Media library** — Browse your collection with search, type filter (video / image / album), and tag filters (any / all)
+- **Tags** — Attach and manage tags on any media item; album tag filters match across all images in the album
 - **Auto-managed binaries** — yt-dlp, gallery-dl, and ffmpeg are downloaded automatically on first run
 - **External API** — Submit downloads and poll status from scripts or other tools (`/api/v1/*`)
 - **Configurable** — Every setting can be overridden via environment variable
