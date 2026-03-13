@@ -100,6 +100,10 @@ X-API-Key: <key>
 └── media/                    # Downloaded files (or MEMEVAULTPROJECT_DOWNLOAD_PATH)
 ```
 
-## License
+## AI assistance
 
-MIT
+This project was built with the assistance of [Claude Code](https://claude.ai/claude-code) (Anthropic). AI was used throughout development for feature implementation, code review, and refactoring.
+
+(Un)fortunately I am not a web developer nor am I striving to be. I am but a simple game developer that had an idea that I wanted to get worked out but I simply don't have the time to learn proper webdevelopment.
+
+I fully understand the distaste for the use of AI and you are free to ignore the project if you do not wish to interact with it solely because of the use of AI.
