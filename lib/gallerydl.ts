@@ -4,6 +4,7 @@ import fs from 'fs';
 import { getSetting } from './db';
 import { getGalleryDlPath } from './binaries';
 import { getCookiePath } from './cookies';
+import { buildErrorDetail } from './utils';
 
 export interface GalleryDlFile {
   filePath: string;
@@ -27,7 +28,7 @@ export interface GalleryDlMetadata {
 
 export async function runGalleryDl(
   url: string,
-  onProgress: (pct: number, filesDownloaded: number) => void,
+  onProgress: (filesDownloaded: number) => void,
   signal?: AbortSignal
 ): Promise<GalleryDlFile[]> {
   const downloadPath = getSetting('download_path') ?? '.';
@@ -77,7 +78,7 @@ export async function runGalleryDl(
             !trimmed.endsWith('.part')
           ) {
             filesDownloaded++;
-            onProgress(0, filesDownloaded);
+            onProgress(filesDownloaded);
           }
         }
       }
@@ -99,7 +100,7 @@ export async function runGalleryDl(
 
       try {
         const results = collectGalleryDlOutput(jobDir);
-        onProgress(100, results.length);
+        onProgress(results.length);
         resolve(results);
       } catch (err) {
         reject(err);
@@ -112,12 +113,6 @@ export async function runGalleryDl(
   });
 }
 
-function buildErrorDetail(primary: string[], fallback: string[]): string {
-  const lines = primary.length > 0 ? primary : fallback;
-  if (lines.length === 0) return '';
-  const snippet = lines.slice(-5).join('\n');
-  return `\n\n${snippet}`;
-}
 
 const IMAGE_EXTENSIONS = new Set([
   '.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif',

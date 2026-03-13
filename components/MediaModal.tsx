@@ -1,33 +1,13 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import type { Tag, MediaItemWithTags } from '@/lib/db';
 
-export interface Tag {
-  id: string;
-  name: string;
-  created_at: string;
-}
-
-export interface ModalMediaItem {
-  id: string;
-  type: 'video' | 'image';
-  title: string | null;
-  description: string | null;
-  uploader: string | null;
-  duration: number | null;
-  thumbnail_path: string | null;
-  file_path: string;
-  file_size: number | null;
-  format: string | null;
-  width: number | null;
-  height: number | null;
-  created_at: string;
-  url: string;
-  tags: Tag[];
-}
+// Re-exported for consumers that imported this type from this module.
+export type { MediaItemWithTags as ModalMediaItem };
 
 interface Props {
-  item: ModalMediaItem;
+  item: MediaItemWithTags;
   onClose: () => void;
   onDeleted: () => void;
 }
@@ -113,6 +93,7 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: trimmed }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const tag: Tag = await res.json();
       setTags((prev) => [...prev, tag]);
       setAllTags((prev) => (prev.some((t) => t.id === tag.id) ? prev : [...prev, tag]));
@@ -122,15 +103,19 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
   }
 
   async function removeTag(tagId: string) {
+    const previous = tags;
     const current = tags.filter((t) => t.id !== tagId);
     setTags(current);
     try {
-      await fetch(`/api/media/${item.id}/tags`, {
+      const res = await fetch(`/api/media/${item.id}/tags`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tags: current.map((t) => t.name) }),
       });
-    } catch { /* ignore */ }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch {
+      setTags(previous);
+    }
   }
 
   async function handleDelete() {

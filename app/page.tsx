@@ -2,37 +2,15 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import MediaCard from '@/components/MediaCard';
-
-export interface Tag {
-  id: string;
-  name: string;
-  created_at: string;
-}
-
-export interface MediaItem {
-  id: string;
-  type: 'video' | 'image';
-  title: string | null;
-  description: string | null;
-  uploader: string | null;
-  duration: number | null;
-  thumbnail_path: string | null;
-  file_path: string;
-  file_size: number | null;
-  format: string | null;
-  width: number | null;
-  height: number | null;
-  created_at: string;
-  url: string;
-  tags: Tag[];
-}
+import type { Tag, MediaItemWithTags } from '@/lib/db';
 
 type TagFilterMode = 'any' | 'all';
 
 export default function LibraryPage() {
-  const [items, setItems] = useState<MediaItem[]>([]);
+  const [items, setItems] = useState<MediaItemWithTags[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'video' | 'image'>('all');
   const [search, setSearch] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -44,9 +22,13 @@ export default function LibraryPage() {
         fetch('/api/media'),
         fetch('/api/tags'),
       ]);
+      if (!mediaRes.ok || !tagsRes.ok) throw new Error('Failed to load library');
       const [mediaData, tagsData] = await Promise.all([mediaRes.json(), tagsRes.json()]);
       setItems(mediaData);
       setAllTags(tagsData);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load library');
     } finally {
       setLoading(false);
     }
@@ -163,7 +145,11 @@ export default function LibraryPage() {
         <div className="text-zinc-500 text-sm">Loading…</div>
       )}
 
-      {!loading && filtered.length === 0 && (
+      {!loading && error && (
+        <div className="text-red-400 text-sm bg-red-900/20 rounded-lg px-4 py-3">{error}</div>
+      )}
+
+      {!loading && !error && filtered.length === 0 && (
         <div className="flex flex-col items-center justify-center py-24 gap-3 text-zinc-600">
           <span className="text-5xl">📭</span>
           <p className="text-sm">No media yet. Add URLs from the Queue page.</p>

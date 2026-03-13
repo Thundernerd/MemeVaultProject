@@ -1,24 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-
-interface QueueItemData {
-  id: string;
-  url: string;
-  downloader: 'ytdlp' | 'gallery-dl';
-  status: 'pending' | 'downloading' | 'completed' | 'failed';
-  progress: number;
-  error: string | null;
-  created_at: string;
-  completed_at: string | null;
-}
+import type { QueueItem } from '@/lib/db';
 
 interface Props {
-  item: QueueItemData;
+  item: QueueItem;
   onRemoved: () => void;
 }
 
-const statusColors: Record<QueueItemData['status'], string> = {
+const statusColors: Record<QueueItem['status'], string> = {
   pending: 'bg-yellow-500/20 text-yellow-400',
   downloading: 'bg-blue-500/20 text-blue-400',
   completed: 'bg-green-500/20 text-green-400',

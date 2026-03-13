@@ -4,6 +4,7 @@ import fs from 'fs';
 import { getSetting } from './db';
 import { getYtdlpPath, getFfmpegPath, checkBinary } from './binaries';
 import { getCookiePath } from './cookies';
+import { buildErrorDetail } from './utils';
 
 export interface YtdlpResult {
   filePath: string;
@@ -102,14 +103,6 @@ export async function runYtdlp(
   });
 }
 
-/** Pick the most useful lines and append them to the error message. */
-function buildErrorDetail(primary: string[], fallback: string[]): string {
-  const lines = primary.length > 0 ? primary : fallback;
-  if (lines.length === 0) return '';
-  // Take up to the last 5 non-empty lines
-  const snippet = lines.slice(-5).join('\n');
-  return `\n\n${snippet}`;
-}
 
 function parseYtdlpProgress(line: string): number | null {
   // [download]  42.3% of ...
@@ -121,7 +114,7 @@ function parseYtdlpProgress(line: string): number | null {
 function collectYtdlpOutput(jobDir: string, originalUrl: string): YtdlpResult {
   const files = fs.readdirSync(jobDir);
 
-  const THUMBNAIL_EXTS = new Set(['.jpg', '.jpeg', '.webp', '.png', '.avif', '.image']);
+  const THUMBNAIL_EXTS = new Set(['.jpg', '.jpeg', '.webp', '.png', '.avif']);
   const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv', '.wmv', '.m4v', '.ts']);
   const infoJsonFile = files.find((f) => f.endsWith('.info.json'));
   const thumbnailFile = files.find((f) => THUMBNAIL_EXTS.has(path.extname(f).toLowerCase()));

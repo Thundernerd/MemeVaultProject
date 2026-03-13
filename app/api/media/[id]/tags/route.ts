@@ -13,7 +13,12 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
 export async function PUT(req: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   if (!getMediaItem(id)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const body = await req.json();
+  let body: { tags?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
   const tags: string[] = Array.isArray(body.tags) ? body.tags : [];
   const result = setTagsForMedia(id, tags);
   return NextResponse.json(result);
@@ -23,7 +28,12 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
 export async function POST(req: NextRequest, { params }: RouteContext) {
   const { id } = await params;
   if (!getMediaItem(id)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const body = await req.json();
+  let body: { name?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
   const name: string = typeof body.name === 'string' ? body.name.trim() : '';
   if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 });
   const tag = upsertTag(name);

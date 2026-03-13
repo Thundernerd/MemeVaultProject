@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { getQueueItem, getMediaByQueueItem } from '@/lib/db';
 import { isValidApiKey } from '@/lib/auth';
+import { mimeType } from '@/lib/utils';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!isValidApiKey(req)) {
@@ -150,16 +151,3 @@ function crc32(buf: Buffer): number {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-function mimeType(ext: string): string {
-  const map: Record<string, string> = {
-    '.mp4': 'video/mp4',
-    '.webm': 'video/webm',
-    '.mkv': 'video/x-matroska',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-  };
-  return map[ext] ?? 'application/octet-stream';
-}

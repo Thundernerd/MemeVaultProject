@@ -3,28 +3,23 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import AddUrlForm from '@/components/AddUrlForm';
 import QueueItemRow from '@/components/QueueItem';
-
-interface QueueItem {
-  id: string;
-  url: string;
-  downloader: 'ytdlp' | 'gallery-dl';
-  status: 'pending' | 'downloading' | 'completed' | 'failed';
-  progress: number;
-  error: string | null;
-  created_at: string;
-  completed_at: string | null;
-}
+import type { QueueItem } from '@/lib/db';
 
 export default function QueuePage() {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchQueue = useCallback(async () => {
     try {
       const res = await fetch('/api/queue');
+      if (!res.ok) throw new Error('Failed to load queue');
       const data = await res.json();
       setItems(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load queue');
     } finally {
       setLoading(false);
     }
@@ -54,7 +49,11 @@ export default function QueuePage() {
 
       {loading && <div className="text-zinc-500 text-sm">Loading…</div>}
 
-      {!loading && items.length === 0 && (
+      {!loading && error && (
+        <div className="text-red-400 text-sm bg-red-900/20 rounded-lg px-4 py-3">{error}</div>
+      )}
+
+      {!loading && !error && items.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-zinc-600">
           <span className="text-4xl">📋</span>
           <p className="text-sm">Queue is empty. Paste a URL above to get started.</p>

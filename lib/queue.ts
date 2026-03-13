@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import {
   getNextPendingItem,
@@ -88,8 +89,8 @@ async function processYtdlp(queueItemId: string, url: string): Promise<void> {
 }
 
 async function processGalleryDl(queueItemId: string, url: string): Promise<void> {
-  const files = await runGalleryDl(url, (pct, count) => {
-    updateQueueItem(queueItemId, { progress: pct > 0 ? pct : Math.min(count * 5, 95) });
+  const files = await runGalleryDl(url, (count) => {
+    updateQueueItem(queueItemId, { progress: Math.min(count * 5, 95) });
   });
 
   for (const file of files) {
@@ -125,8 +126,7 @@ async function processGalleryDl(queueItemId: string, url: string): Promise<void>
 
 function getFileSize(filePath: string): number | null {
   try {
-    const { statSync } = require('fs') as typeof import('fs');
-    return statSync(filePath).size;
+    return fs.statSync(filePath).size;
   } catch {
     return null;
   }

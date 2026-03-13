@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getMediaItem } from '@/lib/db';
+import { mimeType } from '@/lib/utils';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -17,17 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const ext = path.extname(item.thumbnail_path).toLowerCase();
-  const CONTENT_TYPES: Record<string, string> = {
-    '.png': 'image/png',
-    '.webp': 'image/webp',
-    '.gif': 'image/gif',
-    '.avif': 'image/avif',
-    '.bmp': 'image/bmp',
-    '.tiff': 'image/tiff',
-    '.tif': 'image/tiff',
-    '.svg': 'image/svg+xml',
-  };
-  const contentType = CONTENT_TYPES[ext] ?? 'image/jpeg';
+  const contentType = mimeType(ext) === 'application/octet-stream' ? 'image/jpeg' : mimeType(ext);
 
   return new NextResponse(new Uint8Array(data), {
     headers: {

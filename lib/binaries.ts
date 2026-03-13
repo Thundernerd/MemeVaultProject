@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
-import { execFileSync, execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getSetting, getDataDir } from './db';
 
 export type BinaryName = 'ytdlp' | 'gallery-dl' | 'ffmpeg';
@@ -77,9 +77,7 @@ function ffmpegArchiveUrl(): string {
 }
 
 function ffmpegArchiveExt(): string {
-  if (process.platform === 'darwin') return '.zip';
-  if (process.platform === 'win32') return '.zip';
-  return '.tar.xz';
+  return process.platform === 'linux' ? '.tar.xz' : '.zip';
 }
 
 // ── Status ───────────────────────────────────────────────────────────────────
@@ -190,9 +188,10 @@ function extractArchive(archivePath: string, destDir: string): void {
   if (ext === '.tar.xz') {
     execFileSync('tar', ['-xf', archivePath, '-C', destDir]);
   } else if (process.platform === 'win32') {
-    execSync(
-      `powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`
-    );
+    execFileSync('powershell', [
+      '-Command',
+      `Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force`,
+    ]);
   } else {
     // macOS / Linux with zip
     execFileSync('unzip', ['-o', archivePath, '-d', destDir]);

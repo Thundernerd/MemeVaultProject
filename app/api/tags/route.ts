@@ -6,7 +6,13 @@ export async function GET() {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { id } = await req.json();
+  let body: { id?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+  const { id } = body;
   if (!id || typeof id !== 'string') {
     return NextResponse.json({ error: 'id required' }, { status: 400 });
   }

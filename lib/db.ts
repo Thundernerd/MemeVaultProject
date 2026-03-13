@@ -88,9 +88,9 @@ function seedDefaultSettings(db: Database.Database) {
     gallerydl_extra_args: '',
     max_concurrent_downloads: '2',
     api_key: uuidv4(),
-    ytdlp_bin: '',       // empty = use auto-managed path in ~/.config/memevault/bin/
-    gallerydl_bin: '',   // empty = use auto-managed path in ~/.config/memevault/bin/
-    ffmpeg_bin: '',      // empty = use auto-managed path in ~/.config/memevault/bin/
+    ytdlp_bin: '',       // empty = use auto-managed path in ~/.memevaultproject/bin/
+    gallerydl_bin: '',   // empty = use auto-managed path in ~/.memevaultproject/bin/
+    ffmpeg_bin: '',      // empty = use auto-managed path in ~/.memevaultproject/bin/
   };
 
   const insert = db.prepare(
@@ -216,13 +216,15 @@ export function countActiveDownloads(): number {
   return row.n;
 }
 
+const QUEUE_UPDATABLE_FIELDS = new Set<string>(['status', 'progress', 'error', 'completed_at']);
+
 export function updateQueueItem(
   id: string,
   fields: Partial<Pick<QueueItem, 'status' | 'progress' | 'error' | 'completed_at'>>
 ): void {
-  const sets = Object.keys(fields)
-    .map((k) => `${k} = @${k}`)
-    .join(', ');
+  const keys = Object.keys(fields).filter((k) => QUEUE_UPDATABLE_FIELDS.has(k));
+  if (keys.length === 0) return;
+  const sets = keys.map((k) => `${k} = @${k}`).join(', ');
   getDb()
     .prepare(`UPDATE queue_items SET ${sets} WHERE id = @id`)
     .run({ id, ...fields });
@@ -313,12 +315,13 @@ export interface TagWithCount extends Tag {
 /** Find or create a tag by name (case-insensitive). Returns the tag. */
 export function upsertTag(name: string): Tag {
   const db = getDb();
+  const trimmed = name.trim();
   const existing = db
     .prepare('SELECT * FROM tags WHERE name = ? COLLATE NOCASE')
-    .get(name) as Tag | undefined;
+    .get(trimmed) as Tag | undefined;
   if (existing) return existing;
 
-  const tag: Tag = { id: uuidv4(), name: name.trim(), created_at: new Date().toISOString() };
+  const tag: Tag = { id: uuidv4(), name: trimmed, created_at: new Date().toISOString() };
   db.prepare('INSERT INTO tags (id, name, created_at) VALUES (@id, @name, @created_at)').run(tag);
   return tag;
 }
@@ -380,28 +383,39 @@ export function setTagsForMedia(mediaId: string, names: string[]): Tag[] {
   return replace();
 }
 
-/** Returns media items with an embedded tags array. */
-export function listMediaItemsWithTags(): (MediaItem & { tags: Tag[] })[] {
-  const items = listMediaItems();
-  const allTagRows = getDb()
-    .prepare(
-      `SELECT mt.media_id, t.id, t.name, t.created_at
-       FROM media_tags mt JOIN tags t ON t.id = mt.tag_id
-       ORDER BY t.name ASC`
-    )
-    .all() as (Tag & { media_id: string })[];
+export type MediaItemWithTags = MediaItem & { tags: Tag[] };
 
-  const tagsByMedia = new Map<string, Tag[]>();
-  for (const row of allTagRows) {
-    const list = tagsByMedia.get(row.media_id) ?? [];
-    list.push({ id: row.id, name: row.name, created_at: row.created_at });
-    tagsByMedia.set(row.media_id, list);
+/** Returns media items with an embedded tags array, using a single JOIN query. */
+export function listMediaItemsWithTags(): MediaItemWithTags[] {
+  type Row = MediaItem & { tag_id: string | null; tag_name: string | null; tag_created_at: string | null };
+  const rows = getDb()
+    .prepare(
+      `SELECT m.*, t.id AS tag_id, t.name AS tag_name, t.created_at AS tag_created_at
+       FROM media m
+       LEFT JOIN media_tags mt ON mt.media_id = m.id
+       LEFT JOIN tags t ON t.id = mt.tag_id
+       ORDER BY m.created_at DESC, t.name ASC`
+    )
+    .all() as Row[];
+
+  const itemMap = new Map<string, MediaItemWithTags>();
+  for (const row of rows) {
+    let item = itemMap.get(row.id);
+    if (!item) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { tag_id, tag_name, tag_created_at, ...mediaFields } = row;
+      item = { ...(mediaFields as MediaItem), tags: [] };
+      itemMap.set(row.id, item);
+    }
+    if (row.tag_id && row.tag_name && row.tag_created_at) {
+      item.tags.push({ id: row.tag_id, name: row.tag_name, created_at: row.tag_created_at });
+    }
   }
 
-  return items.map((item) => ({ ...item, tags: tagsByMedia.get(item.id) ?? [] }));
+  return Array.from(itemMap.values());
 }
 
-export function getMediaItemWithTags(id: string): (MediaItem & { tags: Tag[] }) | undefined {
+export function getMediaItemWithTags(id: string): MediaItemWithTags | undefined {
   const item = getMediaItem(id);
   if (!item) return undefined;
   return { ...item, tags: getTagsForMedia(id) };
