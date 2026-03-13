@@ -62,6 +62,17 @@ function initSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_media_queue_item ON media(queue_item_id);
     CREATE INDEX IF NOT EXISTS idx_queue_status ON queue_items(status);
 
+    CREATE TABLE IF NOT EXISTS albums (
+      id            TEXT PRIMARY KEY,
+      queue_item_id TEXT REFERENCES queue_items(id) ON DELETE SET NULL,
+      url           TEXT NOT NULL,
+      title         TEXT,
+      uploader      TEXT,
+      created_at    TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_albums_queue_item ON albums(queue_item_id);
+
     CREATE TABLE IF NOT EXISTS tags (
       id         TEXT PRIMARY KEY,
       name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -79,6 +90,13 @@ function initSchema(db: Database.Database) {
   `);
 
   seedDefaultSettings(db);
+
+  // Migration: add album_id to media if it doesn't exist yet
+  const mediaCols = db.prepare('PRAGMA table_info(media)').all() as { name: string }[];
+  if (!mediaCols.some((c) => c.name === 'album_id')) {
+    db.exec(`ALTER TABLE media ADD COLUMN album_id TEXT REFERENCES albums(id) ON DELETE SET NULL`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_media_album ON media(album_id)`);
+  }
 }
 
 function seedDefaultSettings(db: Database.Database) {
@@ -255,6 +273,7 @@ export interface MediaItem {
   height: number | null;
   created_at: string;
   raw_metadata: string | null;
+  album_id: string | null;
 }
 
 export function insertMediaItem(item: Omit<MediaItem, 'id' | 'created_at'>): MediaItem {
@@ -267,10 +286,10 @@ export function insertMediaItem(item: Omit<MediaItem, 'id' | 'created_at'>): Med
     .prepare(
       `INSERT INTO media
          (id, queue_item_id, url, type, title, description, uploader, duration,
-          thumbnail_path, file_path, file_size, format, width, height, created_at, raw_metadata)
+          thumbnail_path, file_path, file_size, format, width, height, created_at, raw_metadata, album_id)
        VALUES
          (@id, @queue_item_id, @url, @type, @title, @description, @uploader, @duration,
-          @thumbnail_path, @file_path, @file_size, @format, @width, @height, @created_at, @raw_metadata)`
+          @thumbnail_path, @file_path, @file_size, @format, @width, @height, @created_at, @raw_metadata, @album_id)`
     )
     .run(full);
   return full;
@@ -385,19 +404,14 @@ export function setTagsForMedia(mediaId: string, names: string[]): Tag[] {
 
 export type MediaItemWithTags = MediaItem & { tags: Tag[] };
 
-/** Returns media items with an embedded tags array, using a single JOIN query. */
-export function listMediaItemsWithTags(): MediaItemWithTags[] {
-  type Row = MediaItem & { tag_id: string | null; tag_name: string | null; tag_created_at: string | null };
-  const rows = getDb()
-    .prepare(
-      `SELECT m.*, t.id AS tag_id, t.name AS tag_name, t.created_at AS tag_created_at
-       FROM media m
-       LEFT JOIN media_tags mt ON mt.media_id = m.id
-       LEFT JOIN tags t ON t.id = mt.tag_id
-       ORDER BY m.created_at DESC, t.name ASC`
-    )
-    .all() as Row[];
+type MediaJoinRow = MediaItem & {
+  tag_id: string | null;
+  tag_name: string | null;
+  tag_created_at: string | null;
+};
 
+/** Collapses flat JOIN rows (media + tag columns) into `MediaItemWithTags[]`. */
+function collapseMediaRows(rows: MediaJoinRow[]): MediaItemWithTags[] {
   const itemMap = new Map<string, MediaItemWithTags>();
   for (const row of rows) {
     let item = itemMap.get(row.id);
@@ -411,12 +425,101 @@ export function listMediaItemsWithTags(): MediaItemWithTags[] {
       item.tags.push({ id: row.tag_id, name: row.tag_name, created_at: row.tag_created_at });
     }
   }
-
   return Array.from(itemMap.values());
+}
+
+/** Returns media items with an embedded tags array, using a single JOIN query. */
+export function listMediaItemsWithTags(): MediaItemWithTags[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT m.*, t.id AS tag_id, t.name AS tag_name, t.created_at AS tag_created_at
+       FROM media m
+       LEFT JOIN media_tags mt ON mt.media_id = m.id
+       LEFT JOIN tags t ON t.id = mt.tag_id
+       WHERE m.album_id IS NULL
+       ORDER BY m.created_at DESC, t.name ASC`
+    )
+    .all() as MediaJoinRow[];
+  return collapseMediaRows(rows);
 }
 
 export function getMediaItemWithTags(id: string): MediaItemWithTags | undefined {
   const item = getMediaItem(id);
   if (!item) return undefined;
   return { ...item, tags: getTagsForMedia(id) };
+}
+
+// ── Albums ────────────────────────────────────────────────────────────────────
+
+export interface Album {
+  id: string;
+  queue_item_id: string | null;
+  url: string;
+  title: string | null;
+  uploader: string | null;
+  created_at: string;
+}
+
+export type AlbumWithMedia = Album & { media: MediaItemWithTags[] };
+
+export function insertAlbum(item: Omit<Album, 'id' | 'created_at'>): Album {
+  const full: Album = {
+    ...item,
+    id: uuidv4(),
+    created_at: new Date().toISOString(),
+  };
+  getDb()
+    .prepare(
+      `INSERT INTO albums (id, queue_item_id, url, title, uploader, created_at)
+       VALUES (@id, @queue_item_id, @url, @title, @uploader, @created_at)`
+    )
+    .run(full);
+  return full;
+}
+
+function getAlbum(id: string): Album | undefined {
+  return getDb().prepare('SELECT * FROM albums WHERE id = ?').get(id) as Album | undefined;
+}
+
+function getMediaItemsByAlbum(albumId: string): MediaItemWithTags[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT m.*, t.id AS tag_id, t.name AS tag_name, t.created_at AS tag_created_at
+       FROM media m
+       LEFT JOIN media_tags mt ON mt.media_id = m.id
+       LEFT JOIN tags t ON t.id = mt.tag_id
+       WHERE m.album_id = ?
+       ORDER BY m.created_at ASC, t.name ASC`
+    )
+    .all(albumId) as MediaJoinRow[];
+  return collapseMediaRows(rows);
+}
+
+export function listAlbumsWithMedia(): AlbumWithMedia[] {
+  const albums = getDb()
+    .prepare('SELECT * FROM albums ORDER BY created_at DESC')
+    .all() as Album[];
+  return albums.map((album) => ({
+    ...album,
+    media: getMediaItemsByAlbum(album.id),
+  }));
+}
+
+export function getAlbumWithMedia(id: string): AlbumWithMedia | undefined {
+  const album = getAlbum(id);
+  if (!album) return undefined;
+  return { ...album, media: getMediaItemsByAlbum(id) };
+}
+
+export function deleteAlbum(id: string): AlbumWithMedia | undefined {
+  const album = getAlbumWithMedia(id);
+  if (!album) return undefined;
+  const db = getDb();
+  const deleteMedia = db.prepare('DELETE FROM media WHERE album_id = ?');
+  const deleteAlbumRow = db.prepare('DELETE FROM albums WHERE id = ?');
+  db.transaction(() => {
+    deleteMedia.run(id);
+    deleteAlbumRow.run(id);
+  })();
+  return album;
 }

@@ -1,13 +1,19 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import MediaCard from '@/components/MediaCard';
-import type { Tag, MediaItemWithTags } from '@/lib/db';
+import AlbumCard from '@/components/AlbumCard';
+import type { Tag, MediaItemWithTags, AlbumWithMedia } from '@/lib/db';
 
 type TagFilterMode = 'any' | 'all';
 
+type VaultEntry =
+  | { kind: 'media'; item: MediaItemWithTags }
+  | { kind: 'album'; album: AlbumWithMedia };
+
 export default function LibraryPage() {
-  const [items, setItems] = useState<MediaItemWithTags[]>([]);
+  const [mediaItems, setMediaItems] = useState<MediaItemWithTags[]>([]);
+  const [albums, setAlbums] = useState<AlbumWithMedia[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,13 +24,19 @@ export default function LibraryPage() {
 
   const fetchMedia = useCallback(async () => {
     try {
-      const [mediaRes, tagsRes] = await Promise.all([
+      const [mediaRes, albumsRes, tagsRes] = await Promise.all([
         fetch('/api/media'),
+        fetch('/api/albums'),
         fetch('/api/tags'),
       ]);
-      if (!mediaRes.ok || !tagsRes.ok) throw new Error('Failed to load library');
-      const [mediaData, tagsData] = await Promise.all([mediaRes.json(), tagsRes.json()]);
-      setItems(mediaData);
+      if (!mediaRes.ok || !albumsRes.ok || !tagsRes.ok) throw new Error('Failed to load library');
+      const [mediaData, albumsData, tagsData] = await Promise.all([
+        mediaRes.json(),
+        albumsRes.json(),
+        tagsRes.json(),
+      ]);
+      setMediaItems(mediaData);
+      setAlbums(albumsData);
       setAllTags(tagsData);
       setError(null);
     } catch (err) {
@@ -38,19 +50,62 @@ export default function LibraryPage() {
     fetchMedia();
   }, [fetchMedia]);
 
-  const filtered = items.filter((item) => {
-    if (filter !== 'all' && item.type !== filter) return false;
-    if (search && !item.title?.toLowerCase().includes(search.toLowerCase())) return false;
-    if (selectedTags.length > 0) {
-      const itemTagNames = item.tags.map((t) => t.name);
-      if (tagMode === 'all') {
-        if (!selectedTags.every((t) => itemTagNames.includes(t))) return false;
-      } else {
-        if (!selectedTags.some((t) => itemTagNames.includes(t))) return false;
-      }
-    }
-    return true;
-  });
+  // Merge media and albums into a single sorted list
+  const entries = useMemo<VaultEntry[]>(
+    () =>
+      [
+        ...mediaItems.map((item): VaultEntry => ({ kind: 'media', item })),
+        ...albums.map((album): VaultEntry => ({ kind: 'album', album })),
+      ].sort((a, b) => {
+        const aDate = a.kind === 'media' ? a.item.created_at : a.album.created_at;
+        const bDate = b.kind === 'media' ? b.item.created_at : b.album.created_at;
+        return bDate.localeCompare(aDate);
+      }),
+    [mediaItems, albums]
+  );
+
+  const filtered = useMemo(
+    () =>
+      entries.filter((entry) => {
+        if (entry.kind === 'media') {
+          const item = entry.item;
+          if (filter === 'video' && item.type !== 'video') return false;
+          if (filter === 'image' && item.type !== 'image') return false;
+          if (search && !item.title?.toLowerCase().includes(search.toLowerCase())) return false;
+          if (selectedTags.length > 0) {
+            const itemTagNames = item.tags.map((t) => t.name);
+            if (tagMode === 'all') {
+              if (!selectedTags.every((t) => itemTagNames.includes(t))) return false;
+            } else {
+              if (!selectedTags.some((t) => itemTagNames.includes(t))) return false;
+            }
+          }
+          return true;
+        } else {
+          const album = entry.album;
+          // Albums are image-type; hide under video filter
+          if (filter === 'video') return false;
+          if (search) {
+            const q = search.toLowerCase();
+            const matchTitle = album.title?.toLowerCase().includes(q) ?? false;
+            const matchUploader = album.uploader?.toLowerCase().includes(q) ?? false;
+            if (!matchTitle && !matchUploader) return false;
+          }
+          if (selectedTags.length > 0) {
+            const albumTagNames = new Set(
+              album.media.flatMap((m) => m.tags.map((t) => t.name))
+            );
+            if (tagMode === 'all') {
+              if (!selectedTags.every((t) => albumTagNames.has(t))) return false;
+            } else {
+              if (!selectedTags.some((t) => albumTagNames.has(t))) return false;
+            }
+          }
+          return true;
+        }
+      }),
+    [entries, filter, search, selectedTags, tagMode]
+  );
 
   function toggleTag(name: string) {
     setSelectedTags((prev) =>
@@ -58,11 +113,13 @@ export default function LibraryPage() {
     );
   }
 
+  const totalCount = mediaItems.length + albums.length;
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-bold text-white">Vault</h1>
-        <p className="text-zinc-500 text-sm">{items.length} item{items.length !== 1 ? 's' : ''}</p>
+        <p className="text-zinc-500 text-sm">{totalCount} item{totalCount !== 1 ? 's' : ''}</p>
       </div>
 
       {/* Search + type filter row */}
@@ -157,9 +214,13 @@ export default function LibraryPage() {
       )}
 
       <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
-        {filtered.map((item) => (
-          <MediaCard key={item.id} item={item} onDeleted={fetchMedia} />
-        ))}
+        {filtered.map((entry) =>
+          entry.kind === 'media' ? (
+            <MediaCard key={entry.item.id} item={entry.item} onDeleted={fetchMedia} />
+          ) : (
+            <AlbumCard key={entry.album.id} album={entry.album} onDeleted={fetchMedia} />
+          )
+        )}
       </div>
     </div>
   );

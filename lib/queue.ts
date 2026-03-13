@@ -5,6 +5,7 @@ import {
   countActiveDownloads,
   updateQueueItem,
   insertMediaItem,
+  insertAlbum,
   getSetting,
 } from './db';
 import { runYtdlp } from './ytdlp';
@@ -77,6 +78,7 @@ async function processYtdlp(queueItemId: string, url: string): Promise<void> {
     width: typeof m.width === 'number' ? m.width : null,
     height: typeof m.height === 'number' ? m.height : null,
     raw_metadata: JSON.stringify(m),
+    album_id: null,
   });
   autoTagMedia({
     mediaId: mediaItem.id,
@@ -92,6 +94,23 @@ async function processGalleryDl(queueItemId: string, url: string): Promise<void>
   const files = await runGalleryDl(url, (count) => {
     updateQueueItem(queueItemId, { progress: Math.min(count * 5, 95) });
   });
+
+  // For multi-image downloads, group everything into an album
+  let albumId: string | null = null;
+  if (files.length > 1) {
+    const firstMeta = files[0].metadata;
+    const uploader =
+      (firstMeta.uploader as string | undefined) ??
+      (firstMeta.author as string | undefined) ??
+      null;
+    const album = insertAlbum({
+      queue_item_id: queueItemId,
+      url,
+      title: (firstMeta.title as string | undefined) ?? null,
+      uploader,
+    });
+    albumId = album.id;
+  }
 
   for (const file of files) {
     const m = file.metadata;
@@ -112,6 +131,7 @@ async function processGalleryDl(queueItemId: string, url: string): Promise<void>
       width: typeof m.width === 'number' ? m.width : null,
       height: typeof m.height === 'number' ? m.height : null,
       raw_metadata: JSON.stringify(m),
+      album_id: albumId,
     });
     autoTagMedia({
       mediaId: mediaItem.id,
