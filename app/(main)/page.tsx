@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import MediaCard from '@/components/MediaCard';
 import AlbumCard from '@/components/AlbumCard';
+import AddUrlModal from '@/components/AddUrlModal';
 import type { Tag, MediaItemWithTags, AlbumWithMedia } from '@/lib/db';
 
 type TagFilterMode = 'any' | 'all';
@@ -21,6 +22,7 @@ export default function LibraryPage() {
   const [search, setSearch] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagMode, setTagMode] = useState<TagFilterMode>('any');
+  const [addModalOpen, setAddModalOpen] = useState(false);
 
   const fetchMedia = useCallback(async () => {
     try {
@@ -222,6 +224,24 @@ export default function LibraryPage() {
           )
         )}
       </div>
+
+      {/* Floating action button */}
+      <button
+        onClick={() => setAddModalOpen(true)}
+        aria-label="Add URL"
+        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-500 text-white shadow-lg flex items-center justify-center transition-colors"
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </button>
+
+      {addModalOpen && (
+        <AddUrlModal
+          onClose={() => setAddModalOpen(false)}
+          onAdded={fetchMedia}
+        />
+      )}
     </div>
   );
 }
