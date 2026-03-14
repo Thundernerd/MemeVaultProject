@@ -54,7 +54,6 @@ export default function Navigation() {
 
       {/* ── Mobile top bar (< md) ─────────────────────────────────── */}
       <header className="md:hidden fixed top-0 left-0 right-0 h-14 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 z-50">
-        <span className="text-lg font-bold text-white tracking-tight">MVP</span>
         <button
           onClick={() => setDrawerOpen(true)}
           aria-label="Open navigation"
@@ -67,6 +66,7 @@ export default function Navigation() {
             <rect y="15" width="20" height="2" rx="1" />
           </svg>
         </button>
+        <span className="text-lg font-bold text-white tracking-tight">MVP</span>
       </header>
 
       {/* ── Mobile drawer backdrop ────────────────────────────────── */}
