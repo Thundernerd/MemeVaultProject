@@ -1,5 +1,7 @@
+import type { QueueStatus } from '@/lib/db';
+
 interface Props {
-  status: 'pending' | 'downloading';
+  status: QueueStatus;
   progress: number;
 }
 
