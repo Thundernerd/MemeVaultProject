@@ -114,7 +114,7 @@ function parseYtdlpProgress(line: string): number | null {
 function collectYtdlpOutput(jobDir: string, originalUrl: string): YtdlpResult {
   const files = fs.readdirSync(jobDir);
 
-  const THUMBNAIL_EXTS = new Set(['.jpg', '.jpeg', '.webp', '.png', '.avif']);
+  const THUMBNAIL_EXTS = new Set(['.jpg', '.jpeg', '.webp', '.png', '.avif', '.image']);
   const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv', '.wmv', '.m4v', '.ts']);
   const infoJsonFile = files.find((f) => f.endsWith('.info.json'));
   const thumbnailFile = files.find((f) => THUMBNAIL_EXTS.has(path.extname(f).toLowerCase()));
@@ -146,6 +146,23 @@ function collectYtdlpOutput(jobDir: string, originalUrl: string): YtdlpResult {
   return { filePath, thumbnailPath, metadata };
 }
 
+function detectImageExt(filePath: string): string {
+  try {
+    const buf = Buffer.alloc(12);
+    const fd = fs.openSync(filePath, 'r');
+    fs.readSync(fd, buf, 0, 12, 0);
+    fs.closeSync(fd);
+    if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return '.jpg';
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return '.png';
+    if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+        buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return '.webp';
+    if (buf[4] === 0x66 && buf[5] === 0x74 && buf[6] === 0x79 && buf[7] === 0x70) return '.avif';
+  } catch {
+    // ignore — fall back to .jpg
+  }
+  return '.jpg';
+}
+
 function renameYtdlpFiles(
   jobDir: string,
   mediaFile: string,
@@ -158,7 +175,10 @@ function renameYtdlpFiles(
 
   let newThumbnailPath: string | null = null;
   if (thumbnailFile) {
-    const thumbExt = path.extname(thumbnailFile).toLowerCase();
+    let thumbExt = path.extname(thumbnailFile).toLowerCase();
+    if (thumbExt === '.image') {
+      thumbExt = detectImageExt(path.join(jobDir, thumbnailFile));
+    }
     newThumbnailPath = path.join(jobDir, `thumbnail${thumbExt}`);
     fs.renameSync(path.join(jobDir, thumbnailFile), newThumbnailPath);
   }
