@@ -43,19 +43,37 @@ export default function AddUrlForm({ onAdded }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-      <div className="flex flex-col sm:flex-row gap-2">
-        <input
-          type="url"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="Paste a URL to download…"
-          required
-          className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-zinc-500"
-        />
+      <div className="flex flex-col gap-2">
+        <div className="relative">
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="Paste a URL to download…"
+            required
+            className="w-full bg-zinc-800 border border-zinc-700 rounded-lg pl-4 pr-10 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-zinc-500"
+          />
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const text = await navigator.clipboard.readText();
+                setUrl(text);
+              } catch {}
+            }}
+            aria-label="Paste from clipboard"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-1 rounded transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="5" y="2" width="8" height="11" rx="1.5" />
+              <path d="M3 4H2.5A1.5 1.5 0 0 0 1 5.5v8A1.5 1.5 0 0 0 2.5 15h6A1.5 1.5 0 0 0 10 13.5V13" />
+            </svg>
+          </button>
+        </div>
         <select
           value={downloader}
           onChange={(e) => setDownloader(e.target.value as 'ytdlp' | 'gallery-dl')}
-          className="w-full sm:w-auto bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500"
+          className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-zinc-500"
         >
           <option value="ytdlp">Video (yt-dlp)</option>
           <option value="gallery-dl">Images (gallery-dl)</option>
@@ -63,7 +81,7 @@ export default function AddUrlForm({ onAdded }: Props) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+          className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
         >
           {loading ? 'Adding…' : 'Add'}
         </button>
