@@ -3,8 +3,9 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import MediaCard from '@/components/MediaCard';
 import AlbumCard from '@/components/AlbumCard';
+import SkeletonCard from '@/components/SkeletonCard';
 import AddUrlModal from '@/components/AddUrlModal';
-import type { Tag, MediaItemWithTags, AlbumWithMedia } from '@/lib/db';
+import type { Tag, MediaItemWithTags, AlbumWithMedia, QueueItem } from '@/lib/db';
 
 type TagFilterMode = 'any' | 'all';
 
@@ -23,6 +24,7 @@ export default function LibraryPage() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagMode, setTagMode] = useState<TagFilterMode>('any');
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [activeQueueItems, setActiveQueueItems] = useState<QueueItem[]>([]);
 
   const fetchMedia = useCallback(async () => {
     try {
@@ -48,9 +50,26 @@ export default function LibraryPage() {
     }
   }, []);
 
+  const fetchQueue = useCallback(async () => {
+    const res = await fetch('/api/queue');
+    if (!res.ok) return;
+    const items: QueueItem[] = await res.json();
+    const active = items.filter((i) => i.status === 'pending' || i.status === 'downloading');
+    setActiveQueueItems((prev) => {
+      if (prev.length > active.length) fetchMedia();
+      return active;
+    });
+  }, [fetchMedia]);
+
   useEffect(() => {
     fetchMedia();
   }, [fetchMedia]);
+
+  useEffect(() => {
+    fetchQueue();
+    const id = setInterval(fetchQueue, 2000);
+    return () => clearInterval(id);
+  }, [fetchQueue]);
 
   // Merge media and albums into a single sorted list
   const entries = useMemo<VaultEntry[]>(
@@ -121,7 +140,10 @@ export default function LibraryPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-bold text-white">Vault</h1>
-        <p className="text-zinc-500 text-sm">{totalCount} item{totalCount !== 1 ? 's' : ''}</p>
+        <p className="text-zinc-500 text-sm">
+          {totalCount} item{totalCount !== 1 ? 's' : ''}
+          {activeQueueItems.length > 0 && ` · ${activeQueueItems.length} downloading`}
+        </p>
       </div>
 
       {/* Search + type filter row */}
@@ -208,7 +230,7 @@ export default function LibraryPage() {
         <div className="text-red-400 text-sm bg-red-900/20 rounded-lg px-4 py-3">{error}</div>
       )}
 
-      {!loading && !error && filtered.length === 0 && (
+      {!loading && !error && filtered.length === 0 && activeQueueItems.length === 0 && (
         <div className="flex flex-col items-center justify-center py-24 gap-3 text-zinc-600">
           <span className="text-5xl">📭</span>
           <p className="text-sm">No media yet. Add URLs from the Queue page.</p>
@@ -216,6 +238,9 @@ export default function LibraryPage() {
       )}
 
       <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
+        {activeQueueItems.map((item) => (
+          <SkeletonCard key={item.id} status={item.status} progress={item.progress} />
+        ))}
         {filtered.map((entry) =>
           entry.kind === 'media' ? (
             <MediaCard key={entry.item.id} item={entry.item} onDeleted={fetchMedia} />
