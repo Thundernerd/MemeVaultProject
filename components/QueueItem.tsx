@@ -6,6 +6,7 @@ import type { QueueItem } from '@/lib/db';
 interface Props {
   item: QueueItem;
   onRemoved: () => void;
+  onRetried?: () => void;
 }
 
 const statusColors: Record<QueueItem['status'], string> = {
@@ -15,8 +16,23 @@ const statusColors: Record<QueueItem['status'], string> = {
   failed: 'bg-red-500/20 text-red-400',
 };
 
-export default function QueueItemRow({ item, onRemoved }: Props) {
+export default function QueueItemRow({ item, onRemoved, onRetried }: Props) {
   const [removing, setRemoving] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+
+  async function handleRetry() {
+    setRetrying(true);
+    try {
+      await fetch('/api/downloads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: item.url, downloader: item.downloader }),
+      });
+      onRetried?.();
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   async function handleRemove() {
     setRemoving(true);
@@ -69,15 +85,26 @@ export default function QueueItemRow({ item, onRemoved }: Props) {
         <span className="text-xs text-zinc-600">
           {new Date(item.created_at).toLocaleString()}
         </span>
-        {item.status !== 'downloading' && (
-          <button
-            onClick={handleRemove}
-            disabled={removing}
-            className="text-xs text-zinc-500 hover:text-red-400 transition-colors disabled:opacity-50"
-          >
-            {removing ? 'Removing…' : 'Remove'}
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {item.status !== 'downloading' && (
+            <button
+              onClick={handleRetry}
+              disabled={retrying}
+              className="text-xs text-zinc-500 hover:text-blue-400 transition-colors disabled:opacity-50"
+            >
+              {retrying ? 'Retrying…' : 'Retry'}
+            </button>
+          )}
+          {item.status !== 'downloading' && (
+            <button
+              onClick={handleRemove}
+              disabled={removing}
+              className="text-xs text-zinc-500 hover:text-red-400 transition-colors disabled:opacity-50"
+            >
+              {removing ? 'Removing…' : 'Remove'}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -64,7 +64,7 @@ export default function QueuePage() {
         <section className="flex flex-col gap-2">
           <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Active</h2>
           {active.map((item) => (
-            <QueueItemRow key={item.id} item={item} onRemoved={fetchQueue} />
+            <QueueItemRow key={item.id} item={item} onRemoved={fetchQueue} onRetried={fetchQueue} />
           ))}
         </section>
       )}
@@ -73,7 +73,7 @@ export default function QueuePage() {
         <section className="flex flex-col gap-2">
           <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">History</h2>
           {done.map((item) => (
-            <QueueItemRow key={item.id} item={item} onRemoved={fetchQueue} />
+            <QueueItemRow key={item.id} item={item} onRemoved={fetchQueue} onRetried={fetchQueue} />
           ))}
         </section>
       )}
