@@ -24,6 +24,9 @@ export async function PUT(req: NextRequest) {
     'ytdlp_bin',
     'gallerydl_bin',
     'ffmpeg_bin',
+    'share_default_expiry_days',
+    'share_default_allow_download',
+    'share_base_url',
   ];
 
   for (const key of allowed) {

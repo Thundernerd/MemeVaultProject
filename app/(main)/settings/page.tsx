@@ -13,6 +13,7 @@ interface Settings {
   ffmpeg_bin: string;
   share_default_expiry_days: string;
   share_default_allow_download: string;
+  share_base_url: string;
   _overridden_by_env: string[];
 }
 
@@ -346,6 +347,30 @@ export default function SettingsPage() {
             <label htmlFor="share_default_allow_download" className="text-sm text-zinc-300">
               Allow download by default
             </label>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-zinc-300">Public base URL</label>
+              {isEnv('share_base_url') && <EnvBadge />}
+            </div>
+            <p className="text-xs text-zinc-500">
+              Required for Discord/WhatsApp embeds. The public-facing URL of this instance,
+              e.g. <code className="text-zinc-300">https://memes.example.com</code>. Leave blank to disable OG embeds.
+            </p>
+            <input
+              type="url"
+              value={settings.share_base_url}
+              disabled={isEnv('share_base_url')}
+              onChange={(e) => setSettings({ ...settings, share_base_url: e.target.value })}
+              placeholder="https://memes.example.com"
+              className="bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-zinc-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+            {isEnv('share_base_url') && (
+              <p className="text-xs text-amber-400/80">
+                Set via <code className="font-mono">MEMEVAULTPROJECT_SHARE_BASE_URL</code>
+              </p>
+            )}
           </div>
         </div>
 

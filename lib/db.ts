@@ -121,6 +121,7 @@ function seedDefaultSettings(db: Database.Database) {
     ffmpeg_bin: '',      // empty = use auto-managed path in ~/.memevaultproject/bin/
     share_default_expiry_days: '',   // empty = never expires
     share_default_allow_download: '1',
+    share_base_url: '',              // e.g. https://memes.example.com — required for OG embeds
   };
 
   const insert = db.prepare(
@@ -143,6 +144,7 @@ export const ENV_OVERRIDES: Record<string, string> = {
   ytdlp_bin:                  'MEMEVAULTPROJECT_YTDLP_BIN',
   gallerydl_bin:              'MEMEVAULTPROJECT_GALLERYDL_BIN',
   ffmpeg_bin:                 'MEMEVAULTPROJECT_FFMPEG_BIN',
+  share_base_url:             'MEMEVAULTPROJECT_SHARE_BASE_URL',
 };
 
 export function getSetting(key: string): string | undefined {
