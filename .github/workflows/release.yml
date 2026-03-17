@@ -91,7 +91,8 @@ jobs:
           fi
           git commit -m "chore: bump version to $VERSION"
           git tag "v$VERSION"
-          git push origin HEAD:${{ github.ref_name }} --follow-tags
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin "v$VERSION"
 
       - name: Create GitHub Release
         env:
