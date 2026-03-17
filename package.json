@@ -1,6 +1,6 @@
 {
   "name": "mvp",
-  "version": "0.6.0-share.1",
+  "version": "0.6.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
