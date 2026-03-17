@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import type { Tag, MediaItemWithTags } from '@/lib/db';
+import type { Tag, MediaItemWithTags, ShareLink } from '@/lib/db';
 
 // Re-exported for consumers that imported this type from this module.
 export type { MediaItemWithTags as ModalMediaItem };
@@ -38,6 +38,14 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
   const [tagSuggestions, setTagSuggestions] = useState<Tag[]>([]);
   const tagInputRef = useRef<HTMLInputElement>(null);
 
+  // Share state
+  const [shareLinks, setShareLinks] = useState<ShareLink[]>([]);
+  const [shareExpanded, setShareExpanded] = useState(false);
+  const [shareAllowDownload, setShareAllowDownload] = useState(true);
+  const [shareExpiryDays, setShareExpiryDays] = useState('');
+  const [shareCreating, setShareCreating] = useState(false);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+
   const fileSrc = `/api/media/${item.id}/file`;
   const thumbnailSrc = item.thumbnail_path ? `/api/media/${item.id}/thumbnail` : null;
 
@@ -64,6 +72,54 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
       .then((data: Tag[]) => setAllTags(data))
       .catch(() => {});
   }, []);
+
+  // Load share defaults from settings and existing share links
+  useEffect(() => {
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((s) => {
+        if (s.share_default_expiry_days !== undefined) setShareExpiryDays(s.share_default_expiry_days);
+        if (s.share_default_allow_download !== undefined) setShareAllowDownload(s.share_default_allow_download === '1');
+      })
+      .catch(() => {});
+    fetch(`/api/media/${item.id}/share`)
+      .then((r) => r.json())
+      .then((data: ShareLink[]) => setShareLinks(data))
+      .catch(() => {});
+  }, [item.id]);
+
+  async function handleCreateShareLink() {
+    setShareCreating(true);
+    try {
+      let expiresAt: string | null = null;
+      if (shareExpiryDays) {
+        const d = new Date();
+        d.setDate(d.getDate() + parseInt(shareExpiryDays, 10));
+        expiresAt = d.toISOString();
+      }
+      const res = await fetch(`/api/media/${item.id}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allowDownload: shareAllowDownload, expiresAt }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const link: ShareLink = await res.json();
+      setShareLinks((prev) => [link, ...prev]);
+    } catch { /* ignore */ }
+    setShareCreating(false);
+  }
+
+  async function handleRevokeShareLink(token: string) {
+    await fetch(`/api/media/${item.id}/share/${token}`, { method: 'DELETE' }).catch(() => {});
+    setShareLinks((prev) => prev.filter((l) => l.token !== token));
+  }
+
+  async function copyShareLink(token: string) {
+    const url = `${window.location.origin}/share/${token}`;
+    await navigator.clipboard.writeText(url).catch(() => {});
+    setCopiedToken(token);
+    setTimeout(() => setCopiedToken(null), 2000);
+  }
 
   // Filter suggestions as the user types
   useEffect(() => {
@@ -315,6 +371,99 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
               ))}
             </div>
           )}
+
+          {/* Share section */}
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => setShareExpanded((v) => !v)}
+              className="flex items-center gap-2 text-xs font-medium text-zinc-500 uppercase tracking-wider hover:text-zinc-300 transition-colors self-start"
+            >
+              <span>Share</span>
+              {shareLinks.length > 0 && (
+                <span className="px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-300 normal-case tracking-normal font-normal">
+                  {shareLinks.length}
+                </span>
+              )}
+              <span>{shareExpanded ? '▲' : '▼'}</span>
+            </button>
+
+            {shareExpanded && (
+              <div className="flex flex-col gap-3 bg-zinc-800/50 rounded-xl p-4">
+                {/* Create form */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap gap-3 items-center">
+                    <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={shareAllowDownload}
+                        onChange={(e) => setShareAllowDownload(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded accent-blue-500"
+                      />
+                      Allow download
+                    </label>
+                    <select
+                      value={shareExpiryDays}
+                      onChange={(e) => setShareExpiryDays(e.target.value)}
+                      className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-zinc-500"
+                    >
+                      <option value="">No expiry</option>
+                      <option value="1">1 day</option>
+                      <option value="7">7 days</option>
+                      <option value="30">30 days</option>
+                      <option value="90">90 days</option>
+                    </select>
+                    <button
+                      onClick={handleCreateShareLink}
+                      disabled={shareCreating}
+                      className="text-sm px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+                    >
+                      {shareCreating ? 'Creating…' : 'Create link'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Existing links */}
+                {shareLinks.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    {shareLinks.map((link) => (
+                      <div
+                        key={link.token}
+                        className="flex items-center gap-2 text-xs bg-zinc-900 rounded-lg px-3 py-2"
+                      >
+                        <span className="text-zinc-500 font-mono flex-1 truncate min-w-0">
+                          /share/{link.token.slice(0, 8)}…
+                        </span>
+                        <span className="text-zinc-600 shrink-0">
+                          {link.expires_at
+                            ? new Date(link.expires_at).toLocaleDateString(undefined, { dateStyle: 'medium' })
+                            : 'no expiry'}
+                        </span>
+                        <span className="text-zinc-600 shrink-0">
+                          {link.allow_download ? '⬇' : ''}
+                        </span>
+                        <button
+                          onClick={() => copyShareLink(link.token)}
+                          className="shrink-0 px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded transition-colors"
+                        >
+                          {copiedToken === link.token ? 'Copied!' : 'Copy'}
+                        </button>
+                        <button
+                          onClick={() => handleRevokeShareLink(link.token)}
+                          className="shrink-0 px-2 py-1 bg-red-900/40 hover:bg-red-800/60 text-red-400 rounded transition-colors"
+                        >
+                          Revoke
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {shareLinks.length === 0 && (
+                  <p className="text-xs text-zinc-600 italic">No active share links</p>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Divider + actions */}
           <div className="border-t border-zinc-800 pt-3 flex gap-2">

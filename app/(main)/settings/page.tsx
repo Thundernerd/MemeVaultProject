@@ -11,6 +11,9 @@ interface Settings {
   ytdlp_bin: string;
   gallerydl_bin: string;
   ffmpeg_bin: string;
+  share_default_expiry_days: string;
+  share_default_allow_download: string;
+  share_base_url: string;
   _overridden_by_env: string[];
 }
 
@@ -305,6 +308,70 @@ export default function SettingsPage() {
             onUpload={(file) => handleCookieUpload('gallerydl', file)}
             onDelete={() => handleCookieDelete('gallerydl')}
           />
+        </div>
+
+        {/* Sharing section */}
+        <div className="border-t border-zinc-800 pt-6 flex flex-col gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-white">Sharing</h2>
+            <p className="text-zinc-500 text-sm mt-1">
+              Default options applied when creating a new share link from the media viewer.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-zinc-300">Default link expiry</label>
+            <select
+              value={settings.share_default_expiry_days}
+              onChange={(e) => setSettings({ ...settings, share_default_expiry_days: e.target.value })}
+              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500 w-48"
+            >
+              <option value="">Never expires</option>
+              <option value="1">1 day</option>
+              <option value="7">7 days</option>
+              <option value="30">30 days</option>
+              <option value="90">90 days</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="share_default_allow_download"
+              checked={settings.share_default_allow_download === '1'}
+              onChange={(e) =>
+                setSettings({ ...settings, share_default_allow_download: e.target.checked ? '1' : '0' })
+              }
+              className="w-4 h-4 rounded accent-blue-500"
+            />
+            <label htmlFor="share_default_allow_download" className="text-sm text-zinc-300">
+              Allow download by default
+            </label>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium text-zinc-300">Public base URL</label>
+              {isEnv('share_base_url') && <EnvBadge />}
+            </div>
+            <p className="text-xs text-zinc-500">
+              Required for Discord/WhatsApp embeds. The public-facing URL of this instance,
+              e.g. <code className="text-zinc-300">https://memes.example.com</code>. Leave blank to disable OG embeds.
+            </p>
+            <input
+              type="url"
+              value={settings.share_base_url}
+              disabled={isEnv('share_base_url')}
+              onChange={(e) => setSettings({ ...settings, share_base_url: e.target.value })}
+              placeholder="https://memes.example.com"
+              className="bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-zinc-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+            {isEnv('share_base_url') && (
+              <p className="text-xs text-amber-400/80">
+                Set via <code className="font-mono">MEMEVAULTPROJECT_SHARE_BASE_URL</code>
+              </p>
+            )}
+          </div>
         </div>
 
         {/* API Key section */}
