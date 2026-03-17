@@ -11,6 +11,8 @@ interface Settings {
   ytdlp_bin: string;
   gallerydl_bin: string;
   ffmpeg_bin: string;
+  share_default_expiry_days: string;
+  share_default_allow_download: string;
   _overridden_by_env: string[];
 }
 
@@ -305,6 +307,46 @@ export default function SettingsPage() {
             onUpload={(file) => handleCookieUpload('gallerydl', file)}
             onDelete={() => handleCookieDelete('gallerydl')}
           />
+        </div>
+
+        {/* Sharing section */}
+        <div className="border-t border-zinc-800 pt-6 flex flex-col gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-white">Sharing</h2>
+            <p className="text-zinc-500 text-sm mt-1">
+              Default options applied when creating a new share link from the media viewer.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-zinc-300">Default link expiry</label>
+            <select
+              value={settings.share_default_expiry_days}
+              onChange={(e) => setSettings({ ...settings, share_default_expiry_days: e.target.value })}
+              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500 w-48"
+            >
+              <option value="">Never expires</option>
+              <option value="1">1 day</option>
+              <option value="7">7 days</option>
+              <option value="30">30 days</option>
+              <option value="90">90 days</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="share_default_allow_download"
+              checked={settings.share_default_allow_download === '1'}
+              onChange={(e) =>
+                setSettings({ ...settings, share_default_allow_download: e.target.checked ? '1' : '0' })
+              }
+              className="w-4 h-4 rounded accent-blue-500"
+            />
+            <label htmlFor="share_default_allow_download" className="text-sm text-zinc-300">
+              Allow download by default
+            </label>
+          </div>
         </div>
 
         {/* API Key section */}

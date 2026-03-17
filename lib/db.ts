@@ -87,6 +87,16 @@ function initSchema(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_media_tags_media ON media_tags(media_id);
     CREATE INDEX IF NOT EXISTS idx_media_tags_tag   ON media_tags(tag_id);
+
+    CREATE TABLE IF NOT EXISTS share_links (
+      token          TEXT PRIMARY KEY,
+      media_id       TEXT NOT NULL REFERENCES media(id) ON DELETE CASCADE,
+      allow_download INTEGER NOT NULL DEFAULT 1,
+      expires_at     TEXT,
+      created_at     TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_share_links_media ON share_links(media_id);
   `);
 
   seedDefaultSettings(db);
@@ -109,6 +119,8 @@ function seedDefaultSettings(db: Database.Database) {
     ytdlp_bin: '',       // empty = use auto-managed path in ~/.memevaultproject/bin/
     gallerydl_bin: '',   // empty = use auto-managed path in ~/.memevaultproject/bin/
     ffmpeg_bin: '',      // empty = use auto-managed path in ~/.memevaultproject/bin/
+    share_default_expiry_days: '',   // empty = never expires
+    share_default_allow_download: '1',
   };
 
   const insert = db.prepare(
@@ -522,4 +534,51 @@ export function deleteAlbum(id: string): AlbumWithMedia | undefined {
     deleteAlbumRow.run(id);
   })();
   return album;
+}
+
+// ── Share Links ───────────────────────────────────────────────────────────────
+
+export interface ShareLink {
+  token: string;
+  media_id: string;
+  allow_download: number; // 1 = allowed, 0 = not allowed
+  expires_at: string | null;
+  created_at: string;
+}
+
+export function createShareLink(
+  mediaId: string,
+  allowDownload: boolean,
+  expiresAt: string | null
+): ShareLink {
+  const link: ShareLink = {
+    token: uuidv4(),
+    media_id: mediaId,
+    allow_download: allowDownload ? 1 : 0,
+    expires_at: expiresAt,
+    created_at: new Date().toISOString(),
+  };
+  getDb()
+    .prepare(
+      `INSERT INTO share_links (token, media_id, allow_download, expires_at, created_at)
+       VALUES (@token, @media_id, @allow_download, @expires_at, @created_at)`
+    )
+    .run(link);
+  return link;
+}
+
+export function getShareLink(token: string): ShareLink | undefined {
+  return getDb()
+    .prepare('SELECT * FROM share_links WHERE token = ?')
+    .get(token) as ShareLink | undefined;
+}
+
+export function deleteShareLink(token: string): void {
+  getDb().prepare('DELETE FROM share_links WHERE token = ?').run(token);
+}
+
+export function getShareLinksForMedia(mediaId: string): ShareLink[] {
+  return getDb()
+    .prepare('SELECT * FROM share_links WHERE media_id = ? ORDER BY created_at DESC')
+    .all(mediaId) as ShareLink[];
 }
