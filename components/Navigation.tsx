@@ -7,6 +7,7 @@ import { useState, useEffect } from 'react';
 const links = [
   { href: '/', label: 'Vault' },
   { href: '/queue', label: 'Queue' },
+  { href: '/tags', label: 'Tags' },
   { href: '/settings', label: 'Settings' },
 ];
 

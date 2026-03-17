@@ -9,6 +9,15 @@ import type { Tag, MediaItemWithTags, AlbumWithMedia, QueueItem } from '@/lib/db
 
 type TagFilterMode = 'any' | 'all';
 
+const NAMESPACE_ORDER = ['type', 'platform', 'date', 'format', 'uploader'];
+const NAMESPACE_LABELS: Record<string, string> = {
+  type: 'Type',
+  platform: 'Platform',
+  date: 'Date',
+  format: 'Format',
+  uploader: 'Uploader',
+};
+
 type VaultEntry =
   | { kind: 'media'; item: MediaItemWithTags }
   | { kind: 'album'; album: AlbumWithMedia };
@@ -24,6 +33,7 @@ export default function LibraryPage() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagMode, setTagMode] = useState<TagFilterMode>('any');
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [tagFilterOpen, setTagFilterOpen] = useState(false);
   const [activeQueueItems, setActiveQueueItems] = useState<QueueItem[]>([]);
 
   const fetchMedia = useCallback(async () => {
@@ -134,6 +144,26 @@ export default function LibraryPage() {
     );
   }
 
+  const groupedTags = useMemo(() => {
+    const groups: Record<string, Tag[]> = {};
+    for (const tag of allTags) {
+      const colon = tag.name.indexOf(':');
+      const ns = colon > 0 ? tag.name.slice(0, colon) : 'other';
+      if (!groups[ns]) groups[ns] = [];
+      groups[ns].push(tag);
+    }
+    return groups;
+  }, [allTags]);
+
+  const orderedNamespaces = useMemo(() => {
+    const known = NAMESPACE_ORDER.filter((ns) => groupedTags[ns]?.length > 0);
+    const custom = Object.keys(groupedTags).filter(
+      (ns) => !NAMESPACE_ORDER.includes(ns) && ns !== 'other'
+    );
+    const hasOther = (groupedTags['other']?.length ?? 0) > 0;
+    return [...known, ...custom, ...(hasOther ? ['other'] : [])];
+  }, [groupedTags]);
+
   const totalCount = mediaItems.length + albums.length;
 
   return (
@@ -176,49 +206,89 @@ export default function LibraryPage() {
       {allTags.length > 0 && (
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-xs text-zinc-500 uppercase tracking-wider">Filter by tag</span>
-            <div className="flex gap-1 bg-zinc-800 rounded-lg p-0.5">
-              {(['any', 'all'] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setTagMode(m)}
-                  className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
-                    tagMode === m
-                      ? 'bg-zinc-600 text-white'
-                      : 'text-zinc-400 hover:text-white'
-                  }`}
-                >
-                  {m === 'any' ? 'Any' : 'All'}
-                </button>
-              ))}
-            </div>
-            {selectedTags.length > 0 && (
-              <button
-                onClick={() => setSelectedTags([])}
-                className="text-xs text-zinc-500 hover:text-white transition-colors"
+            <button
+              onClick={() => setTagFilterOpen((o) => !o)}
+              className="flex items-center gap-1.5 text-xs text-zinc-500 uppercase tracking-wider hover:text-zinc-300 transition-colors"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                fill="currentColor"
+                className={`transition-transform duration-200 ${tagFilterOpen ? 'rotate-180' : ''}`}
               >
-                Clear
-              </button>
+                <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+              </svg>
+              Filter by tag
+              {selectedTags.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-medium normal-case tracking-normal">
+                  {selectedTags.length}
+                </span>
+              )}
+            </button>
+            {tagFilterOpen && (
+              <>
+                <div className="flex gap-1 bg-zinc-800 rounded-lg p-0.5">
+                  {(['any', 'all'] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setTagMode(m)}
+                      className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                        tagMode === m
+                          ? 'bg-zinc-600 text-white'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {m === 'any' ? 'Any' : 'All'}
+                    </button>
+                  ))}
+                </div>
+                {selectedTags.length > 0 && (
+                  <button
+                    onClick={() => setSelectedTags([])}
+                    className="text-xs text-zinc-500 hover:text-white transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+              </>
             )}
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {allTags.map((tag) => {
-              const active = selectedTags.includes(tag.name);
+          {tagFilterOpen && <div className="flex flex-col gap-1.5">
+            {orderedNamespaces.map((ns) => {
+              const nsTags = groupedTags[ns] ?? [];
+              const label =
+                NAMESPACE_LABELS[ns] ??
+                (ns === 'other' ? 'Other' : ns.charAt(0).toUpperCase() + ns.slice(1));
               return (
-                <button
-                  key={tag.id}
-                  onClick={() => toggleTag(tag.name)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                    active
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white'
-                  }`}
-                >
-                  {tag.name}
-                </button>
+                <div key={ns} className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-zinc-600 w-16 shrink-0 uppercase tracking-wider">
+                    {label}
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {nsTags.map((tag) => {
+                      const active = selectedTags.includes(tag.name);
+                      const colon = tag.name.indexOf(':');
+                      const displayName = colon > 0 ? tag.name.slice(colon + 1) : tag.name;
+                      return (
+                        <button
+                          key={tag.id}
+                          onClick={() => toggleTag(tag.name)}
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                            active
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white'
+                          }`}
+                        >
+                          {displayName}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })}
-          </div>
+          </div>}
         </div>
       )}
 

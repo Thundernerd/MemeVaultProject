@@ -1,8 +1,15 @@
 import { addTagToMedia, upsertTag } from './db';
 import type { MediaType } from './db';
 
+// Maps hostname labels to canonical platform names where the label differs
+const PLATFORM_ALIASES: Record<string, string> = {
+  twitter: 'x',
+  youtu: 'youtube',
+};
+
 /**
- * Auto-generates and attaches tags to a freshly inserted media item.
+ * Auto-generates and attaches namespaced tags to a freshly inserted media item.
+ * Tags use the format `namespace:value` (e.g. `platform:youtube`, `type:video`).
  * Never throws — tag failures should never block a download.
  */
 export function autoTagMedia(params: {
@@ -16,15 +23,17 @@ export function autoTagMedia(params: {
   const candidates: string[] = [];
 
   // Media type
-  candidates.push(params.type);
+  candidates.push(`type:${params.type}`);
 
-  // Hostname — strip www. prefix, take the registrable part (e.g. "youtube")
+  // Platform — strip www., take registrable label, apply aliases
   try {
     const hostname = new URL(params.url).hostname.replace(/^www\./, '');
-    // Use the domain without TLD for well-known sites, full hostname otherwise
     const parts = hostname.split('.');
-    const label = parts.length >= 2 ? parts[parts.length - 2] : hostname;
-    if (label) candidates.push(label.toLowerCase());
+    const raw = parts.length >= 2 ? parts[parts.length - 2] : hostname;
+    if (raw) {
+      const label = PLATFORM_ALIASES[raw.toLowerCase()] ?? raw.toLowerCase();
+      candidates.push(`platform:${label}`);
+    }
   } catch {
     // invalid URL — skip
   }
@@ -33,14 +42,14 @@ export function autoTagMedia(params: {
   if (params.uploader) {
     const name = params.uploader.trim();
     if (name.length > 0 && name.length <= 64) {
-      candidates.push(name.toLowerCase());
+      candidates.push(`uploader:${name.toLowerCase()}`);
     }
   }
 
   // Year
   try {
     const year = new Date(params.createdAt).getFullYear();
-    if (year > 2000 && year < 2100) candidates.push(String(year));
+    if (year > 2000 && year < 2100) candidates.push(`date:${year}`);
   } catch {
     // skip
   }
@@ -48,7 +57,7 @@ export function autoTagMedia(params: {
   // Format (e.g. "mp4", "jpg")
   if (params.format) {
     const fmt = params.format.trim().toLowerCase();
-    if (fmt.length > 0 && fmt.length <= 10) candidates.push(fmt);
+    if (fmt.length > 0 && fmt.length <= 10) candidates.push(`format:${fmt}`);
   }
 
   for (const name of candidates) {
