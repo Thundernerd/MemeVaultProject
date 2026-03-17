@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Features
+- Added retry button to queue items
+
 ## [0.6.0] - 2026-03-17
 
 ### Features
