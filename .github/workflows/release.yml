@@ -93,6 +93,22 @@ jobs:
           git tag "v$VERSION"
           git push origin HEAD:${{ github.ref_name }} --follow-tags
 
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if [ "${{ steps.version.outputs.is_prerelease }}" = "false" ]; then
+            NOTES=$(awk -v ver="$VERSION" '
+              $0 ~ "^## \\[" ver "\\]" { found=1; next }
+              found && /^## \[/ { exit }
+              found { print }
+            ' CHANGELOG.md)
+            gh release create "v${VERSION}" --title "v${VERSION}" --notes "$NOTES"
+          else
+            gh release create "v${VERSION}" --title "v${VERSION}" --notes "Pre-release build." --prerelease
+          fi
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
