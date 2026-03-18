@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-03-18
+
 ### Features
 - Replaced single API key with multi-key system with read/read+write permissions
 
