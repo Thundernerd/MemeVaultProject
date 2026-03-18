@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Features
+- Added OIDC support
+
+## [0.8.0] - 2026-03-17
+
+### Features
 - Split settings page into multiple tabs
 
 ## [0.7.0] - 2026-03-17
