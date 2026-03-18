@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.9.0] - 2026-03-18
 
 ### Features
 - Added OIDC support
