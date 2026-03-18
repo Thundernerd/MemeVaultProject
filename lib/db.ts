@@ -114,7 +114,6 @@ function seedDefaultSettings(db: Database.Database) {
     download_path: path.join(getDataDir(), 'media'),
     ytdlp_extra_args: '',
     gallerydl_extra_args: '',
-    max_concurrent_downloads: '2',
     api_key: uuidv4(),
     ytdlp_bin: '',       // empty = use auto-managed path in ~/.memevaultproject/bin/
     gallerydl_bin: '',   // empty = use auto-managed path in ~/.memevaultproject/bin/
@@ -139,7 +138,6 @@ export const ENV_OVERRIDES: Record<string, string> = {
   download_path:              'MEMEVAULTPROJECT_DOWNLOAD_PATH',
   ytdlp_extra_args:           'MEMEVAULTPROJECT_YTDLP_EXTRA_ARGS',
   gallerydl_extra_args:       'MEMEVAULTPROJECT_GALLERYDL_EXTRA_ARGS',
-  max_concurrent_downloads:   'MEMEVAULTPROJECT_MAX_CONCURRENT_DOWNLOADS',
   api_key:                    'MEMEVAULTPROJECT_API_KEY',
   ytdlp_bin:                  'MEMEVAULTPROJECT_YTDLP_BIN',
   gallerydl_bin:              'MEMEVAULTPROJECT_GALLERYDL_BIN',

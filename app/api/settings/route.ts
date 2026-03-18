@@ -20,7 +20,6 @@ export async function PUT(req: NextRequest) {
     'download_path',
     'ytdlp_extra_args',
     'gallerydl_extra_args',
-    'max_concurrent_downloads',
     'ytdlp_bin',
     'gallerydl_bin',
     'ffmpeg_bin',

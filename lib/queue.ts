@@ -6,7 +6,6 @@ import {
   updateQueueItem,
   insertMediaItem,
   insertAlbum,
-  getSetting,
 } from './db';
 import { runYtdlp } from './ytdlp';
 import { runGalleryDl } from './gallerydl';
@@ -27,9 +26,8 @@ function scheduleNext(): void {
 }
 
 async function processNext(): Promise<void> {
-  const maxConcurrent = parseInt(getSetting('max_concurrent_downloads') ?? '2', 10);
   const active = countActiveDownloads();
-  if (active >= maxConcurrent) return;
+  if (active >= 1) return;
 
   const item = getNextPendingItem();
   if (!item) return;

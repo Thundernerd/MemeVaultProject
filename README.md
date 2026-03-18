@@ -38,7 +38,6 @@ All settings have sensible defaults and can be overridden at runtime.
 | `MEMEVAULTPROJECT_FFMPEG_BIN` | *(auto-managed)* | Path to a custom ffmpeg binary |
 | `MEMEVAULTPROJECT_YTDLP_EXTRA_ARGS` | *(empty)* | Extra flags appended to every yt-dlp call |
 | `MEMEVAULTPROJECT_GALLERYDL_EXTRA_ARGS` | *(empty)* | Extra flags appended to every gallery-dl call |
-| `MEMEVAULTPROJECT_MAX_CONCURRENT_DOWNLOADS` | `2` | Maximum simultaneous downloads |
 
 Settings marked *(auto-generated)* or *(auto-managed)* are stored in the SQLite database and editable from the Settings page. An environment variable always takes precedence over the database value.
 

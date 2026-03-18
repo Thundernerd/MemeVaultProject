@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { Settings } from '@/components/settings/types';
 import { Field } from '@/components/settings/Field';
-import { EnvBadge } from '@/components/settings/EnvBadge';
 
 export default function GeneralSettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -54,28 +53,6 @@ export default function GeneralSettingsPage() {
         disabled={isEnv('download_path')}
         onChange={(v) => setSettings({ ...settings, download_path: v })}
       />
-
-      <div className="flex flex-col gap-1.5">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-zinc-300">Max concurrent downloads</label>
-          {isEnv('max_concurrent_downloads') && <EnvBadge />}
-        </div>
-        <select
-          value={settings.max_concurrent_downloads}
-          disabled={isEnv('max_concurrent_downloads')}
-          onChange={(e) => setSettings({ ...settings, max_concurrent_downloads: e.target.value })}
-          className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-zinc-500 w-32 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {[1, 2, 3, 4, 5].map((n) => (
-            <option key={n} value={String(n)}>{n}</option>
-          ))}
-        </select>
-        {isEnv('max_concurrent_downloads') && (
-          <p className="text-xs text-amber-400/80">
-            Set via <code className="font-mono">MEMEVAULTPROJECT_MAX_CONCURRENT_DOWNLOADS</code>
-          </p>
-        )}
-      </div>
 
       {error && <p className="text-red-400 text-sm">{error}</p>}
       {saved && <p className="text-green-400 text-sm">Settings saved.</p>}

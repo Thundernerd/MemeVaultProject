@@ -2,7 +2,6 @@ export interface Settings {
   download_path: string;
   ytdlp_extra_args: string;
   gallerydl_extra_args: string;
-  max_concurrent_downloads: string;
   api_key: string;
   ytdlp_bin: string;
   gallerydl_bin: string;
