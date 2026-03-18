@@ -83,7 +83,7 @@ jobs:
         if: steps.version.outputs.is_prerelease == 'false'
         run: |
           TODAY=$(date +%Y-%m-%d)
-          sed -i "s/## \[Unreleased\]/## [${{ steps.version.outputs.version }}] - $TODAY/" CHANGELOG.md
+          sed -i -E "s/## \[?Unreleased\]?/## [${{ steps.version.outputs.version }}] - $TODAY/" CHANGELOG.md
           sed -i "s/## \[${{ steps.version.outputs.version }}\]/## [Unreleased]\n\n## [${{ steps.version.outputs.version }}]/" CHANGELOG.md
 
       - name: Commit and tag
