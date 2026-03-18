@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { insertQueueItem, type Downloader } from '@/lib/db';
-import { isValidApiKey } from '@/lib/auth';
+import { hasWriteAccess } from '@/lib/auth';
 
 const TYPE_TO_DOWNLOADER: Record<string, Downloader> = {
   video: 'ytdlp',
@@ -8,7 +8,7 @@ const TYPE_TO_DOWNLOADER: Record<string, Downloader> = {
 };
 
 export async function POST(req: NextRequest) {
-  if (!isValidApiKey(req)) {
+  if (!hasWriteAccess(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

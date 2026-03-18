@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
+import { randomBytes } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 
 export function getDataDir(): string {
@@ -97,6 +98,15 @@ function initSchema(db: Database.Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_share_links_media ON share_links(media_id);
+
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id           TEXT PRIMARY KEY,
+      name         TEXT NOT NULL,
+      key          TEXT NOT NULL UNIQUE,
+      permission   TEXT NOT NULL CHECK(permission IN ('read', 'read_write')),
+      created_at   TEXT NOT NULL,
+      last_used_at TEXT
+    );
   `);
 
   seedDefaultSettings(db);
@@ -106,6 +116,19 @@ function initSchema(db: Database.Database) {
   if (!mediaCols.some((c) => c.name === 'album_id')) {
     db.exec(`ALTER TABLE media ADD COLUMN album_id TEXT REFERENCES albums(id) ON DELETE SET NULL`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_media_album ON media(album_id)`);
+  }
+
+  // Migration: import legacy single api_key setting into api_keys table (runs once)
+  const migrated = db.prepare("SELECT value FROM settings WHERE key = 'api_keys_migrated'").get() as { value: string } | undefined;
+  if (!migrated) {
+    const legacyRow = db.prepare("SELECT value FROM settings WHERE key = 'api_key'").get() as { value: string } | undefined;
+    if (legacyRow?.value) {
+      db.prepare(
+        `INSERT OR IGNORE INTO api_keys (id, name, key, permission, created_at)
+         VALUES (?, 'Default', ?, 'read_write', datetime('now'))`
+      ).run(uuidv4(), legacyRow.value);
+    }
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('api_keys_migrated', '1')").run();
   }
 }
 
@@ -581,4 +604,61 @@ export function getShareLinksForMedia(mediaId: string): ShareLink[] {
   return getDb()
     .prepare('SELECT * FROM share_links WHERE media_id = ? ORDER BY created_at DESC')
     .all(mediaId) as ShareLink[];
+}
+
+// ── API Keys ──────────────────────────────────────────────────────────────────
+
+export type ApiKeyPermission = 'read' | 'read_write';
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  key: string;
+  permission: ApiKeyPermission;
+  created_at: string;
+  last_used_at: string | null;
+}
+
+function generateApiKey(): string {
+  return randomBytes(16).toString('hex');
+}
+
+export function createApiKey(name: string, permission: ApiKeyPermission): ApiKey {
+  const record: ApiKey = {
+    id: uuidv4(),
+    name,
+    key: generateApiKey(),
+    permission,
+    created_at: new Date().toISOString(),
+    last_used_at: null,
+  };
+  getDb()
+    .prepare(
+      `INSERT INTO api_keys (id, name, key, permission, created_at, last_used_at)
+       VALUES (@id, @name, @key, @permission, @created_at, @last_used_at)`
+    )
+    .run(record);
+  return record;
+}
+
+export function listApiKeys(): Omit<ApiKey, 'key'>[] {
+  return getDb()
+    .prepare('SELECT id, name, permission, created_at, last_used_at FROM api_keys ORDER BY created_at ASC')
+    .all() as Omit<ApiKey, 'key'>[];
+}
+
+export function getApiKeyByValue(key: string): ApiKey | undefined {
+  return getDb()
+    .prepare('SELECT * FROM api_keys WHERE key = ?')
+    .get(key) as ApiKey | undefined;
+}
+
+export function deleteApiKey(id: string): void {
+  getDb().prepare('DELETE FROM api_keys WHERE id = ?').run(id);
+}
+
+export function touchApiKeyLastUsed(id: string): void {
+  getDb()
+    .prepare(`UPDATE api_keys SET last_used_at = datetime('now') WHERE id = ?`)
+    .run(id);
 }

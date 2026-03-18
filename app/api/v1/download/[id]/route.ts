@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getQueueItem, getMediaByQueueItem } from '@/lib/db';
-import { isValidApiKey } from '@/lib/auth';
+import { hasReadAccess } from '@/lib/auth';
 import { mimeType } from '@/lib/utils';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  if (!isValidApiKey(req)) {
+  if (!hasReadAccess(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
