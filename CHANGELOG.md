@@ -2,9 +2,12 @@
 
 ## [Unreleased]
 
+### Features
+- Replaced single API key with multi-key system with read/read+write permissions
+
 ## [0.9.1] - 2026-03-18
 
-## Fixes
+### Fixes
 - Made OIDC optional
 
 ## [0.9.0] - 2026-03-18
