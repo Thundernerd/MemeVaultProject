@@ -51,6 +51,12 @@ export default function Navigation() {
             </Link>
           );
         })}
+        <Link
+          href="/auth/logout"
+          className="mt-auto mb-4 px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+        >
+          Sign out
+        </Link>
       </nav>
 
       {/* ── Mobile top bar (< md) ─────────────────────────────────── */}
@@ -112,6 +118,12 @@ export default function Navigation() {
             </Link>
           );
         })}
+        <Link
+          href="/auth/logout"
+          className="mt-auto mb-4 px-3 py-2.5 rounded-lg text-sm font-medium text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+        >
+          Sign out
+        </Link>
       </div>
     </>
   );
