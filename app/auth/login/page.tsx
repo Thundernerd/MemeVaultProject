@@ -1,24 +1,14 @@
-'use client';
-
-import { signIn } from 'next-auth/react';
-import { useSearchParams } from 'next/navigation';
-import { Suspense, useEffect } from 'react';
-
-function LoginInner() {
-  const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get('callbackUrl') ?? '/';
-
-  useEffect(() => {
-    signIn('oidc', { callbackUrl });
-  }, [callbackUrl]);
-
-  return null;
-}
+import { redirect } from 'next/navigation';
+import LoginClient from './LoginClient';
 
 export default function LoginPage() {
-  return (
-    <Suspense>
-      <LoginInner />
-    </Suspense>
+  const oidcEnabled = !!(
+    process.env.MEMEVAULTPROJECT_OIDC_ISSUER &&
+    process.env.MEMEVAULTPROJECT_OIDC_CLIENT_ID &&
+    process.env.MEMEVAULTPROJECT_OIDC_CLIENT_SECRET
   );
+
+  if (!oidcEnabled) redirect('/');
+
+  return <LoginClient />;
 }

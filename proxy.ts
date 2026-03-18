@@ -1,7 +1,7 @@
-import { auth } from '@/auth';
-import { NextResponse } from 'next/server';
+import { auth, oidcEnabled } from '@/auth';
+import { NextRequest, NextResponse } from 'next/server';
 
-export default auth((req) => {
+const authMiddleware = auth((req) => {
   if (!req.auth) {
     if (req.nextUrl.pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -11,6 +11,10 @@ export default auth((req) => {
     return NextResponse.redirect(loginUrl);
   }
 });
+
+export default oidcEnabled
+  ? authMiddleware
+  : (_req: NextRequest) => NextResponse.next();
 
 export const config = {
   matcher: [
