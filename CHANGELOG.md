@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## [Unreleased]
+
+## [0.9.1] - 2026-03-18
 
 ## Fixes
 - Made OIDC optional
