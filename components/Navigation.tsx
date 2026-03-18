@@ -36,7 +36,7 @@ export default function Navigation() {
       <nav className="hidden md:flex fixed top-0 left-0 h-full w-52 bg-zinc-900 border-r border-zinc-800 flex-col pt-8 px-4 gap-2 z-50">
         <span className="text-xl font-bold text-white mb-6 px-2 tracking-tight">MVP</span>
         {links.map(({ href, label }) => {
-          const active = pathname === href;
+          const active = href === '/' ? pathname === href : pathname === href || pathname.startsWith(href + '/');
           return (
             <Link
               key={href}
@@ -97,7 +97,7 @@ export default function Navigation() {
           </button>
         </div>
         {links.map(({ href, label }) => {
-          const active = pathname === href;
+          const active = href === '/' ? pathname === href : pathname === href || pathname.startsWith(href + '/');
           return (
             <Link
               key={href}
