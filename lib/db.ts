@@ -118,6 +118,11 @@ function initSchema(db: Database.Database) {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_media_album ON media(album_id)`);
   }
 
+  // Migration: add include_in_random flag to media if it doesn't exist yet
+  if (!mediaCols.some((c) => c.name === 'include_in_random')) {
+    db.exec(`ALTER TABLE media ADD COLUMN include_in_random INTEGER NOT NULL DEFAULT 0`);
+  }
+
   // Migration: import legacy single api_key setting into api_keys table (runs once)
   const migrated = db.prepare("SELECT value FROM settings WHERE key = 'api_keys_migrated'").get() as { value: string } | undefined;
   if (!migrated) {
@@ -144,6 +149,7 @@ function seedDefaultSettings(db: Database.Database) {
     share_default_expiry_days: '',   // empty = never expires
     share_default_allow_download: '1',
     share_base_url: '',              // e.g. https://memes.example.com — required for OG embeds
+    random_mode: 'flag',             // 'flag' = include_in_random items, 'shared' = items with active share links
   };
 
   const insert = db.prepare(
@@ -309,10 +315,12 @@ export interface MediaItem {
   created_at: string;
   raw_metadata: string | null;
   album_id: string | null;
+  include_in_random: number;
 }
 
-export function insertMediaItem(item: Omit<MediaItem, 'id' | 'created_at'>): MediaItem {
+export function insertMediaItem(item: Omit<MediaItem, 'id' | 'created_at' | 'include_in_random'> & { include_in_random?: number }): MediaItem {
   const full: MediaItem = {
+    include_in_random: 0,
     ...item,
     id: uuidv4(),
     created_at: new Date().toISOString(),
@@ -321,10 +329,10 @@ export function insertMediaItem(item: Omit<MediaItem, 'id' | 'created_at'>): Med
     .prepare(
       `INSERT INTO media
          (id, queue_item_id, url, type, title, description, uploader, duration,
-          thumbnail_path, file_path, file_size, format, width, height, created_at, raw_metadata, album_id)
+          thumbnail_path, file_path, file_size, format, width, height, created_at, raw_metadata, album_id, include_in_random)
        VALUES
          (@id, @queue_item_id, @url, @type, @title, @description, @uploader, @duration,
-          @thumbnail_path, @file_path, @file_size, @format, @width, @height, @created_at, @raw_metadata, @album_id)`
+          @thumbnail_path, @file_path, @file_size, @format, @width, @height, @created_at, @raw_metadata, @album_id, @include_in_random)`
     )
     .run(full);
   return full;
@@ -482,6 +490,46 @@ export function getMediaItemWithTags(id: string): MediaItemWithTags | undefined 
   const item = getMediaItem(id);
   if (!item) return undefined;
   return { ...item, tags: getTagsForMedia(id) };
+}
+
+export function setMediaRandomFlag(id: string, value: boolean): void {
+  getDb()
+    .prepare('UPDATE media SET include_in_random = ? WHERE id = ?')
+    .run(value ? 1 : 0, id);
+}
+
+/** Returns all media items that have include_in_random = 1, with tags. */
+export function listRandomCandidatesWithTags(): MediaItemWithTags[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT m.*, t.id AS tag_id, t.name AS tag_name, t.created_at AS tag_created_at
+       FROM media m
+       LEFT JOIN media_tags mt ON mt.media_id = m.id
+       LEFT JOIN tags t ON t.id = mt.tag_id
+       WHERE m.include_in_random = 1
+       ORDER BY m.id, t.name ASC`
+    )
+    .all() as MediaJoinRow[];
+  return collapseMediaRows(rows);
+}
+
+/** Returns all media items that have at least one active (non-expired) share link, with tags. */
+export function listSharedMediaWithTags(): MediaItemWithTags[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT m.*, t.id AS tag_id, t.name AS tag_name, t.created_at AS tag_created_at
+       FROM media m
+       LEFT JOIN media_tags mt ON mt.media_id = m.id
+       LEFT JOIN tags t ON t.id = mt.tag_id
+       WHERE EXISTS (
+         SELECT 1 FROM share_links sl
+         WHERE sl.media_id = m.id
+           AND (sl.expires_at IS NULL OR sl.expires_at > datetime('now'))
+       )
+       ORDER BY m.id, t.name ASC`
+    )
+    .all() as MediaJoinRow[];
+  return collapseMediaRows(rows);
 }
 
 // ── Albums ────────────────────────────────────────────────────────────────────

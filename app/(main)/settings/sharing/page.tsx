@@ -45,6 +45,46 @@ export default function SharingSettingsPage() {
 
   return (
     <form onSubmit={handleSave} className="flex flex-col gap-5">
+      {/* Random endpoint mode */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-zinc-300">Random endpoint mode</label>
+        <p className="text-xs text-zinc-500">
+          Controls which items <code className="text-zinc-300">GET /api/v1/random</code> picks from.
+        </p>
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="radio"
+              name="random_mode"
+              value="flag"
+              checked={settings.random_mode === 'flag'}
+              onChange={() => setSettings({ ...settings, random_mode: 'flag' })}
+              className="accent-indigo-500"
+            />
+            <span className="text-sm text-zinc-300">
+              <span className="font-medium">Flagged items</span>
+              <span className="text-zinc-500"> — only items with the &ldquo;Include in random&rdquo; toggle enabled</span>
+            </span>
+          </label>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="radio"
+              name="random_mode"
+              value="shared"
+              checked={settings.random_mode === 'shared'}
+              onChange={() => setSettings({ ...settings, random_mode: 'shared' })}
+              className="accent-indigo-500"
+            />
+            <span className="text-sm text-zinc-300">
+              <span className="font-medium">Shared items</span>
+              <span className="text-zinc-500"> — all items that have at least one active share link</span>
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div className="border-t border-zinc-800" />
+
       <p className="text-zinc-500 text-sm">
         Default options applied when creating a new share link from the media viewer.
       </p>

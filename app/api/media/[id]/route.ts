@@ -1,13 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { getMediaItemWithTags, deleteMediaItem } from '@/lib/db';
+import { getMediaItemWithTags, deleteMediaItem, setMediaRandomFlag } from '@/lib/db';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const item = getMediaItemWithTags(id);
   if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json(item);
+}
+
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const item = getMediaItemWithTags(id);
+  if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+  const body = await req.json();
+  if (typeof body.includeInRandom === 'boolean') {
+    setMediaRandomFlag(id, body.includeInRandom);
+  }
+
+  return NextResponse.json(getMediaItemWithTags(id));
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

@@ -9,6 +9,7 @@ export interface Settings {
   share_default_expiry_days: string;
   share_default_allow_download: string;
   share_base_url: string;
+  random_mode: string;
   _overridden_by_env: string[];
 }
 

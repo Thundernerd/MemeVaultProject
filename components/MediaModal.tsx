@@ -30,6 +30,7 @@ function formatBytes(bytes: number): string {
 export default function MediaModal({ item, onClose, onDeleted }: Props) {
   const [descExpanded, setDescExpanded] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [includeInRandom, setIncludeInRandom] = useState(item.include_in_random === 1);
 
   // Tag state
   const [tags, setTags] = useState<Tag[]>(item.tags ?? []);
@@ -171,6 +172,21 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
     } catch {
       setTags(previous);
+    }
+  }
+
+  async function handleToggleRandom() {
+    const next = !includeInRandom;
+    setIncludeInRandom(next);
+    try {
+      const res = await fetch(`/api/media/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ includeInRandom: next }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch {
+      setIncludeInRandom(!next);
     }
   }
 
@@ -371,6 +387,19 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
               ))}
             </div>
           )}
+
+          {/* Include in random toggle */}
+          <label className="flex items-center gap-3 cursor-pointer select-none self-start">
+            <div
+              onClick={handleToggleRandom}
+              className={`relative w-9 h-5 rounded-full transition-colors ${includeInRandom ? 'bg-indigo-600' : 'bg-zinc-700'}`}
+            >
+              <div
+                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${includeInRandom ? 'translate-x-4' : 'translate-x-0'}`}
+              />
+            </div>
+            <span className="text-sm text-zinc-300">Include in random</span>
+          </label>
 
           {/* Share section */}
           <div className="flex flex-col gap-2">

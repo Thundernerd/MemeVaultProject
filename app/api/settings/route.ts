@@ -26,6 +26,7 @@ export async function PUT(req: NextRequest) {
     'share_default_expiry_days',
     'share_default_allow_download',
     'share_base_url',
+    'random_mode',
   ];
 
   for (const key of allowed) {
