@@ -5,8 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import ThemeSwitcher from './ThemeSwitcher';
 import { useTheme } from './ThemeProvider';
-
-const VERSION = '0.11.0';
+import { version } from '@/package.json';
 
 const links = [
   { href: '/', label: 'Vault' },
@@ -46,7 +45,7 @@ export default function Navigation() {
             <img src="/safe.png" alt="MVP" className={iconClass} />
             <div className="flex flex-col leading-none gap-0.5">
               <span className="text-base font-bold text-text-primary tracking-tight">MVP</span>
-              <span className="text-[10px] text-text-muted">v{VERSION}</span>
+              <span className="text-[10px] text-text-muted">v{version}</span>
             </div>
           </div>
 
