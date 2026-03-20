@@ -94,12 +94,40 @@
   animation: page-enter 0.4s ease-out backwards;
 }
 
+/* ── Scrollbar ───────────────────────────────────────────────────────── */
+
+main::-webkit-scrollbar {
+  width: 4px;
+}
+
+main::-webkit-scrollbar-track {
+  background: var(--surface-base);
+}
+
+main::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+
+main::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+main {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) var(--surface-base);
+}
+
 /* ── Base styles ─────────────────────────────────────────────────────── */
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
 
 body {
   color: var(--text-primary);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
-  min-height: 100vh;
 }
 
 body::before {
