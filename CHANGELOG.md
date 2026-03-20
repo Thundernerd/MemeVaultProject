@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Features
+- Manually upload video and image files directly to the vault
+- Batch upload support with drag-and-drop or file browser
+- Auto-tag uploaded items with `source:upload`
+
 ## [0.11.0] - 2026-03-20
 
 ### Features
