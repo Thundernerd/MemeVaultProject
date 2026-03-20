@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixes
+- Fixed white bar appearing in mobile safe area at the bottom of the screen
+- Fixed last card being obscured by the floating action button when scrolled to the bottom
+- Fixed media modal being clipped by mobile browser chrome and safe area insets
+
 ## [0.15.0] - 2026-03-20
 
 ### Improvements
