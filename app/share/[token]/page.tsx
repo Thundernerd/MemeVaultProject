@@ -66,9 +66,15 @@ export default async function SharePage({
         </>
       )}
 
-      <div className="min-h-screen bg-zinc-950 flex flex-col">
-        <header className="px-5 py-3 border-b border-zinc-800">
-          <span className="text-sm font-semibold text-zinc-400 tracking-wide">MemeVault</span>
+      <div className="min-h-screen bg-surface-base flex flex-col">
+        <header className="h-16 bg-surface-1/70 backdrop-blur-md border-b border-border flex items-center px-6">
+          <div className="flex items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/safe.png" alt="MVP" className="w-8 h-8 shrink-0 invert mix-blend-screen" />
+            <div className="flex flex-col leading-none gap-0.5">
+              <span className="text-base font-bold text-text-primary tracking-tight">MVP</span>
+            </div>
+          </div>
         </header>
 
         <div className="bg-black flex items-center justify-center w-full" style={{ maxHeight: '70vh' }}>
@@ -93,20 +99,20 @@ export default async function SharePage({
         </div>
 
         <div className="flex items-center justify-between gap-4 px-5 py-4 max-w-3xl mx-auto w-full">
-          <h1 className="text-base font-medium text-white leading-snug truncate">{displayTitle}</h1>
+          <h1 className="text-base font-medium text-text-primary leading-snug truncate">{displayTitle}</h1>
           {allowDownload && (
             <a
               href={fileSrc}
               download
-              className="shrink-0 text-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-200 px-4 py-1.5 rounded-lg transition-colors"
+              className="shrink-0 text-sm bg-surface-2 hover:bg-surface-3 text-text-primary px-4 py-1.5 rounded-lg transition-colors"
             >
               Download
             </a>
           )}
         </div>
 
-        <footer className="mt-auto px-5 py-4 border-t border-zinc-900 text-center">
-          <span className="text-xs text-zinc-700">Shared via MemeVault</span>
+        <footer className="mt-auto px-5 py-4 border-t border-border text-center">
+          <span className="text-xs text-text-muted">Shared via MemeVault</span>
         </footer>
       </div>
     </>
