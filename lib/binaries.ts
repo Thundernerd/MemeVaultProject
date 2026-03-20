@@ -34,6 +34,11 @@ export function getFfmpegPath(): string {
   return override?.trim() || defaultBinaryPath('ffmpeg');
 }
 
+export function getFfprobePath(): string {
+  const ffprobeName = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe';
+  return path.join(getBinDir(), ffprobeName);
+}
+
 // ── Platform helpers ─────────────────────────────────────────────────────────
 
 function ytdlpFilename(): string {
@@ -172,6 +177,17 @@ async function downloadFfmpeg(): Promise<BinaryStatus> {
     fs.copyFileSync(found, destPath);
     if (process.platform !== 'win32') {
       fs.chmodSync(destPath, 0o755);
+    }
+
+    // 5. Also extract ffprobe if present in the archive
+    const ffprobeName = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe';
+    const ffprobeDestPath = path.join(binDir, ffprobeName);
+    const foundFfprobe = findFile(tmpExtractDir, ffprobeName);
+    if (foundFfprobe) {
+      fs.copyFileSync(foundFfprobe, ffprobeDestPath);
+      if (process.platform !== 'win32') {
+        fs.chmodSync(ffprobeDestPath, 0o755);
+      }
     }
   } finally {
     // Clean up temp files regardless of success/failure
