@@ -37,11 +37,11 @@ export default function MediaCard({ item, onDeleted }: Props) {
   return (
     <>
       <div
-        className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col group cursor-pointer hover:border-zinc-600 transition-colors"
+        className="bg-surface-1 border border-border rounded-2xl overflow-hidden flex flex-col group cursor-pointer hover:border-border-strong transition-colors shadow-sm animate-[page-enter_0.3s_ease-out_backwards]"
         onClick={() => setModalOpen(true)}
       >
         {/* Thumbnail */}
-        <div className="relative aspect-video bg-zinc-800 overflow-hidden">
+        <div className="relative aspect-video bg-surface-2 overflow-hidden">
           {thumbnailSrc ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -50,7 +50,7 @@ export default function MediaCard({ item, onDeleted }: Props) {
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-zinc-600 text-4xl select-none">
+            <div className="w-full h-full flex items-center justify-center text-text-muted text-4xl select-none">
               {item.type === 'video' ? '▶' : '🖼'}
             </div>
           )}
@@ -78,29 +78,29 @@ export default function MediaCard({ item, onDeleted }: Props) {
         {/* Info */}
         <div className="p-3 flex flex-col gap-1 flex-1">
           <p
-            className="text-sm font-medium text-white truncate"
+            className="text-sm font-medium text-text-primary truncate"
             title={item.title ?? undefined}
           >
             {item.title ?? item.file_path.split('/').pop() ?? item.file_path}
           </p>
           {item.uploader && (
-            <p className="text-xs text-zinc-500 truncate">{item.uploader}</p>
+            <p className="text-xs text-text-muted truncate">{item.uploader}</p>
           )}
           {item.width && item.height ? (
-            <p className="text-xs text-zinc-600">{item.width}×{item.height}</p>
+            <p className="text-xs text-text-muted">{item.width}×{item.height}</p>
           ) : null}
           {item.tags && item.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
               {item.tags.slice(0, 5).map((tag) => (
                 <span
                   key={tag.id}
-                  className="px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[10px] font-medium"
+                  className="px-1.5 py-0.5 rounded-full bg-accent-subtle text-accent text-[10px] font-medium"
                 >
                   {tag.name}
                 </span>
               ))}
               {item.tags.length > 5 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-600 text-[10px]">
+                <span className="px-1.5 py-0.5 rounded-full bg-surface-2 text-text-muted text-[10px]">
                   +{item.tags.length - 5}
                 </span>
               )}
@@ -110,12 +110,12 @@ export default function MediaCard({ item, onDeleted }: Props) {
 
         {/* Actions */}
         <div className="px-3 pb-3 flex gap-2">
-        <a
-          href={`/api/media/${item.id}/file`}
-          download
-          className="flex-1 text-center text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-1.5 rounded-lg transition-colors"
-          onClick={(e) => e.stopPropagation()}
-        >
+          <a
+            href={`/api/media/${item.id}/file`}
+            download
+            className="flex-1 text-center text-xs bg-surface-2 hover:bg-surface-3 text-text-secondary py-1.5 rounded-lg transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
             Download
           </a>
           <button

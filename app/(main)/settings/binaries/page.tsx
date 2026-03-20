@@ -75,7 +75,7 @@ export default function BinariesSettingsPage() {
     }
   }
 
-  if (!settings) return <div className="text-zinc-500 text-sm">Loading…</div>;
+  if (!settings) return <div className="text-text-muted text-sm">Loading…</div>;
 
   return (
     <form onSubmit={handleSave} className="flex flex-col gap-5">
@@ -96,10 +96,10 @@ export default function BinariesSettingsPage() {
         onChange={(v) => setSettings({ ...settings, gallerydl_extra_args: v })}
       />
 
-      <div className="border-t border-zinc-800 pt-5 flex flex-col gap-4">
-        <p className="text-zinc-500 text-sm">
+      <div className="border-t border-border pt-5 flex flex-col gap-4">
+        <p className="text-text-muted text-sm">
           Meme Vault Project auto-downloads yt-dlp, gallery-dl and ffmpeg to{' '}
-          <code className="text-zinc-300">~/.memevaultproject/bin/</code> on first run.
+          <code className="text-text-secondary">~/.memevaultproject/bin/</code> on first run.
           Leave the path override blank to use the auto-managed binary.
         </p>
 
@@ -149,7 +149,7 @@ export default function BinariesSettingsPage() {
       <button
         type="submit"
         disabled={saving}
-        className="self-start bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+        className="self-start bg-accent hover:bg-accent-hover disabled:opacity-50 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
       >
         {saving ? 'Saving…' : 'Save settings'}
       </button>

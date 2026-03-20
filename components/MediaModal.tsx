@@ -232,13 +232,13 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
     >
       {/* Modal panel — stop propagation so clicks inside don't close */}
       <div
-        className="relative bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
+        className="relative bg-surface-1 border border-border rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 z-10 text-zinc-400 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 rounded-full w-8 h-8 flex items-center justify-center transition-colors"
+          className="absolute top-3 right-3 z-10 text-text-secondary hover:text-text-primary bg-surface-2/80 hover:bg-surface-3 rounded-full w-8 h-8 flex items-center justify-center transition-colors"
           aria-label="Close"
         >
           ✕
@@ -274,7 +274,7 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
         {/* Scrollable info panel */}
         <div className="overflow-y-auto flex flex-col gap-4 p-5">
           {/* Title */}
-          <h2 className="text-lg font-semibold text-white leading-snug pr-8">{displayTitle}</h2>
+          <h2 className="text-lg font-semibold text-text-primary leading-snug pr-8">{displayTitle}</h2>
 
           {/* Source URL */}
           {item.url && (
@@ -282,7 +282,7 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-blue-400 hover:text-blue-300 truncate transition-colors"
+              className="text-xs text-accent hover:text-accent-hover truncate transition-colors"
               title={item.url}
             >
               {item.url}
@@ -292,14 +292,14 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
           {/* Description */}
           {desc && (
             <div className="flex flex-col gap-1">
-              <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Description</p>
-              <p className="text-sm text-zinc-300 whitespace-pre-line leading-relaxed">
+              <p className="text-xs font-medium text-text-muted uppercase tracking-wider">Description</p>
+              <p className="text-sm text-text-secondary whitespace-pre-line leading-relaxed">
                 {isLongDesc && !descExpanded ? desc.slice(0, 300) + '…' : desc}
               </p>
               {isLongDesc && (
                 <button
                   onClick={() => setDescExpanded((v) => !v)}
-                  className="self-start text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                  className="self-start text-xs text-text-muted hover:text-text-secondary transition-colors"
                 >
                   {descExpanded ? 'Show less' : 'Show more'}
                 </button>
@@ -309,19 +309,19 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
 
           {/* Tags editor */}
           <div className="flex flex-col gap-2">
-            <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tags</p>
+            <p className="text-xs font-medium text-text-muted uppercase tracking-wider">Tags</p>
 
             {/* Current tags */}
             <div className="flex flex-wrap gap-1.5">
               {tags.map((tag) => (
                 <span
                   key={tag.id}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-900/50 text-indigo-300 text-xs font-medium"
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-accent-subtle text-accent text-xs font-medium"
                 >
                   {tag.name}
                   <button
                     onClick={() => removeTag(tag.id)}
-                    className="text-indigo-400 hover:text-white transition-colors leading-none"
+                    className="text-accent hover:text-text-primary transition-colors leading-none"
                     aria-label={`Remove tag ${tag.name}`}
                   >
                     ×
@@ -329,7 +329,7 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
                 </span>
               ))}
               {tags.length === 0 && (
-                <span className="text-xs text-zinc-600 italic">No tags yet</span>
+                <span className="text-xs text-text-muted italic">No tags yet</span>
               )}
             </div>
 
@@ -348,12 +348,12 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
                     }
                   }}
                   placeholder="Add a tag…"
-                  className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500"
+                  className="flex-1 bg-surface-2 border border-border rounded-lg px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-strong"
                 />
                 <button
                   onClick={() => addTag(tagInput)}
                   disabled={!tagInput.trim()}
-                  className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded-lg transition-colors disabled:opacity-40"
+                  className="px-3 py-1.5 bg-surface-2 hover:bg-surface-3 text-text-primary text-sm rounded-lg transition-colors disabled:opacity-40"
                 >
                   Add
                 </button>
@@ -361,12 +361,12 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
 
               {/* Suggestions dropdown */}
               {tagSuggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl overflow-hidden z-10">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-surface-2 border border-border rounded-lg shadow-xl overflow-hidden z-10">
                   {tagSuggestions.slice(0, 8).map((tag) => (
                     <button
                       key={tag.id}
                       onClick={() => addTag(tag.name)}
-                      className="w-full text-left px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors"
+                      className="w-full text-left px-3 py-2 text-sm text-text-secondary hover:bg-surface-3 hover:text-text-primary transition-colors"
                     >
                       {tag.name}
                     </button>
@@ -381,8 +381,8 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
               {metadata.map(({ label, value }) => (
                 <div key={label} className="flex flex-col gap-0.5">
-                  <span className="text-xs text-zinc-500">{label}</span>
-                  <span className="text-zinc-200">{value}</span>
+                  <span className="text-xs text-text-muted">{label}</span>
+                  <span className="text-text-primary">{value}</span>
                 </div>
               ))}
             </div>
@@ -392,24 +392,24 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
           <label className="flex items-center gap-3 cursor-pointer select-none self-start">
             <div
               onClick={handleToggleRandom}
-              className={`relative w-9 h-5 rounded-full transition-colors ${includeInRandom ? 'bg-indigo-600' : 'bg-zinc-700'}`}
+              className={`relative w-9 h-5 rounded-full transition-colors ${includeInRandom ? 'bg-accent' : 'bg-surface-3'}`}
             >
               <div
                 className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${includeInRandom ? 'translate-x-4' : 'translate-x-0'}`}
               />
             </div>
-            <span className="text-sm text-zinc-300">Include in random</span>
+            <span className="text-sm text-text-secondary">Include in random</span>
           </label>
 
           {/* Share section */}
           <div className="flex flex-col gap-2">
             <button
               onClick={() => setShareExpanded((v) => !v)}
-              className="flex items-center gap-2 text-xs font-medium text-zinc-500 uppercase tracking-wider hover:text-zinc-300 transition-colors self-start"
+              className="flex items-center gap-2 text-xs font-medium text-text-muted uppercase tracking-wider hover:text-text-secondary transition-colors self-start"
             >
               <span>Share</span>
               {shareLinks.length > 0 && (
-                <span className="px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-300 normal-case tracking-normal font-normal">
+                <span className="px-1.5 py-0.5 rounded bg-surface-2 text-text-secondary normal-case tracking-normal font-normal">
                   {shareLinks.length}
                 </span>
               )}
@@ -417,11 +417,11 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
             </button>
 
             {shareExpanded && (
-              <div className="flex flex-col gap-3 bg-zinc-800/50 rounded-xl p-4">
+              <div className="flex flex-col gap-3 bg-surface-2/50 rounded-xl p-4">
                 {/* Create form */}
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-wrap gap-3 items-center">
-                    <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                    <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
                       <input
                         type="checkbox"
                         checked={shareAllowDownload}
@@ -433,7 +433,7 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
                     <select
                       value={shareExpiryDays}
                       onChange={(e) => setShareExpiryDays(e.target.value)}
-                      className="bg-zinc-800 border border-zinc-700 rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-zinc-500"
+                      className="bg-surface-2 border border-border rounded-lg px-2 py-1 text-sm text-text-primary focus:outline-none focus:border-border-strong"
                     >
                       <option value="">No expiry</option>
                       <option value="1">1 day</option>
@@ -444,7 +444,7 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
                     <button
                       onClick={handleCreateShareLink}
                       disabled={shareCreating}
-                      className="text-sm px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+                      className="text-sm px-3 py-1.5 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white rounded-lg transition-colors"
                     >
                       {shareCreating ? 'Creating…' : 'Create link'}
                     </button>
@@ -457,22 +457,22 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
                     {shareLinks.map((link) => (
                       <div
                         key={link.token}
-                        className="flex items-center gap-2 text-xs bg-zinc-900 rounded-lg px-3 py-2"
+                        className="flex items-center gap-2 text-xs bg-surface-base rounded-lg px-3 py-2"
                       >
-                        <span className="text-zinc-500 font-mono flex-1 truncate min-w-0">
+                        <span className="text-text-muted font-mono flex-1 truncate min-w-0">
                           /share/{link.token.slice(0, 8)}…
                         </span>
-                        <span className="text-zinc-600 shrink-0">
+                        <span className="text-text-muted shrink-0">
                           {link.expires_at
                             ? new Date(link.expires_at).toLocaleDateString(undefined, { dateStyle: 'medium' })
                             : 'no expiry'}
                         </span>
-                        <span className="text-zinc-600 shrink-0">
+                        <span className="text-text-muted shrink-0">
                           {link.allow_download ? '⬇' : ''}
                         </span>
                         <button
                           onClick={() => copyShareLink(link.token)}
-                          className="shrink-0 px-2 py-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded transition-colors"
+                          className="shrink-0 px-2 py-1 bg-surface-2 hover:bg-surface-3 text-text-secondary rounded transition-colors"
                         >
                           {copiedToken === link.token ? 'Copied!' : 'Copy'}
                         </button>
@@ -488,18 +488,18 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
                 )}
 
                 {shareLinks.length === 0 && (
-                  <p className="text-xs text-zinc-600 italic">No active share links</p>
+                  <p className="text-xs text-text-muted italic">No active share links</p>
                 )}
               </div>
             )}
           </div>
 
           {/* Divider + actions */}
-          <div className="border-t border-zinc-800 pt-3 flex gap-2">
+          <div className="border-t border-border pt-3 flex gap-2">
             <a
               href={fileSrc}
               download
-              className="flex-1 text-center text-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-2 rounded-lg transition-colors"
+              className="flex-1 text-center text-sm bg-surface-2 hover:bg-surface-3 text-text-primary py-2 rounded-lg transition-colors"
             >
               Download
             </a>

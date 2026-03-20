@@ -57,37 +57,37 @@ export default function AlbumModal({ album, onClose, onDeleted }: Props) {
       onClick={onClose}
     >
       <div
-        className="relative bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
+        className="relative bg-surface-1 border border-border rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 z-10 text-zinc-400 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 rounded-full w-8 h-8 flex items-center justify-center transition-colors"
+          className="absolute top-3 right-3 z-10 text-text-secondary hover:text-text-primary bg-surface-2/80 hover:bg-surface-3 rounded-full w-8 h-8 flex items-center justify-center transition-colors"
           aria-label="Close"
         >
           ✕
         </button>
 
         {/* Header */}
-        <div className="p-5 pb-3 flex flex-col gap-1 border-b border-zinc-800 pr-12">
+        <div className="p-5 pb-3 flex flex-col gap-1 border-b border-border pr-12">
           <div className="flex items-center gap-2">
-            <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded font-medium">
+            <span className="text-xs bg-surface-2 text-text-secondary px-2 py-0.5 rounded font-medium">
               album · {album.media.length} images
             </span>
           </div>
-          <h2 className="text-lg font-semibold text-white leading-snug truncate" title={displayTitle}>
+          <h2 className="text-lg font-semibold text-text-primary leading-snug truncate" title={displayTitle}>
             {displayTitle}
           </h2>
           {album.uploader && (
-            <p className="text-xs text-zinc-500 truncate">{album.uploader}</p>
+            <p className="text-xs text-text-muted truncate">{album.uploader}</p>
           )}
           {album.url && (
             <a
               href={album.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-blue-400 hover:text-blue-300 truncate transition-colors"
+              className="text-xs text-accent hover:text-accent-hover truncate transition-colors"
               title={album.url}
             >
               {album.url}
@@ -105,7 +105,7 @@ export default function AlbumModal({ album, onClose, onDeleted }: Props) {
               return (
                 <div
                   key={item.id}
-                  className="bg-zinc-800 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-zinc-500 transition-all group"
+                  className="bg-surface-2 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-accent/50 transition-all group"
                   onClick={() => setSelectedItem(item)}
                 >
                   <div className="aspect-square overflow-hidden">
@@ -121,7 +121,7 @@ export default function AlbumModal({ album, onClose, onDeleted }: Props) {
                     />
                   </div>
                   {item.title && (
-                    <p className="text-[11px] text-zinc-400 px-2 py-1.5 truncate">{item.title}</p>
+                    <p className="text-[11px] text-text-secondary px-2 py-1.5 truncate">{item.title}</p>
                   )}
                 </div>
               );
@@ -130,7 +130,7 @@ export default function AlbumModal({ album, onClose, onDeleted }: Props) {
         </div>
 
         {/* Footer actions */}
-        <div className="border-t border-zinc-800 p-4">
+        <div className="border-t border-border p-4">
           <button
             onClick={handleDelete}
             disabled={deleting}

@@ -24,27 +24,27 @@ export function CookieCard({
   }
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3">
+    <div className="bg-surface-1 border border-border rounded-xl p-4 flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-white">{label}</span>
+          <span className="text-sm font-medium text-text-primary">{label}</span>
           {status === null ? (
-            <span className="text-xs text-zinc-600">Checking…</span>
+            <span className="text-xs text-text-muted">Checking…</span>
           ) : status.exists ? (
             <span className="text-xs px-2 py-0.5 rounded bg-green-500/20 text-green-400">Configured</span>
           ) : (
-            <span className="text-xs px-2 py-0.5 rounded bg-zinc-700/60 text-zinc-400">Not set</span>
+            <span className="text-xs px-2 py-0.5 rounded bg-surface-2 text-text-secondary">Not set</span>
           )}
           {status?.exists && status.size !== null && (
-            <span className="text-xs text-zinc-500">{(status.size / 1024).toFixed(1)} KB</span>
+            <span className="text-xs text-text-muted">{(status.size / 1024).toFixed(1)} KB</span>
           )}
         </div>
         <div className="flex items-center gap-2">
           <label
             className={`text-xs px-3 py-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
               uploading
-                ? 'bg-blue-600/40 text-white opacity-50 cursor-not-allowed'
-                : 'bg-blue-600/80 hover:bg-blue-600 text-white'
+                ? 'bg-accent/40 text-white opacity-50 cursor-not-allowed'
+                : 'bg-accent/80 hover:bg-accent text-white'
             }`}
           >
             {uploading ? 'Uploading…' : status?.exists ? 'Replace' : 'Upload'}
@@ -69,7 +69,7 @@ export function CookieCard({
       </div>
 
       {status?.exists && status.modifiedAt && (
-        <p className="text-xs text-zinc-600">
+        <p className="text-xs text-text-muted">
           Last updated {new Date(status.modifiedAt).toLocaleString()}
         </p>
       )}

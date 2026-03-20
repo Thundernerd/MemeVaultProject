@@ -37,24 +37,24 @@ export default function QueuePage() {
   const done = items.filter((i) => i.status === 'completed' || i.status === 'failed');
 
   return (
-    <div className="flex flex-col gap-6 max-w-3xl">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold text-white">Queue</h1>
-        <p className="text-zinc-500 text-sm">
+        <h1 className="text-2xl font-bold text-text-primary">Queue</h1>
+        <p className="text-text-muted text-sm">
           {active.length} active · {done.length} completed
         </p>
       </div>
 
       <AddUrlForm onAdded={fetchQueue} />
 
-      {loading && <div className="text-zinc-500 text-sm">Loading…</div>}
+      {loading && <div className="text-text-muted text-sm">Loading…</div>}
 
       {!loading && error && (
         <div className="text-red-400 text-sm bg-red-900/20 rounded-lg px-4 py-3">{error}</div>
       )}
 
       {!loading && !error && items.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 gap-3 text-zinc-600">
+        <div className="flex flex-col items-center justify-center py-16 gap-3 text-text-muted">
           <span className="text-4xl">📋</span>
           <p className="text-sm">Queue is empty. Paste a URL above to get started.</p>
         </div>
@@ -62,7 +62,7 @@ export default function QueuePage() {
 
       {active.length > 0 && (
         <section className="flex flex-col gap-2">
-          <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Active</h2>
+          <h2 className="text-xs font-semibold text-text-muted uppercase tracking-wider">Active</h2>
           {active.map((item) => (
             <QueueItemRow key={item.id} item={item} onRemoved={fetchQueue} onRetried={fetchQueue} />
           ))}
@@ -71,7 +71,7 @@ export default function QueuePage() {
 
       {done.length > 0 && (
         <section className="flex flex-col gap-2">
-          <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">History</h2>
+          <h2 className="text-xs font-semibold text-text-muted uppercase tracking-wider">History</h2>
           {done.map((item) => (
             <QueueItemRow key={item.id} item={item} onRemoved={fetchQueue} onRetried={fetchQueue} />
           ))}

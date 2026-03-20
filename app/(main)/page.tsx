@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import MediaCard from '@/components/MediaCard';
 import AlbumCard from '@/components/AlbumCard';
 import SkeletonCard from '@/components/SkeletonCard';
@@ -35,6 +36,7 @@ export default function LibraryPage() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
   const [activeQueueItems, setActiveQueueItems] = useState<QueueItem[]>([]);
+  const [mounted, setMounted] = useState(false);
 
   const fetchMedia = useCallback(async () => {
     try {
@@ -70,6 +72,8 @@ export default function LibraryPage() {
       return active;
     });
   }, [fetchMedia]);
+
+  useEffect(() => { setMounted(true); }, []);
 
   useEffect(() => {
     fetchMedia();
@@ -169,8 +173,8 @@ export default function LibraryPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold text-white">Vault</h1>
-        <p className="text-zinc-500 text-sm">
+        <h1 className="text-2xl font-bold text-text-primary">Vault</h1>
+        <p className="text-text-muted text-sm">
           {totalCount} item{totalCount !== 1 ? 's' : ''}
           {activeQueueItems.length > 0 && ` · ${activeQueueItems.length} downloading`}
         </p>
@@ -183,7 +187,7 @@ export default function LibraryPage() {
           placeholder="Search by title…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-zinc-500 w-64"
+          className="bg-surface-2 border border-border rounded-lg px-4 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-strong w-64"
         />
         <div className="flex gap-1">
           {(['all', 'video', 'image'] as const).map((f) => (
@@ -192,8 +196,8 @@ export default function LibraryPage() {
               onClick={() => setFilter(f)}
               className={`px-3 py-2 text-sm rounded-lg transition-colors ${
                 filter === f
-                  ? 'bg-zinc-700 text-white'
-                  : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                  ? 'bg-accent-subtle text-accent'
+                  : 'text-text-secondary hover:bg-surface-2 hover:text-text-primary'
               }`}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -208,7 +212,7 @@ export default function LibraryPage() {
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => setTagFilterOpen((o) => !o)}
-              className="flex items-center gap-1.5 text-xs text-zinc-500 uppercase tracking-wider hover:text-zinc-300 transition-colors"
+              className="flex items-center gap-1.5 text-xs text-text-muted uppercase tracking-wider hover:text-text-secondary transition-colors"
             >
               <svg
                 width="12"
@@ -221,22 +225,22 @@ export default function LibraryPage() {
               </svg>
               Filter by tag
               {selectedTags.length > 0 && (
-                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-medium normal-case tracking-normal">
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-accent text-white text-[10px] font-medium normal-case tracking-normal">
                   {selectedTags.length}
                 </span>
               )}
             </button>
             {tagFilterOpen && (
               <>
-                <div className="flex gap-1 bg-zinc-800 rounded-lg p-0.5">
+                <div className="flex gap-1 bg-surface-2 rounded-lg p-0.5">
                   {(['any', 'all'] as const).map((m) => (
                     <button
                       key={m}
                       onClick={() => setTagMode(m)}
                       className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
                         tagMode === m
-                          ? 'bg-zinc-600 text-white'
-                          : 'text-zinc-400 hover:text-white'
+                          ? 'bg-surface-3 text-text-primary'
+                          : 'text-text-secondary hover:text-text-primary'
                       }`}
                     >
                       {m === 'any' ? 'Any' : 'All'}
@@ -246,7 +250,7 @@ export default function LibraryPage() {
                 {selectedTags.length > 0 && (
                   <button
                     onClick={() => setSelectedTags([])}
-                    className="text-xs text-zinc-500 hover:text-white transition-colors"
+                    className="text-xs text-text-muted hover:text-text-primary transition-colors"
                   >
                     Clear
                   </button>
@@ -262,7 +266,7 @@ export default function LibraryPage() {
                 (ns === 'other' ? 'Other' : ns.charAt(0).toUpperCase() + ns.slice(1));
               return (
                 <div key={ns} className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-zinc-600 w-16 shrink-0 uppercase tracking-wider">
+                  <span className="text-xs text-text-muted w-16 shrink-0 uppercase tracking-wider">
                     {label}
                   </span>
                   <div className="flex flex-wrap gap-1.5">
@@ -276,8 +280,8 @@ export default function LibraryPage() {
                           onClick={() => toggleTag(tag.name)}
                           className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
                             active
-                              ? 'bg-indigo-600 text-white'
-                              : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white'
+                              ? 'bg-accent text-white'
+                              : 'bg-surface-2 text-text-secondary hover:bg-surface-3 hover:text-text-primary'
                           }`}
                         >
                           {displayName}
@@ -293,7 +297,7 @@ export default function LibraryPage() {
       )}
 
       {loading && (
-        <div className="text-zinc-500 text-sm">Loading…</div>
+        <div className="text-text-muted text-sm">Loading…</div>
       )}
 
       {!loading && error && (
@@ -301,7 +305,7 @@ export default function LibraryPage() {
       )}
 
       {!loading && !error && filtered.length === 0 && activeQueueItems.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-24 gap-3 text-zinc-600">
+        <div className="flex flex-col items-center justify-center py-24 gap-3 text-text-muted">
           <span className="text-5xl">📭</span>
           <p className="text-sm">No media yet. Add URLs from the Queue page.</p>
         </div>
@@ -320,22 +324,26 @@ export default function LibraryPage() {
         )}
       </div>
 
-      {/* Floating action button */}
-      <button
-        onClick={() => setAddModalOpen(true)}
-        aria-label="Add URL"
-        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-500 text-white shadow-lg flex items-center justify-center transition-colors"
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      </button>
-
-      {addModalOpen && (
-        <AddUrlModal
-          onClose={() => setAddModalOpen(false)}
-          onAdded={fetchMedia}
-        />
+      {/* Floating action button — portalled to body to escape the page animation transform */}
+      {mounted && createPortal(
+        <>
+          <button
+            onClick={() => setAddModalOpen(true)}
+            aria-label="Add URL"
+            className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-accent hover:bg-accent-hover text-white shadow-lg flex items-center justify-center transition-colors"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+          {addModalOpen && (
+            <AddUrlModal
+              onClose={() => setAddModalOpen(false)}
+              onAdded={fetchMedia}
+            />
+          )}
+        </>,
+        document.body
       )}
     </div>
   );

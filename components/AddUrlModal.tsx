@@ -114,18 +114,18 @@ export default function AddUrlModal({ onClose, onAdded }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg bg-zinc-900 border border-zinc-800 rounded-2xl p-6 flex flex-col gap-4"
+        className="w-full max-w-lg bg-surface-1 border border-border rounded-2xl p-6 flex flex-col gap-4"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-white">
+          <h2 className="text-base font-semibold text-text-primary">
             {view === 'url' ? 'Add to queue' : 'Upload files'}
           </h2>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="text-zinc-400 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
+            className="text-text-secondary hover:text-text-primary p-1.5 rounded-lg hover:bg-surface-2 transition-colors"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M2 2l12 12M14 2L2 14" />
@@ -139,7 +139,7 @@ export default function AddUrlModal({ onClose, onAdded }: Props) {
             <AddUrlForm onAdded={handleAdded} />
             <button
               onClick={switchToUpload}
-              className="text-zinc-500 hover:text-zinc-300 text-xs flex items-center gap-1.5 transition-colors self-start"
+              className="text-text-muted hover:text-text-secondary text-xs flex items-center gap-1.5 transition-colors self-start"
             >
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M8 12V4M4 8l4-4 4 4" />
@@ -160,14 +160,14 @@ export default function AddUrlModal({ onClose, onAdded }: Props) {
               onDragLeave={() => setDragOver(false)}
               onClick={() => fileInputRef.current?.click()}
               className={`border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-2 cursor-pointer transition-colors
-                ${dragOver ? 'border-blue-500 bg-blue-500/10' : 'border-zinc-700 hover:border-zinc-500'}`}
+                ${dragOver ? 'border-accent bg-accent/10' : 'border-border hover:border-border-strong'}`}
             >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-secondary">
                 <path d="M12 18V6M6 12l6-6 6 6" />
                 <path d="M3 20h18" />
               </svg>
-              <p className="text-sm text-zinc-400">Drop files here or <span className="text-zinc-200">browse</span></p>
-              <p className="text-xs text-zinc-600">Videos and images</p>
+              <p className="text-sm text-text-secondary">Drop files here or <span className="text-text-primary">browse</span></p>
+              <p className="text-xs text-text-muted">Videos and images</p>
             </div>
             <input
               ref={fileInputRef}
@@ -184,7 +184,7 @@ export default function AddUrlModal({ onClose, onAdded }: Props) {
                 {selectedFiles.map(({ file, state, error }) => (
                   <li key={file.name} className="flex items-center gap-2 text-sm">
                     {state === 'pending' && (
-                      <span className="w-4 h-4 rounded-full border border-zinc-600 shrink-0" />
+                      <span className="w-4 h-4 rounded-full border border-border-strong shrink-0" />
                     )}
                     {state === 'done' && (
                       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-green-400 shrink-0">
@@ -196,7 +196,7 @@ export default function AddUrlModal({ onClose, onAdded }: Props) {
                         <path d="M4 4l8 8M12 4l-8 8" />
                       </svg>
                     )}
-                    <span className={`flex-1 truncate ${state === 'error' ? 'text-red-400' : 'text-zinc-300'}`}>
+                    <span className={`flex-1 truncate ${state === 'error' ? 'text-red-400' : 'text-text-secondary'}`}>
                       {file.name}
                     </span>
                     {state === 'error' && error && (
@@ -205,7 +205,7 @@ export default function AddUrlModal({ onClose, onAdded }: Props) {
                     {state === 'pending' && !uploading && (
                       <button
                         onClick={() => removeFile(file.name)}
-                        className="text-zinc-600 hover:text-zinc-400 shrink-0 transition-colors"
+                        className="text-text-muted hover:text-text-secondary shrink-0 transition-colors"
                         aria-label="Remove"
                       >
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -224,7 +224,7 @@ export default function AddUrlModal({ onClose, onAdded }: Props) {
                 <button
                   onClick={handleUpload}
                   disabled={pendingCount === 0 || uploading}
-                  className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+                  className="w-full bg-accent hover:bg-accent-hover disabled:opacity-50 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
                 >
                   {uploading
                     ? 'Uploading…'
@@ -236,7 +236,7 @@ export default function AddUrlModal({ onClose, onAdded }: Props) {
               {allDone && (
                 <button
                   onClick={onClose}
-                  className="w-full bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+                  className="w-full bg-surface-2 hover:bg-surface-3 text-text-primary text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
                 >
                   Done
                 </button>
@@ -245,7 +245,7 @@ export default function AddUrlModal({ onClose, onAdded }: Props) {
 
             <button
               onClick={switchToUrl}
-              className="text-zinc-500 hover:text-zinc-300 text-xs flex items-center gap-1.5 transition-colors self-start"
+              className="text-text-muted hover:text-text-secondary text-xs flex items-center gap-1.5 transition-colors self-start"
             >
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M10 4H3M3 4l3-3M3 4l3 3" />

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Settings } from '@/components/settings/types';
 import { Field } from '@/components/settings/Field';
+import ThemeSwitcher from '@/components/ThemeSwitcher';
 
 export default function GeneralSettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -41,29 +42,40 @@ export default function GeneralSettingsPage() {
     }
   }
 
-  if (!settings) return <div className="text-zinc-500 text-sm">Loading…</div>;
+  if (!settings) return <div className="text-text-muted text-sm">Loading…</div>;
 
   return (
-    <form onSubmit={handleSave} className="flex flex-col gap-5">
-      <Field
-        label="Download location"
-        envVar="MEMEVAULTPROJECT_DOWNLOAD_PATH"
-        hint="Absolute path where files will be saved"
-        value={settings.download_path}
-        disabled={isEnv('download_path')}
-        onChange={(v) => setSettings({ ...settings, download_path: v })}
-      />
+    <div className="flex flex-col gap-8">
+      {/* Appearance section */}
+      <div className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-text-primary">Appearance</h2>
+        <div className="bg-surface-1 border border-border rounded-xl p-4">
+          <ThemeSwitcher />
+        </div>
+      </div>
 
-      {error && <p className="text-red-400 text-sm">{error}</p>}
-      {saved && <p className="text-green-400 text-sm">Settings saved.</p>}
+      {/* Other settings */}
+      <form onSubmit={handleSave} className="flex flex-col gap-5">
+        <Field
+          label="Download location"
+          envVar="MEMEVAULTPROJECT_DOWNLOAD_PATH"
+          hint="Absolute path where files will be saved"
+          value={settings.download_path}
+          disabled={isEnv('download_path')}
+          onChange={(v) => setSettings({ ...settings, download_path: v })}
+        />
 
-      <button
-        type="submit"
-        disabled={saving}
-        className="self-start bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
-      >
-        {saving ? 'Saving…' : 'Save settings'}
-      </button>
-    </form>
+        {error && <p className="text-red-400 text-sm">{error}</p>}
+        {saved && <p className="text-green-400 text-sm">Settings saved.</p>}
+
+        <button
+          type="submit"
+          disabled={saving}
+          className="self-start bg-accent hover:bg-accent-hover disabled:opacity-50 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+        >
+          {saving ? 'Saving…' : 'Save settings'}
+        </button>
+      </form>
+    </div>
   );
 }

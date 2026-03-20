@@ -49,17 +49,17 @@ export default function QueueItemRow({ item, onRemoved, onRetried }: Props) {
   })();
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
+    <div className="bg-surface-1 border border-border rounded-xl p-4 flex flex-col gap-2 animate-[page-enter_0.3s_ease-out_backwards]">
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-white truncate" title={item.url}>{item.url}</p>
-          <p className="text-xs text-zinc-500 mt-0.5">{hostname}</p>
+          <p className="text-sm text-text-primary truncate" title={item.url}>{item.url}</p>
+          <p className="text-xs text-text-muted mt-0.5">{hostname}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className={`text-xs px-2 py-0.5 rounded font-medium ${statusColors[item.status]}`}>
             {item.status}
           </span>
-          <span className="text-xs px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">
+          <span className="text-xs px-2 py-0.5 rounded bg-surface-2 text-text-secondary">
             {item.downloader === 'ytdlp' ? 'yt-dlp' : 'gallery-dl'}
           </span>
         </div>
@@ -67,7 +67,7 @@ export default function QueueItemRow({ item, onRemoved, onRetried }: Props) {
 
       {/* Progress bar */}
       {(item.status === 'downloading' || item.status === 'completed') && (
-        <div className="w-full bg-zinc-800 rounded-full h-1.5">
+        <div className="w-full bg-surface-2 rounded-full h-1.5">
           <div
             className={`h-1.5 rounded-full transition-all ${
               item.status === 'completed' ? 'bg-green-500' : 'bg-blue-500'
@@ -82,7 +82,7 @@ export default function QueueItemRow({ item, onRemoved, onRetried }: Props) {
       )}
 
       <div className="flex items-center justify-between">
-        <span className="text-xs text-zinc-600">
+        <span className="text-xs text-text-muted">
           {new Date(item.created_at).toLocaleString()}
         </span>
         <div className="flex items-center gap-3">
@@ -90,7 +90,7 @@ export default function QueueItemRow({ item, onRemoved, onRetried }: Props) {
             <button
               onClick={handleRetry}
               disabled={retrying}
-              className="text-xs text-zinc-500 hover:text-blue-400 transition-colors disabled:opacity-50"
+              className="text-xs text-text-muted hover:text-accent transition-colors disabled:opacity-50"
             >
               {retrying ? 'Retrying…' : 'Retry'}
             </button>
@@ -99,7 +99,7 @@ export default function QueueItemRow({ item, onRemoved, onRetried }: Props) {
             <button
               onClick={handleRemove}
               disabled={removing}
-              className="text-xs text-zinc-500 hover:text-red-400 transition-colors disabled:opacity-50"
+              className="text-xs text-text-muted hover:text-red-400 transition-colors disabled:opacity-50"
             >
               {removing ? 'Removing…' : 'Remove'}
             </button>

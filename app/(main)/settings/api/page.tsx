@@ -20,7 +20,7 @@ function PermissionBadge({ permission }: { permission: 'read' | 'read_write' }) 
       read+write
     </span>
   ) : (
-    <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-400 font-mono">
+    <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-3 text-text-secondary font-mono">
       read
     </span>
   );
@@ -94,18 +94,18 @@ export default function ApiSettingsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold text-white">API Keys</h2>
-          <p className="text-zinc-500 text-sm mt-1">
-            Use the <code className="text-zinc-300">X-API-Key</code> header when calling{' '}
-            <code className="text-zinc-300">/api/v1/*</code> endpoints.{' '}
-            <span className="text-zinc-600">Read-only keys can access status and download. Read+write keys can also submit new downloads.</span>
+          <h2 className="text-base font-semibold text-text-primary">API Keys</h2>
+          <p className="text-text-muted text-sm mt-1">
+            Use the <code className="text-text-secondary">X-API-Key</code> header when calling{' '}
+            <code className="text-text-secondary">/api/v1/*</code> endpoints.{' '}
+            <span className="text-text-muted">Read-only keys can access status and download. Read+write keys can also submit new downloads.</span>
           </p>
         </div>
         {!showForm && (
           <button
             type="button"
             onClick={() => { setShowForm(true); setNewKeyResult(null); }}
-            className="shrink-0 text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 transition-colors"
+            className="shrink-0 text-xs px-3 py-2 bg-surface-2 hover:bg-surface-3 rounded-lg text-text-secondary transition-colors"
           >
             + New key
           </button>
@@ -119,20 +119,20 @@ export default function ApiSettingsPage() {
             Key created — copy it now. It won&apos;t be shown again.
           </p>
           <div className="flex gap-2 items-center">
-            <code className="flex-1 min-w-0 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 truncate font-mono">
+            <code className="flex-1 min-w-0 bg-surface-base border border-border rounded-lg px-3 py-2 text-sm text-text-primary truncate font-mono">
               {newKeyResult.key}
             </code>
             <button
               type="button"
               onClick={copyNewKey}
-              className="shrink-0 text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 transition-colors"
+              className="shrink-0 text-xs px-3 py-2 bg-surface-2 hover:bg-surface-3 rounded-lg text-text-secondary transition-colors"
             >
               {newKeyCopied ? 'Copied!' : 'Copy'}
             </button>
             <button
               type="button"
               onClick={() => setNewKeyResult(null)}
-              className="shrink-0 text-xs px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-500 transition-colors"
+              className="shrink-0 text-xs px-3 py-2 bg-surface-2 hover:bg-surface-3 rounded-lg text-text-muted transition-colors"
             >
               Dismiss
             </button>
@@ -144,22 +144,22 @@ export default function ApiSettingsPage() {
       {showForm && (
         <form
           onSubmit={handleCreate}
-          className="rounded-lg border border-zinc-700 bg-zinc-900/50 p-4 flex flex-col gap-3"
+          className="rounded-lg border border-border bg-surface-1 p-4 flex flex-col gap-3"
         >
-          <p className="text-sm font-medium text-zinc-300">New API key</p>
+          <p className="text-sm font-medium text-text-secondary">New API key</p>
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-zinc-500">Name</label>
+            <label className="text-xs text-text-muted">Name</label>
             <input
               type="text"
               placeholder="e.g. Home Assistant"
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
-              className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500"
+              className="bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-border-strong"
               autoFocus
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-zinc-500">Permission</label>
+            <label className="text-xs text-text-muted">Permission</label>
             <div className="flex gap-3">
               {(['read_write', 'read'] as const).map((p) => (
                 <label key={p} className="flex items-center gap-2 cursor-pointer">
@@ -169,9 +169,9 @@ export default function ApiSettingsPage() {
                     value={p}
                     checked={formPermission === p}
                     onChange={() => setFormPermission(p)}
-                    className="accent-blue-500"
+                    className="accent-accent"
                   />
-                  <span className="text-sm text-zinc-300">
+                  <span className="text-sm text-text-secondary">
                     {p === 'read_write' ? 'Read + Write' : 'Read only'}
                   </span>
                 </label>
@@ -182,14 +182,14 @@ export default function ApiSettingsPage() {
             <button
               type="submit"
               disabled={saving || !formName.trim()}
-              className="text-xs px-4 py-2 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white transition-colors"
+              className="text-xs px-4 py-2 bg-accent hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white transition-colors"
             >
               {saving ? 'Creating…' : 'Create key'}
             </button>
             <button
               type="button"
               onClick={() => { setShowForm(false); setFormName(''); setFormPermission('read_write'); }}
-              className="text-xs px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-400 transition-colors"
+              className="text-xs px-4 py-2 bg-surface-2 hover:bg-surface-3 rounded-lg text-text-muted transition-colors"
             >
               Cancel
             </button>
@@ -200,30 +200,30 @@ export default function ApiSettingsPage() {
       {/* Keys table */}
       <div className="flex flex-col gap-1">
         {envKeyActive && (
-          <div className="flex items-center justify-between px-3 py-3 rounded-lg bg-zinc-900 border border-zinc-800">
+          <div className="flex items-center justify-between px-3 py-3 rounded-lg bg-surface-base border border-border">
             <div className="flex items-center gap-3 min-w-0">
-              <span className="text-sm text-zinc-300 truncate">Legacy env key</span>
+              <span className="text-sm text-text-secondary truncate">Legacy env key</span>
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono">env</span>
               <PermissionBadge permission="read_write" />
             </div>
-            <span className="text-xs text-zinc-600">Set via MEMEVAULTPROJECT_API_KEY</span>
+            <span className="text-xs text-text-muted">Set via MEMEVAULTPROJECT_API_KEY</span>
           </div>
         )}
 
         {keys.length === 0 && !envKeyActive && (
-          <p className="text-sm text-zinc-600 py-2">No API keys yet.</p>
+          <p className="text-sm text-text-muted py-2">No API keys yet.</p>
         )}
 
         {keys.map((k) => (
           <div
             key={k.id}
-            className="flex items-center justify-between px-3 py-3 rounded-lg bg-zinc-900 border border-zinc-800 gap-3"
+            className="flex items-center justify-between px-3 py-3 rounded-lg bg-surface-base border border-border gap-3"
           >
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              <span className="text-sm text-zinc-200 truncate">{k.name}</span>
+              <span className="text-sm text-text-primary truncate">{k.name}</span>
               <PermissionBadge permission={k.permission} />
             </div>
-            <div className="shrink-0 flex items-center gap-4 text-xs text-zinc-600">
+            <div className="shrink-0 flex items-center gap-4 text-xs text-text-muted">
               <span>Created {formatDate(k.created_at)}</span>
               <span>Last used {formatDate(k.last_used_at)}</span>
               <button

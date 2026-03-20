@@ -46,17 +46,17 @@ export default function AlbumCard({ album, onDeleted }: Props) {
   return (
     <>
       <div
-        className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col group cursor-pointer hover:border-zinc-600 transition-colors"
+        className="bg-surface-1 border border-border rounded-2xl overflow-hidden flex flex-col group cursor-pointer hover:border-border-strong transition-colors shadow-sm animate-[page-enter_0.3s_ease-out_backwards]"
         onClick={() => setModalOpen(true)}
       >
         {/* Stacked thumbnail effect */}
-        <div className="relative aspect-video bg-zinc-800 overflow-visible">
+        <div className="relative aspect-video bg-surface-2 overflow-visible">
           {/* Back layers for stack effect */}
           {album.media.length > 2 && (
-            <div className="absolute inset-x-3 -top-1.5 h-full bg-zinc-700 rounded-t-lg -z-10" />
+            <div className="absolute inset-x-3 -top-1.5 h-full bg-surface-3 rounded-t-lg -z-10" />
           )}
           {album.media.length > 1 && (
-            <div className="absolute inset-x-1.5 -top-0.5 h-full bg-zinc-800 rounded-t-lg -z-10 border border-zinc-700" />
+            <div className="absolute inset-x-1.5 -top-0.5 h-full bg-surface-2 rounded-t-lg -z-10 border border-border" />
           )}
 
           {/* Cover image */}
@@ -69,7 +69,7 @@ export default function AlbumCard({ album, onDeleted }: Props) {
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-zinc-600 text-4xl select-none">
+              <div className="w-full h-full flex items-center justify-center text-text-muted text-4xl select-none">
                 🖼
               </div>
             )}
@@ -89,26 +89,26 @@ export default function AlbumCard({ album, onDeleted }: Props) {
         {/* Info */}
         <div className="p-3 flex flex-col gap-1 flex-1">
           <p
-            className="text-sm font-medium text-white truncate"
+            className="text-sm font-medium text-text-primary truncate"
             title={displayTitle}
           >
             {displayTitle}
           </p>
           {album.uploader && (
-            <p className="text-xs text-zinc-500 truncate">{album.uploader}</p>
+            <p className="text-xs text-text-muted truncate">{album.uploader}</p>
           )}
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1">
               {tags.slice(0, 5).map((tag) => (
                 <span
                   key={tag.id}
-                  className="px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-400 text-[10px] font-medium"
+                  className="px-1.5 py-0.5 rounded-full bg-accent-subtle text-accent text-[10px] font-medium"
                 >
                   {tag.name}
                 </span>
               ))}
               {tags.length > 5 && (
-                <span className="px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-600 text-[10px]">
+                <span className="px-1.5 py-0.5 rounded-full bg-surface-2 text-text-muted text-[10px]">
                   +{tags.length - 5}
                 </span>
               )}

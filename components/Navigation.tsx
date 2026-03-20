@@ -3,6 +3,10 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import ThemeSwitcher from './ThemeSwitcher';
+import { useTheme } from './ThemeProvider';
+
+const VERSION = '0.11.0';
 
 const links = [
   { href: '/', label: 'Vault' },
@@ -13,7 +17,9 @@ const links = [
 
 export default function Navigation() {
   const pathname = usePathname();
+  const { theme } = useTheme();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const iconClass = `w-8 h-8 shrink-0 ${theme === 'dark' ? 'invert mix-blend-screen' : 'mix-blend-multiply'}`;
 
   // Close drawer on route change
   useEffect(() => {
@@ -32,48 +38,62 @@ export default function Navigation() {
 
   return (
     <>
-      {/* ── Desktop sidebar (md+) ─────────────────────────────────── */}
-      <nav className="hidden md:flex fixed top-0 left-0 h-full w-52 bg-zinc-900 border-r border-zinc-800 flex-col pt-8 px-4 gap-2 z-50">
-        <span className="text-xl font-bold text-white mb-6 px-2 tracking-tight">MVP</span>
-        {links.map(({ href, label }) => {
-          const active = href === '/' ? pathname === href : pathname === href || pathname.startsWith(href + '/');
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                active
-                  ? 'bg-zinc-700 text-white'
-                  : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
-              }`}
-            >
-              {label}
-            </Link>
-          );
-        })}
-        <Link
-          href="/auth/logout"
-          className="mt-auto mb-4 px-3 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
-        >
-          Sign out
-        </Link>
-      </nav>
+      {/* ── Top bar (all sizes) ─────────────────────────────────────── */}
+      <header className="fixed top-0 left-0 right-0 h-16 bg-surface-1/70 backdrop-blur-md border-b border-border z-50">
+        <div className="max-w-5xl mx-auto h-full flex items-center gap-6 px-6">
+          {/* Logo */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            <img src="/safe.png" alt="MVP" className={iconClass} />
+            <div className="flex flex-col leading-none gap-0.5">
+              <span className="text-base font-bold text-text-primary tracking-tight">MVP</span>
+              <span className="text-[10px] text-text-muted">v{VERSION}</span>
+            </div>
+          </div>
 
-      {/* ── Mobile top bar (< md) ─────────────────────────────────── */}
-      <header className="md:hidden fixed top-0 left-0 right-0 h-14 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 z-50">
-        <button
-          onClick={() => setDrawerOpen(true)}
-          aria-label="Open navigation"
-          className="text-zinc-400 hover:text-white p-2 rounded-lg hover:bg-zinc-800 transition-colors"
-        >
-          {/* Hamburger icon */}
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-            <rect y="3" width="20" height="2" rx="1" />
-            <rect y="9" width="20" height="2" rx="1" />
-            <rect y="15" width="20" height="2" rx="1" />
-          </svg>
-        </button>
-        <span className="text-lg font-bold text-white tracking-tight">MVP</span>
+          {/* Desktop nav links */}
+          <nav className="hidden md:flex items-center gap-1">
+            {links.map(({ href, label }) => {
+              const active = href === '/' ? pathname === href : pathname === href || pathname.startsWith(href + '/');
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors active:scale-95 ${
+                    active
+                      ? 'bg-accent-subtle text-accent animate-[nav-activate_0.35s_ease-out]'
+                      : 'text-text-secondary hover:bg-surface-2 hover:text-text-primary'
+                  }`}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* Right side */}
+          <div className="ml-auto flex items-center gap-2">
+            <ThemeSwitcher compact />
+            <Link
+              href="/auth/logout"
+              className="hidden md:block px-4 py-2 rounded-lg text-sm font-medium text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors"
+            >
+              Sign out
+            </Link>
+
+            {/* Mobile hamburger */}
+            <button
+              onClick={() => setDrawerOpen(true)}
+              aria-label="Open navigation"
+              className="md:hidden text-text-secondary hover:text-text-primary p-2 rounded-lg hover:bg-surface-2 transition-colors"
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                <rect y="3" width="20" height="2" rx="1" />
+                <rect y="9" width="20" height="2" rx="1" />
+                <rect y="15" width="20" height="2" rx="1" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </header>
 
       {/* ── Mobile drawer backdrop ────────────────────────────────── */}
@@ -86,16 +106,22 @@ export default function Navigation() {
 
       {/* ── Mobile drawer panel ───────────────────────────────────── */}
       <div
-        className={`md:hidden fixed top-0 left-0 h-full w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col pt-6 px-4 gap-2 z-[60] transition-transform duration-200 ${
+        className={`md:hidden fixed top-0 left-0 h-full w-64 bg-surface-1 border-r border-border flex flex-col pt-6 px-4 gap-2 z-[60] transition-transform duration-200 ${
           drawerOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="flex items-center justify-between mb-6 px-2">
-          <span className="text-xl font-bold text-white tracking-tight">MVP</span>
+          <div className="flex items-center gap-2.5">
+            <img src="/safe.png" alt="MVP" className={iconClass} />
+            <div className="flex flex-col leading-none gap-0.5">
+              <span className="text-base font-bold text-text-primary tracking-tight">MVP</span>
+              <span className="text-[10px] text-text-muted">v{VERSION}</span>
+            </div>
+          </div>
           <button
             onClick={() => setDrawerOpen(false)}
             aria-label="Close navigation"
-            className="text-zinc-400 hover:text-white p-1.5 rounded-lg hover:bg-zinc-800 transition-colors"
+            className="text-text-secondary hover:text-text-primary p-1.5 rounded-lg hover:bg-surface-2 transition-colors"
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
               <path d="M1 1l16 16M17 1L1 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
@@ -108,22 +134,24 @@ export default function Navigation() {
             <Link
               key={href}
               href={href}
-              className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-4 py-2.5 rounded-lg text-sm font-medium transition-colors active:scale-95 ${
                 active
-                  ? 'bg-zinc-700 text-white'
-                  : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                  ? 'bg-accent-subtle text-accent animate-[nav-activate_0.35s_ease-out]'
+                  : 'text-text-secondary hover:bg-surface-2 hover:text-text-primary'
               }`}
             >
               {label}
             </Link>
           );
         })}
-        <Link
-          href="/auth/logout"
-          className="mt-auto mb-4 px-3 py-2.5 rounded-lg text-sm font-medium text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
-        >
-          Sign out
-        </Link>
+        <div className="mt-auto mb-4 flex flex-col gap-3">
+          <Link
+            href="/auth/logout"
+            className="px-4 py-2.5 rounded-lg text-sm font-medium text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors"
+          >
+            Sign out
+          </Link>
+        </div>
       </div>
     </>
   );
