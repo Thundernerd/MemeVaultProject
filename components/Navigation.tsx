@@ -14,7 +14,7 @@ const links = [
   { href: '/settings', label: 'Settings' },
 ];
 
-export default function Navigation() {
+export default function Navigation({ oidcEnabled }: { oidcEnabled: boolean }) {
   const pathname = usePathname();
   const { theme } = useTheme();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -72,12 +72,14 @@ export default function Navigation() {
           {/* Right side */}
           <div className="ml-auto flex items-center gap-2">
             <ThemeSwitcher compact />
-            <Link
-              href="/auth/logout"
-              className="hidden md:block px-4 py-2 rounded-lg text-sm font-medium text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors"
-            >
-              Sign out
-            </Link>
+            {oidcEnabled && (
+              <Link
+                href="/auth/logout"
+                className="hidden md:block px-4 py-2 rounded-lg text-sm font-medium text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors"
+              >
+                Sign out
+              </Link>
+            )}
 
             {/* Mobile hamburger */}
             <button
@@ -114,7 +116,7 @@ export default function Navigation() {
             <img src="/safe.png" alt="MVP" className={iconClass} />
             <div className="flex flex-col leading-none gap-0.5">
               <span className="text-base font-bold text-text-primary tracking-tight">MVP</span>
-              <span className="text-[10px] text-text-muted">v{VERSION}</span>
+              <span className="text-[10px] text-text-muted">v{version}</span>
             </div>
           </div>
           <button
@@ -143,14 +145,16 @@ export default function Navigation() {
             </Link>
           );
         })}
-        <div className="mt-auto mb-4 flex flex-col gap-3">
-          <Link
-            href="/auth/logout"
-            className="px-4 py-2.5 rounded-lg text-sm font-medium text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors"
-          >
-            Sign out
-          </Link>
-        </div>
+        {oidcEnabled && (
+          <div className="mt-auto mb-4">
+            <Link
+              href="/auth/logout"
+              className="px-4 py-2.5 rounded-lg text-sm font-medium text-text-muted hover:bg-surface-2 hover:text-text-primary transition-colors"
+            >
+              Sign out
+            </Link>
+          </div>
+        )}
       </div>
     </>
   );
