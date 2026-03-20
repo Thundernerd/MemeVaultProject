@@ -11,7 +11,7 @@ export default function MainLayout({
     <>
       <Navigation oidcEnabled={oidcEnabled} />
       <main className="mt-16 h-[calc(100vh-4rem)] overflow-y-auto">
-        <div className="max-w-5xl mx-auto px-6 py-8">
+        <div className="max-w-5xl mx-auto px-6 pt-8 pb-24">
           {children}
         </div>
       </main>

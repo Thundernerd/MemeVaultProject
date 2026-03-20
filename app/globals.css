@@ -123,6 +123,7 @@ main {
 html, body {
   height: 100%;
   overflow: hidden;
+  background-color: var(--surface-base);
 }
 
 body {
