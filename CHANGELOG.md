@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Features
+- Added random API endpoint for getting random vault items
+- Vault items have a flag that allows them to be included/excluded from the random endpoint
+- Settings has a mode switch for the random endpoint if you want to include only those with the flag or all public (previously shared) ones
+
 ## [0.10.0] - 2026-03-18
 
 ### Features
