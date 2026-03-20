@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-03-20
+
 ### Fixes
 - Fixed white bar appearing in mobile safe area at the bottom of the screen
 - Fixed last card being obscured by the floating action button when scrolled to the bottom
