@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.13.2] - 2026-03-20
+
 ### Fixes
 - Fixed v1 download endpoint returning 404 when called with a vault item ID
 
