@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-03-20
+
 ### Features
 - Added random API endpoint for getting random vault items
 - Vault items have a flag that allows them to be included/excluded from the random endpoint
