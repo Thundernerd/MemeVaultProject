@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Improvements
+- Nav bar version number is now read directly from package.json
+- Sign out button is hidden when OIDC is not configured
+
 ## [0.13.0] - 2026-03-20
 
 ### Features
