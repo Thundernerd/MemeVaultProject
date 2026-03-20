@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Features
+- Vitest test suite with 176 tests covering lib utilities, DB layer, and all `/api/v1/*` routes
+
 ## [0.13.2] - 2026-03-20
 
 ### Fixes
