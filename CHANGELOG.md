@@ -6,6 +6,7 @@
 - Visual redesign with light/dark theme toggle and accent colour picker
 - Switched from sidebar to top navigation with constrained page width
 - Smooth page transitions and card entrance animations
+- Custom thin scrollbar styled to match the theme
 
 ## [0.12.0] - 2026-03-20
 
