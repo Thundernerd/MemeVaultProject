@@ -4,6 +4,7 @@
 
 ### Features
 - Vitest test suite with 176 tests covering lib utilities, DB layer, and all `/api/v1/*` routes
+- CI workflow to run tests on every push to main and on every pull request
 
 ## [0.13.2] - 2026-03-20
 
