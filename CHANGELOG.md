@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-03-20
+
 ### Features
 - Visual redesign with light/dark theme toggle and accent colour picker
 - Switched from sidebar to top navigation with constrained page width
