@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Features
+- Visual redesign with light/dark theme toggle and accent colour picker
+- Switched from sidebar to top navigation with constrained page width
+- Smooth page transitions and card entrance animations
+
 ## [0.12.0] - 2026-03-20
 
 ### Features
