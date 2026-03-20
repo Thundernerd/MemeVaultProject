@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-03-20
+
 ### Improvements
 - Share page header now matches the app's design system (logo, colors, titlebar style)
 
