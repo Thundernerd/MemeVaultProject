@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Features
+- Structured logging with configurable verbosity via `MEMEVAULTPROJECT_LOG_LEVEL` (`error`, `warn`, `info`, `debug`)
+
 ## [0.18.0] - 2026-03-21
 
 ### Fixes
