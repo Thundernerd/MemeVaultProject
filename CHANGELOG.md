@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-03-21
+
 ### Fixes
 - Fixed OIDC login redirect loop in production Docker deployments
 
