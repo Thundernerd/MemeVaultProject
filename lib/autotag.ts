@@ -25,17 +25,21 @@ export function autoTagMedia(params: {
   // Media type
   candidates.push(`type:${params.type}`);
 
-  // Platform — strip www., take registrable label, apply aliases
-  try {
-    const hostname = new URL(params.url).hostname.replace(/^www\./, '');
-    const parts = hostname.split('.');
-    const raw = parts.length >= 2 ? parts[parts.length - 2] : hostname;
-    if (raw) {
-      const label = PLATFORM_ALIASES[raw.toLowerCase()] ?? raw.toLowerCase();
-      candidates.push(`platform:${label}`);
+  // Platform — local:// URLs get platform:upload, others extract hostname
+  if (params.url.startsWith('local://')) {
+    candidates.push('platform:upload');
+  } else {
+    try {
+      const hostname = new URL(params.url).hostname.replace(/^www\./, '');
+      const parts = hostname.split('.');
+      const raw = parts.length >= 2 ? parts[parts.length - 2] : hostname;
+      if (raw) {
+        const label = PLATFORM_ALIASES[raw.toLowerCase()] ?? raw.toLowerCase();
+        candidates.push(`platform:${label}`);
+      }
+    } catch {
+      // invalid URL — skip
     }
-  } catch {
-    // invalid URL — skip
   }
 
   // Uploader (trim, truncate long names)

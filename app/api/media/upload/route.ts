@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import { getSetting, insertMediaItem, upsertTag, addTagToMedia } from '@/lib/db';
+import { getSetting, insertMediaItem } from '@/lib/db';
 import { autoTagMedia } from '@/lib/autotag';
 import { probeFile, generateVideoThumbnail } from '@/lib/ffprobe';
 
@@ -99,9 +99,6 @@ export async function POST(req: NextRequest) {
         format: mediaItem.format,
         createdAt: mediaItem.created_at,
       });
-
-      const uploadTag = upsertTag('source:upload');
-      addTagToMedia(mediaItem.id, uploadTag.id);
 
       results.push({ success: true, filename: originalName, media: mediaItem });
     } catch (err) {
