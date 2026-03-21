@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixes
+- Manual uploads now tagged as `platform:upload` instead of `source:upload`
+
 ## [0.17.2] - 2026-03-21
 
 ### Fixes
@@ -57,7 +60,7 @@
 ### Features
 - Manually upload video and image files directly to the vault
 - Batch upload support with drag-and-drop or file browser
-- Auto-tag uploaded items with `source:upload`
+- Auto-tag uploaded items with `platform:upload`
 
 ## [0.11.0] - 2026-03-20
 
