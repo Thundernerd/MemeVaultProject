@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.17.2] - 2026-03-21
+
 ### Fixes
 - Unified all icons (favicon, apple-touch-icon) to use safe.png
 - Excluded safe.png from OIDC middleware so it loads on public pages
