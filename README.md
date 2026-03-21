@@ -48,6 +48,7 @@ All settings have sensible defaults and can be overridden at runtime. Settings n
 | `MEMEVAULTPROJECT_FFMPEG_BIN` | *(auto-managed)* | Path to a custom ffmpeg binary |
 | `MEMEVAULTPROJECT_YTDLP_EXTRA_ARGS` | *(empty)* | Extra flags appended to every yt-dlp call |
 | `MEMEVAULTPROJECT_GALLERYDL_EXTRA_ARGS` | *(empty)* | Extra flags appended to every gallery-dl call |
+| `MEMEVAULTPROJECT_LOG_LEVEL` | `info` | Log verbosity: `error`, `warn`, `info`, or `debug` |
 | `MEMEVAULTPROJECT_SHARE_BASE_URL` | *(empty)* | Base URL used in share link OG embeds |
 | `MEMEVAULTPROJECT_OIDC_ISSUER` | *(empty)* | OIDC provider URL — enables authentication when set |
 | `MEMEVAULTPROJECT_OIDC_CLIENT_ID` | *(empty)* | OIDC client ID |

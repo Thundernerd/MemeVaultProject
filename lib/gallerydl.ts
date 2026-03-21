@@ -5,6 +5,7 @@ import { getSetting } from './db';
 import { getGalleryDlPath } from './binaries';
 import { getCookiePath } from './cookies';
 import { buildErrorDetail } from './utils';
+import { logger } from './logger';
 
 export interface GalleryDlFile {
   filePath: string;
@@ -48,8 +49,12 @@ export async function runGalleryDl(
     url,
   ];
 
+  const galleryDlPath = getGalleryDlPath();
+  logger.info(`spawning gallery-dl url=${url}`);
+  logger.debug(`gallery-dl binary=${galleryDlPath} args=${args.join(' ')}`);
+
   return new Promise((resolve, reject) => {
-    const proc = spawn(getGalleryDlPath(), args);
+    const proc = spawn(galleryDlPath, args);
 
     if (signal) {
       signal.addEventListener('abort', () => proc.kill('SIGTERM'));
@@ -64,6 +69,8 @@ export async function runGalleryDl(
       for (const line of text.split('\n')) {
         const trimmed = line.trim();
         if (!trimmed) continue;
+
+        logger.debug(`gallery-dl stdout: ${trimmed}`);
 
         // gallery-dl prints error/warning lines starting with [error] or [warning]
         if (/^\[(error|warning)\]/i.test(trimmed)) {
@@ -87,12 +94,16 @@ export async function runGalleryDl(
     proc.stderr.on('data', (chunk: Buffer) => {
       for (const line of chunk.toString().split('\n')) {
         const trimmed = line.trim();
-        if (trimmed) stderrLines.push(trimmed);
+        if (trimmed) {
+          stderrLines.push(trimmed);
+          logger.debug(`gallery-dl stderr: ${trimmed}`);
+        }
       }
     });
 
     proc.on('close', (code) => {
       if (code !== 0) {
+        logger.warn(`gallery-dl exited with code ${code} url=${url}`);
         fs.rmSync(jobDir, { recursive: true, force: true });
         const detail = buildErrorDetail(errorLines, stderrLines);
         return reject(new Error(`gallery-dl exited with code ${code}${detail}`));
@@ -108,6 +119,7 @@ export async function runGalleryDl(
     });
 
     proc.on('error', (err) => {
+      logger.error(`failed to spawn gallery-dl: ${err.message}`);
       reject(new Error(`Failed to spawn gallery-dl: ${err.message}`));
     });
   });

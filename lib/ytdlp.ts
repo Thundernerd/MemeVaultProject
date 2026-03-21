@@ -5,6 +5,7 @@ import { getSetting } from './db';
 import { getYtdlpPath, getFfmpegPath, checkBinary } from './binaries';
 import { getCookiePath } from './cookies';
 import { buildErrorDetail } from './utils';
+import { logger } from './logger';
 
 export interface YtdlpResult {
   filePath: string;
@@ -51,8 +52,12 @@ export async function runYtdlp(
     url,
   ];
 
+  const ytdlpPath = getYtdlpPath();
+  logger.info(`spawning yt-dlp url=${url}`);
+  logger.debug(`yt-dlp binary=${ytdlpPath} args=${args.join(' ')}`);
+
   return new Promise((resolve, reject) => {
-    const proc = spawn(getYtdlpPath(), args);
+    const proc = spawn(ytdlpPath, args);
 
     if (signal) {
       signal.addEventListener('abort', () => proc.kill('SIGTERM'));
@@ -72,18 +77,24 @@ export async function runYtdlp(
         if (line.startsWith('ERROR:') || line.includes('[error]')) {
           errorLines.push(line.trim());
         }
+        const trimmed = line.trim();
+        if (trimmed) logger.debug(`yt-dlp stdout: ${trimmed}`);
       }
     });
 
     proc.stderr.on('data', (chunk: Buffer) => {
       for (const line of chunk.toString().split('\n')) {
         const trimmed = line.trim();
-        if (trimmed) stderrLines.push(trimmed);
+        if (trimmed) {
+          stderrLines.push(trimmed);
+          logger.debug(`yt-dlp stderr: ${trimmed}`);
+        }
       }
     });
 
     proc.on('close', (code) => {
       if (code !== 0) {
+        logger.warn(`yt-dlp exited with code ${code} url=${url}`);
         fs.rmSync(jobDir, { recursive: true, force: true });
         const detail = buildErrorDetail(errorLines, stderrLines);
         return reject(new Error(`yt-dlp exited with code ${code}${detail}`));
@@ -98,6 +109,7 @@ export async function runYtdlp(
     });
 
     proc.on('error', (err) => {
+      logger.error(`failed to spawn yt-dlp: ${err.message}`);
       reject(new Error(`Failed to spawn yt-dlp: ${err.message}`));
     });
   });

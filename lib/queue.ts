@@ -10,6 +10,7 @@ import {
 import { runYtdlp } from './ytdlp';
 import { runGalleryDl } from './gallerydl';
 import { autoTagMedia } from './autotag';
+import { logger } from './logger';
 
 let initialized = false;
 
@@ -33,6 +34,8 @@ async function processNext(): Promise<void> {
   if (!item) return;
 
   updateQueueItem(item.id, { status: 'downloading', progress: 0 });
+  logger.info(`starting download id=${item.id} downloader=${item.downloader} url=${item.url}`);
+  const startedAt = Date.now();
 
   try {
     if (item.downloader === 'ytdlp') {
@@ -40,6 +43,8 @@ async function processNext(): Promise<void> {
     } else {
       await processGalleryDl(item.id, item.url);
     }
+    const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
+    logger.info(`completed download id=${item.id} elapsed=${elapsed}s`);
     updateQueueItem(item.id, {
       status: 'completed',
       progress: 100,
@@ -47,6 +52,7 @@ async function processNext(): Promise<void> {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    logger.warn(`failed download id=${item.id} error=${msg}`);
     updateQueueItem(item.id, {
       status: 'failed',
       error: msg,

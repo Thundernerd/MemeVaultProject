@@ -3,6 +3,7 @@ import path from 'path';
 import https from 'https';
 import { execFileSync } from 'child_process';
 import { getSetting, getDataDir } from './db';
+import { logger } from './logger';
 
 export type BinaryName = 'ytdlp' | 'gallery-dl' | 'ffmpeg';
 
@@ -121,7 +122,7 @@ export function checkBinary(name: BinaryName): BinaryStatus {
         version = out.split('\n')[0].trim();
       }
     } catch (err) {
-      console.warn(`[memevaultproject] checkBinary(${name}): version check failed:`, err instanceof Error ? err.message : err);
+      logger.warn(`checkBinary(${name}): version check failed:`, err instanceof Error ? err.message : err);
     }
   }
 
@@ -294,12 +295,12 @@ export async function ensureBinaries(): Promise<void> {
 
     const status = checkBinary(name);
     if (!status.exists) {
-      console.log(`[memevaultproject] ${name} not found, downloading…`);
+      logger.info(`${name} not found, downloading…`);
       try {
         const result = await downloadBinary(name);
-        console.log(`[memevaultproject] ${name} downloaded: ${result.path} (${result.version})`);
+        logger.info(`${name} downloaded: ${result.path} (${result.version})`);
       } catch (err) {
-        console.error(`[memevaultproject] Failed to download ${name}:`, err);
+        logger.error(`Failed to download ${name}:`, err);
       }
     }
   }
