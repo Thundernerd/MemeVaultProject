@@ -11,7 +11,10 @@ const geistSans = Geist({
 export const metadata: Metadata = {
   title: "MVP",
   description: "Media downloader and library",
-  icons: { icon: '/safe.png' },
+  icons: {
+    icon: '/safe.png',
+    apple: '/apple-touch-icon.png',
+  },
 };
 
 // Inline script applied before paint to avoid FOUC

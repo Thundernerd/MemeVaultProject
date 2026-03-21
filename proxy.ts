@@ -26,6 +26,7 @@ export const config = {
     //   /api/share/*   Public token-based file API
     //   /api/v1/*      External API (keeps API key auth)
     //   favicon.ico
-    '/((?!_next/|share/|auth/|api/auth/|api/share/|api/v1/|favicon\\.ico).*)',
+    //   safe.png        App icon used in pages
+    '/((?!_next/|share/|auth/|api/auth/|api/share/|api/v1/|favicon\\.ico|safe\\.png).*)',
   ],
 };
