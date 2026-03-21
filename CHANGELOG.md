@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-03-21
+
 ### Fixes
 - Manual uploads now tagged as `platform:upload` instead of `source:upload`
 
