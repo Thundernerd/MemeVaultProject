@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
 import LoginClient from './LoginClient';
 
+export const dynamic = 'force-dynamic';
+
 export default function LoginPage() {
   const oidcEnabled = !!(
     process.env.MEMEVAULTPROJECT_OIDC_ISSUER &&
