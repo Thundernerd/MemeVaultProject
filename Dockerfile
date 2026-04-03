@@ -13,7 +13,13 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run build
+RUN --mount=type=secret,id=SENTRY_AUTH_TOKEN \
+    --mount=type=secret,id=SENTRY_ORG \
+    --mount=type=secret,id=SENTRY_PROJECT \
+    SENTRY_AUTH_TOKEN=$(cat /run/secrets/SENTRY_AUTH_TOKEN 2>/dev/null || true) \
+    SENTRY_ORG=$(cat /run/secrets/SENTRY_ORG 2>/dev/null || true) \
+    SENTRY_PROJECT=$(cat /run/secrets/SENTRY_PROJECT 2>/dev/null || true) \
+    npm run build
 
 # ── Stage 2: production runtime ───────────────────────────────────────────────
 # Use Debian slim (glibc) so that yt-dlp and gallery-dl standalone binaries

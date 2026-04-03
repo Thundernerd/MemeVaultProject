@@ -1,5 +1,9 @@
+import * as Sentry from "@sentry/nextjs";
+
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    await import('./sentry.server.config');
+
     const { getDb } = await import('./lib/db');
     const { startQueueProcessor } = await import('./lib/queue');
     const { ensureBinaries } = await import('./lib/binaries');
@@ -11,4 +15,11 @@ export async function register() {
       logger.error('ensureBinaries error:', err)
     );
   }
+
+  if (process.env.NEXT_RUNTIME === 'edge') {
+    await import('./sentry.edge.config');
+  }
 }
+
+// Automatically captures all unhandled server-side request errors
+export const onRequestError = Sentry.captureRequestError;

@@ -136,6 +136,10 @@ jobs:
             ${{ env.IMAGE }}:${{ steps.version.outputs.major_minor }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          secrets: |
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+            SENTRY_ORG=${{ secrets.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}
 
       - name: Build and push (prerelease)
         if: steps.version.outputs.is_prerelease == 'true'
@@ -146,3 +150,7 @@ jobs:
           tags: ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          secrets: |
+            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
+            SENTRY_ORG=${{ secrets.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}
