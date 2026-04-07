@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-04-07
+
 ### Features
 - Share entire albums via shareable links, displayed as an interactive gallery with lightbox viewer
 
