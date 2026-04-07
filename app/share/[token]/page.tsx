@@ -33,14 +33,41 @@ export default async function SharePage({
       has_thumbnail: !!m.thumbnail_path,
     }));
 
+    const baseUrl = (getSetting('share_base_url') ?? '').replace(/\/$/, '');
+    const firstItem = media[0];
+    const firstThumbPath = firstItem
+      ? firstItem.has_thumbnail
+        ? `/api/share/${token}/media/${firstItem.id}/thumbnail`
+        : `/api/share/${token}/media/${firstItem.id}/file`
+      : null;
+    const absThumb = baseUrl && firstThumbPath ? `${baseUrl}${firstThumbPath}` : null;
+
     return (
-      <ShareAlbumGallery
-        token={token}
-        albumTitle={displayTitle}
-        albumUploader={albumWithMedia.uploader}
-        allowDownload={allowDownload}
-        media={media}
-      />
+      <>
+        {absThumb && (
+          <>
+            <meta property="og:type" content="website" />
+            <meta property="og:title" content={displayTitle} />
+            <meta property="og:image" content={absThumb} />
+            {albumWithMedia.uploader && (
+              <meta property="og:description" content={`${media.length} items · ${albumWithMedia.uploader}`} />
+            )}
+            {!albumWithMedia.uploader && (
+              <meta property="og:description" content={`${media.length} items`} />
+            )}
+            <meta name="twitter:card" content="summary_large_image" />
+            <meta name="twitter:title" content={displayTitle} />
+            <meta name="twitter:image" content={absThumb} />
+          </>
+        )}
+        <ShareAlbumGallery
+          token={token}
+          albumTitle={displayTitle}
+          albumUploader={albumWithMedia.uploader}
+          allowDownload={allowDownload}
+          media={media}
+        />
+      </>
     );
   }
 
