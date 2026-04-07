@@ -10,6 +10,9 @@ interface Props {
   item: MediaItemWithTags;
   onClose: () => void;
   onDeleted: () => void;
+  onPrev?: () => void;
+  onNext?: () => void;
+  position?: { current: number; total: number };
 }
 
 function formatDuration(secs: number): string {
@@ -27,7 +30,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-export default function MediaModal({ item, onClose, onDeleted }: Props) {
+export default function MediaModal({ item, onClose, onDeleted, onPrev, onNext, position }: Props) {
   const [descExpanded, setDescExpanded] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [includeInRandom, setIncludeInRandom] = useState(item.include_in_random === 1);
@@ -50,12 +53,14 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
   const fileSrc = `/api/media/${item.id}/file`;
   const thumbnailSrc = item.thumbnail_path ? `/api/media/${item.id}/thumbnail` : null;
 
-  // Close on Escape
+  // Close on Escape, navigate on arrow keys
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowLeft') onPrev?.();
+      else if (e.key === 'ArrowRight') onNext?.();
     },
-    [onClose]
+    [onClose, onPrev, onNext]
   );
 
   useEffect(() => {
@@ -245,7 +250,7 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
         </button>
 
         {/* Media area */}
-        <div className="bg-black flex items-center justify-center" style={{ maxHeight: '60vh' }}>
+        <div className="relative bg-black flex items-center justify-center" style={{ maxHeight: '60vh' }}>
           {item.type === 'video' ? (
             <video
               src={fileSrc}
@@ -268,6 +273,33 @@ export default function MediaModal({ item, onClose, onDeleted }: Props) {
                 }
               }}
             />
+          )}
+
+          {/* Carousel prev/next buttons */}
+          {onPrev && (
+            <button
+              onClick={onPrev}
+              className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white rounded-full w-9 h-9 flex items-center justify-center transition-colors"
+              aria-label="Previous"
+            >
+              ‹
+            </button>
+          )}
+          {onNext && (
+            <button
+              onClick={onNext}
+              className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/80 text-white rounded-full w-9 h-9 flex items-center justify-center transition-colors"
+              aria-label="Next"
+            >
+              ›
+            </button>
+          )}
+
+          {/* Position indicator */}
+          {position && (
+            <span className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full">
+              {position.current} / {position.total}
+            </span>
           )}
         </div>
 
