@@ -99,6 +99,16 @@ function initSchema(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_share_links_media ON share_links(media_id);
 
+    CREATE TABLE IF NOT EXISTS album_share_links (
+      token          TEXT PRIMARY KEY,
+      album_id       TEXT NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+      allow_download INTEGER NOT NULL DEFAULT 1,
+      expires_at     TEXT,
+      created_at     TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_album_share_links_album ON album_share_links(album_id);
+
     CREATE TABLE IF NOT EXISTS api_keys (
       id           TEXT PRIMARY KEY,
       name         TEXT NOT NULL,
@@ -560,11 +570,11 @@ export function insertAlbum(item: Omit<Album, 'id' | 'created_at'>): Album {
   return full;
 }
 
-function getAlbum(id: string): Album | undefined {
+export function getAlbum(id: string): Album | undefined {
   return getDb().prepare('SELECT * FROM albums WHERE id = ?').get(id) as Album | undefined;
 }
 
-function getMediaItemsByAlbum(albumId: string): MediaItemWithTags[] {
+export function getMediaItemsByAlbum(albumId: string): MediaItemWithTags[] {
   const rows = getDb()
     .prepare(
       `SELECT m.*, t.id AS tag_id, t.name AS tag_name, t.created_at AS tag_created_at
@@ -652,6 +662,53 @@ export function getShareLinksForMedia(mediaId: string): ShareLink[] {
   return getDb()
     .prepare('SELECT * FROM share_links WHERE media_id = ? ORDER BY created_at DESC')
     .all(mediaId) as ShareLink[];
+}
+
+// ── Album Share Links ─────────────────────────────────────────────────────────
+
+export interface AlbumShareLink {
+  token: string;
+  album_id: string;
+  allow_download: number; // 1 = allowed, 0 = not allowed
+  expires_at: string | null;
+  created_at: string;
+}
+
+export function createAlbumShareLink(
+  albumId: string,
+  allowDownload: boolean,
+  expiresAt: string | null
+): AlbumShareLink {
+  const link: AlbumShareLink = {
+    token: uuidv4(),
+    album_id: albumId,
+    allow_download: allowDownload ? 1 : 0,
+    expires_at: expiresAt,
+    created_at: new Date().toISOString(),
+  };
+  getDb()
+    .prepare(
+      `INSERT INTO album_share_links (token, album_id, allow_download, expires_at, created_at)
+       VALUES (@token, @album_id, @allow_download, @expires_at, @created_at)`
+    )
+    .run(link);
+  return link;
+}
+
+export function getAlbumShareLink(token: string): AlbumShareLink | undefined {
+  return getDb()
+    .prepare('SELECT * FROM album_share_links WHERE token = ?')
+    .get(token) as AlbumShareLink | undefined;
+}
+
+export function deleteAlbumShareLink(token: string): void {
+  getDb().prepare('DELETE FROM album_share_links WHERE token = ?').run(token);
+}
+
+export function getAlbumShareLinksForAlbum(albumId: string): AlbumShareLink[] {
+  return getDb()
+    .prepare('SELECT * FROM album_share_links WHERE album_id = ? ORDER BY created_at DESC')
+    .all(albumId) as AlbumShareLink[];
 }
 
 // ── API Keys ──────────────────────────────────────────────────────────────────

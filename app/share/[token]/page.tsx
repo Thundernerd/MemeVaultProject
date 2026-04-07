@@ -1,7 +1,8 @@
-import { getShareLink, getMediaItem, getSetting } from '@/lib/db';
+import { getShareLink, getMediaItem, getSetting, getAlbumShareLink, getAlbumWithMedia } from '@/lib/db';
 import { mimeType } from '@/lib/utils';
 import { notFound } from 'next/navigation';
 import path from 'path';
+import ShareAlbumGallery from '@/components/ShareAlbumGallery';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,38 @@ export default async function SharePage({
 }) {
   const { token } = await params;
 
+  // ── Album share ──────────────────────────────────────────────────────────────
+  const albumLink = getAlbumShareLink(token);
+  if (albumLink) {
+    if (albumLink.expires_at && new Date(albumLink.expires_at) < new Date()) notFound();
+
+    const albumWithMedia = getAlbumWithMedia(albumLink.album_id);
+    if (!albumWithMedia) notFound();
+
+    const allowDownload = albumLink.allow_download === 1;
+    const displayTitle = albumWithMedia.title ?? 'Shared album';
+
+    const media = albumWithMedia.media.map((m) => ({
+      id: m.id,
+      type: m.type,
+      title: m.title,
+      width: m.width,
+      height: m.height,
+      has_thumbnail: !!m.thumbnail_path,
+    }));
+
+    return (
+      <ShareAlbumGallery
+        token={token}
+        albumTitle={displayTitle}
+        albumUploader={albumWithMedia.uploader}
+        allowDownload={allowDownload}
+        media={media}
+      />
+    );
+  }
+
+  // ── Media share ──────────────────────────────────────────────────────────────
   const link = getShareLink(token);
   if (!link) notFound();
   if (link.expires_at && new Date(link.expires_at) < new Date()) notFound();
