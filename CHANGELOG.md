@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Features
+- Album share pages include OG embed meta tags so Discord and similar platforms show a preview
+
 ## [0.22.0] - 2026-04-07
 
 ### Features
