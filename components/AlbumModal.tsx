@@ -13,19 +13,24 @@ interface Props {
 
 export default function AlbumModal({ album, onClose, onDeleted }: Props) {
   const [deleting, setDeleting] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<ModalMediaItem | null>(null);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
 
   const visibleMedia = album.media.filter((m) => !deletedIds.has(m.id));
+  const selectedItem = selectedIndex !== null ? (visibleMedia[selectedIndex] ?? null) : null;
 
   const handleKey = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (selectedItem) setSelectedItem(null);
+        if (selectedIndex !== null) setSelectedIndex(null);
         else onClose();
+      } else if (e.key === 'ArrowRight' && selectedIndex !== null) {
+        setSelectedIndex((i) => (i !== null ? Math.min(i + 1, visibleMedia.length - 1) : null));
+      } else if (e.key === 'ArrowLeft' && selectedIndex !== null) {
+        setSelectedIndex((i) => (i !== null ? Math.max(i - 1, 0) : null));
       }
     },
-    [onClose, selectedItem]
+    [onClose, selectedIndex, visibleMedia.length]
   );
 
   useEffect(() => {
@@ -106,7 +111,7 @@ export default function AlbumModal({ album, onClose, onDeleted }: Props) {
                 <div
                   key={item.id}
                   className="bg-surface-2 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-accent/50 transition-all group"
-                  onClick={() => setSelectedItem(item)}
+                  onClick={() => setSelectedIndex(visibleMedia.indexOf(item))}
                 >
                   <div className="aspect-square overflow-hidden">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -145,12 +150,15 @@ export default function AlbumModal({ album, onClose, onDeleted }: Props) {
       {selectedItem && (
         <MediaModal
           item={selectedItem}
-          onClose={() => setSelectedItem(null)}
+          onClose={() => setSelectedIndex(null)}
           onDeleted={() => {
             setDeletedIds((prev) => new Set([...prev, selectedItem.id]));
-            setSelectedItem(null);
+            setSelectedIndex(null);
             onDeleted();
           }}
+          onPrev={selectedIndex !== null && selectedIndex > 0 ? () => setSelectedIndex((i) => (i ?? 0) - 1) : undefined}
+          onNext={selectedIndex !== null && selectedIndex < visibleMedia.length - 1 ? () => setSelectedIndex((i) => (i ?? 0) + 1) : undefined}
+          position={selectedIndex !== null ? { current: selectedIndex + 1, total: visibleMedia.length } : undefined}
         />
       )}
     </div>
