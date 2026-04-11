@@ -163,10 +163,15 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
       }
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
+    const message = err instanceof Error ? err.message : String(err);
     logger.error(`Discord: download error for url=${url}: ${message}`);
     try {
-      await interaction.editReply(`Failed to download: ${message}`);
+      const logBuffer = Buffer.from(message, 'utf-8');
+      const logAttachment = new AttachmentBuilder(logBuffer, { name: 'error.log' });
+      await interaction.editReply({
+        content: "Oops, seems like that didn't work!",
+        files: [logAttachment],
+      });
     } catch {
       // interaction may have already been replied to or expired
     }
