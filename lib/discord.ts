@@ -7,6 +7,7 @@ import {
   ChatInputCommandInteraction,
   AttachmentBuilder,
   Interaction,
+  DiscordAPIError,
 } from 'discord.js';
 import os from 'os';
 import fs from 'fs';
@@ -16,9 +17,6 @@ import { getSetting } from './db';
 import { runYtdlp } from './ytdlp';
 import { runGalleryDl } from './gallerydl';
 import { logger } from './logger';
-
-// Discord's maximum attachment size (25 MB for standard servers)
-const DISCORD_SIZE_LIMIT = 25 * 1024 * 1024;
 
 let client: Client | null = null;
 
@@ -111,16 +109,6 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
   try {
     if (type === 'video') {
       const result = await runYtdlp(url, () => {}, undefined, tmpDir);
-      const stat = fs.statSync(result.filePath);
-
-      if (stat.size > DISCORD_SIZE_LIMIT) {
-        const sizeMb = (stat.size / 1024 / 1024).toFixed(1);
-        await interaction.editReply(
-          `The file is too large to post (${sizeMb} MB). Discord's limit is 25 MB.`
-        );
-        return;
-      }
-
       await interaction.editReply({ files: [new AttachmentBuilder(result.filePath)] });
     } else {
       const results = await runGalleryDl(url, () => {}, undefined, tmpDir);
@@ -130,22 +118,12 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
         return;
       }
 
-      const valid = results.filter((r) => fs.statSync(r.filePath).size <= DISCORD_SIZE_LIMIT);
-      const oversizedCount = results.length - valid.length;
-
-      if (valid.length === 0) {
-        await interaction.editReply(
-          `All ${results.length} file(s) exceed Discord's 25 MB limit and cannot be posted.`
-        );
-        return;
-      }
-
       // Post in batches of 10 (Discord's per-message attachment limit)
       const BATCH_SIZE = 10;
       let firstReply = true;
 
-      for (let i = 0; i < valid.length; i += BATCH_SIZE) {
-        const batch = valid.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < results.length; i += BATCH_SIZE) {
+        const batch = results.slice(i, i + BATCH_SIZE);
         const attachments = batch.map((r) => new AttachmentBuilder(r.filePath));
 
         if (firstReply) {
@@ -155,23 +133,18 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
           await interaction.followUp({ files: attachments });
         }
       }
-
-      if (oversizedCount > 0) {
-        await interaction.followUp(
-          `${oversizedCount} file(s) were skipped because they exceed Discord's 25 MB limit.`
-        );
-      }
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error(`Discord: download error for url=${url}: ${message}`);
+    const isTooLarge = err instanceof DiscordAPIError && err.code === 40005;
+    const replyContent = isTooLarge
+      ? 'The file is too large to post on Discord.'
+      : "Oops, seems like that didn't work!";
     try {
       const logBuffer = Buffer.from(message, 'utf-8');
       const logAttachment = new AttachmentBuilder(logBuffer, { name: 'error.log' });
-      await interaction.editReply({
-        content: "Oops, seems like that didn't work!",
-        files: [logAttachment],
-      });
+      await interaction.editReply({ content: replyContent, files: [logAttachment] });
     } catch {
       // interaction may have already been replied to or expired
     }
