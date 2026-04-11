@@ -118,14 +118,11 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
     if (type === 'video') {
       const result = await runYtdlp(url, () => {}, undefined, tmpDir);
 
-      const title = result.metadata.title ?? url;
       const filename = path.basename(result.filePath);
 
       const container = new ContainerBuilder()
         .addTextDisplayComponents(
-          new TextDisplayBuilder().setContent(
-            `<@${interaction.user.id}>\n${title.length > 4096 ? title.slice(0, 4093) + '…' : title}`
-          )
+          new TextDisplayBuilder().setContent(`Submission by <@${interaction.user.id}>`)
         )
         .addMediaGalleryComponents(
           new MediaGalleryBuilder().addItems(
