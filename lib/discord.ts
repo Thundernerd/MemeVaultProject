@@ -115,9 +115,11 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
       const result = await runYtdlp(url, () => {}, undefined, tmpDir);
 
       const title = result.metadata.title ?? url;
+      const filename = path.basename(result.filePath);
       const embed = new EmbedBuilder()
         .setTitle(title.length > 256 ? title.slice(0, 253) + '…' : title)
-        .setURL(url);
+        .setURL(url)
+        .setImage(`attachment://${filename}`);
 
       const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Open original').setURL(url)
