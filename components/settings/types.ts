@@ -10,6 +10,10 @@ export interface Settings {
   share_default_allow_download: string;
   share_base_url: string;
   random_mode: string;
+  discord_enabled: string;
+  discord_bot_token: string;
+  discord_client_id: string;
+  discord_command_name: string;
   _overridden_by_env: string[];
 }
 
