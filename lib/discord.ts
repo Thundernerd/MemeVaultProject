@@ -6,6 +6,10 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   AttachmentBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
   Interaction,
   DiscordAPIError,
 } from 'discord.js';
@@ -109,7 +113,21 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
   try {
     if (type === 'video') {
       const result = await runYtdlp(url, () => {}, undefined, tmpDir);
-      await interaction.editReply({ files: [new AttachmentBuilder(result.filePath)] });
+
+      const title = result.metadata.title ?? url;
+      const embed = new EmbedBuilder()
+        .setTitle(title.length > 256 ? title.slice(0, 253) + '…' : title)
+        .setURL(url);
+
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Open original').setURL(url)
+      );
+
+      await interaction.editReply({
+        embeds: [embed],
+        files: [new AttachmentBuilder(result.filePath)],
+        components: [row],
+      });
     } else {
       const results = await runGalleryDl(url, () => {}, undefined, tmpDir);
 
