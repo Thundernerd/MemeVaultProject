@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-04-11
+
 ### Features
 - Integrated Discord bot that downloads media on demand via a configurable slash command and posts it directly to the channel
 
