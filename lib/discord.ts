@@ -148,19 +148,47 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
         return;
       }
 
-      // Post in batches of 10 (Discord's per-message attachment limit)
+      // Post in batches of 10 (Discord's MediaGallery item limit per message)
       const BATCH_SIZE = 10;
-      let firstReply = true;
 
       for (let i = 0; i < results.length; i += BATCH_SIZE) {
         const batch = results.slice(i, i + BATCH_SIZE);
         const attachments = batch.map((r) => new AttachmentBuilder(r.filePath));
 
-        if (firstReply) {
-          await interaction.editReply({ files: attachments });
-          firstReply = false;
+        const gallery = new MediaGalleryBuilder().addItems(
+          batch.map((r) => new MediaGalleryItemBuilder().setURL(`attachment://${path.basename(r.filePath)}`))
+        );
+
+        const container = new ContainerBuilder();
+
+        if (i === 0) {
+          container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`Submission by <@${interaction.user.id}>`)
+          );
+        }
+
+        container.addMediaGalleryComponents(gallery);
+
+        if (i === 0) {
+          container.addActionRowComponents(
+            new ActionRowBuilder<ButtonBuilder>().addComponents(
+              new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Open original').setURL(url)
+            )
+          );
+        }
+
+        if (i === 0) {
+          await interaction.editReply({
+            flags: MessageFlags.IsComponentsV2,
+            components: [container],
+            files: attachments,
+          });
         } else {
-          await interaction.followUp({ files: attachments });
+          await interaction.followUp({
+            flags: MessageFlags.IsComponentsV2,
+            components: [container],
+            files: attachments,
+          });
         }
       }
     }
