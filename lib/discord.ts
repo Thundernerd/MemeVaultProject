@@ -6,13 +6,13 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   AttachmentBuilder,
+  ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   ContainerBuilder,
   MediaGalleryBuilder,
   MediaGalleryItemBuilder,
   MessageFlags,
-  SectionBuilder,
   TextDisplayBuilder,
   Interaction,
   DiscordAPIError,
@@ -122,20 +122,19 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
       const filename = path.basename(result.filePath);
 
       const container = new ContainerBuilder()
-        .addSectionComponents(
-          new SectionBuilder()
-            .addTextDisplayComponents(
-              new TextDisplayBuilder().setContent(
-                title.length > 4096 ? title.slice(0, 4093) + '…' : title
-              )
-            )
-            .setButtonAccessory(
-              new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Open original').setURL(url)
-            )
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            title.length > 4096 ? title.slice(0, 4093) + '…' : title
+          )
         )
         .addMediaGalleryComponents(
           new MediaGalleryBuilder().addItems(
             new MediaGalleryItemBuilder().setURL(`attachment://${filename}`)
+          )
+        )
+        .addActionRowComponents(
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Open original').setURL(url)
           )
         );
 
