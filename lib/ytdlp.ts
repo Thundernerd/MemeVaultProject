@@ -28,9 +28,10 @@ export interface YtdlpMetadata {
 export async function runYtdlp(
   url: string,
   onProgress: (pct: number) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  outputDir?: string
 ): Promise<YtdlpResult> {
-  const downloadPath = getSetting('download_path') ?? '.';
+  const downloadPath = outputDir ?? getSetting('download_path') ?? '.';
   const extraArgs = getSetting('ytdlp_extra_args') ?? '';
 
   fs.mkdirSync(downloadPath, { recursive: true });

@@ -30,9 +30,10 @@ export interface GalleryDlMetadata {
 export async function runGalleryDl(
   url: string,
   onProgress: (filesDownloaded: number) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  outputDir?: string
 ): Promise<GalleryDlFile[]> {
-  const downloadPath = getSetting('download_path') ?? '.';
+  const downloadPath = outputDir ?? getSetting('download_path') ?? '.';
   const extraArgs = getSetting('gallerydl_extra_args') ?? '';
 
   fs.mkdirSync(downloadPath, { recursive: true });

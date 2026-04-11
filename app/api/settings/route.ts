@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllSettings, setSetting, getEnvOverriddenKeys } from '@/lib/db';
+import { restartDiscordBot } from '@/lib/discord';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function GET() {
@@ -27,17 +28,29 @@ export async function PUT(req: NextRequest) {
     'share_default_allow_download',
     'share_base_url',
     'random_mode',
+    'discord_enabled',
+    'discord_bot_token',
+    'discord_client_id',
+    'discord_command_name',
   ];
+
+  const discordKeys = new Set(['discord_enabled', 'discord_bot_token', 'discord_client_id', 'discord_command_name']);
+  let discordChanged = false;
 
   for (const key of allowed) {
     if (key in body && typeof body[key] === 'string') {
       setSetting(key, body[key]);
+      if (discordKeys.has(key)) discordChanged = true;
     }
   }
 
   // Regenerate API key if explicitly requested
   if (body.regenerate_api_key === 'true') {
     setSetting('api_key', uuidv4());
+  }
+
+  if (discordChanged) {
+    restartDiscordBot().catch(() => {});
   }
 
   const overriddenByEnv = getEnvOverriddenKeys();

@@ -9,6 +9,7 @@ const tabs = [
   { href: '/settings/cookies', label: 'Cookies' },
   { href: '/settings/sharing', label: 'Sharing' },
   { href: '/settings/api', label: 'API' },
+  { href: '/settings/discord', label: 'Discord' },
 ];
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {

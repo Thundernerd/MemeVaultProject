@@ -7,12 +7,16 @@ export async function register() {
     const { getDb } = await import('./lib/db');
     const { startQueueProcessor } = await import('./lib/queue');
     const { ensureBinaries } = await import('./lib/binaries');
+    const { startDiscordBot } = await import('./lib/discord');
     const { logger } = await import('./lib/logger');
     getDb();
     startQueueProcessor();
     // Run in background — never block server startup
     ensureBinaries().catch((err) =>
       logger.error('ensureBinaries error:', err)
+    );
+    startDiscordBot().catch((err) =>
+      logger.error('startDiscordBot error:', err)
     );
   }
 
