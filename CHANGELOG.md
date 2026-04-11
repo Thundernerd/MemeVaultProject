@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Features
+- Discord bot image/album replies now use a components v2 media gallery container matching the video layout
+
 ## [0.24.0] - 2026-04-11
 
 ### Features
