@@ -124,7 +124,7 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
       const container = new ContainerBuilder()
         .addTextDisplayComponents(
           new TextDisplayBuilder().setContent(
-            title.length > 4096 ? title.slice(0, 4093) + '…' : title
+            `<@${interaction.user.id}>\n${title.length > 4096 ? title.slice(0, 4093) + '…' : title}`
           )
         )
         .addMediaGalleryComponents(
