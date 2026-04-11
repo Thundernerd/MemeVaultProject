@@ -6,10 +6,14 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   AttachmentBuilder,
-  ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
+  ContainerBuilder,
+  MediaGalleryBuilder,
+  MediaGalleryItemBuilder,
+  MessageFlags,
+  SectionBuilder,
+  TextDisplayBuilder,
   Interaction,
   DiscordAPIError,
 } from 'discord.js';
@@ -116,19 +120,29 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
 
       const title = result.metadata.title ?? url;
       const filename = path.basename(result.filePath);
-      const embed = new EmbedBuilder()
-        .setTitle(title.length > 256 ? title.slice(0, 253) + '…' : title)
-        .setURL(url)
-        .setImage(`attachment://${filename}`);
 
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Open original').setURL(url)
-      );
+      const container = new ContainerBuilder()
+        .addSectionComponents(
+          new SectionBuilder()
+            .addTextDisplayComponents(
+              new TextDisplayBuilder().setContent(
+                title.length > 4096 ? title.slice(0, 4093) + '…' : title
+              )
+            )
+            .setButtonAccessory(
+              new ButtonBuilder().setStyle(ButtonStyle.Link).setLabel('Open original').setURL(url)
+            )
+        )
+        .addMediaGalleryComponents(
+          new MediaGalleryBuilder().addItems(
+            new MediaGalleryItemBuilder().setURL(`attachment://${filename}`)
+          )
+        );
 
       await interaction.editReply({
-        embeds: [embed],
+        flags: MessageFlags.IsComponentsV2,
+        components: [container],
         files: [new AttachmentBuilder(result.filePath)],
-        components: [row],
       });
     } else {
       const results = await runGalleryDl(url, () => {}, undefined, tmpDir);
