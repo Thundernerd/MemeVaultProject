@@ -5,7 +5,14 @@
 ## [0.24.0] - 2026-04-11
 
 ### Features
-- Integrated Discord bot that downloads media on demand via a configurable slash command and posts it directly to the channel
+- Integrated Discord bot that runs inside the Next.js process and starts automatically on server startup
+- Configurable slash command (name, bot token, client ID, enabled toggle) via a new Discord settings page
+- Command accepts a URL and an optional type (`video` / `image`, defaults to video)
+- Video replies use a components v2 container with inline video player and an "Open original" link button
+- Image and album replies post all files in a components v2 media gallery with an "Open original" link button
+- Each reply is headed with "Submission by @user" crediting the invoking user
+- Failed downloads reply with a friendly message and attach an `error.log` with the full error details
+- Downloaded files are written to the system temp directory and deleted immediately after posting
 
 ## [0.23.0] - 2026-04-07
 
