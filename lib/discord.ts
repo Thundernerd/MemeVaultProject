@@ -44,7 +44,7 @@ export async function startDiscordBot(): Promise<void> {
 
   client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-  client.once('ready', (c) => {
+  client.once('clientReady', (c) => {
     logger.info(`Discord bot ready: ${c.user.tag}`);
   });
 
