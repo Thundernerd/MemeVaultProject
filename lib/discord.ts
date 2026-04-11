@@ -17,8 +17,8 @@ import { runYtdlp } from './ytdlp';
 import { runGalleryDl } from './gallerydl';
 import { logger } from './logger';
 
-// Discord's maximum attachment size (10 MB for standard servers)
-const DISCORD_SIZE_LIMIT = 10 * 1024 * 1024;
+// Discord's maximum attachment size (25 MB for standard servers)
+const DISCORD_SIZE_LIMIT = 25 * 1024 * 1024;
 
 let client: Client | null = null;
 
@@ -116,7 +116,7 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
       if (stat.size > DISCORD_SIZE_LIMIT) {
         const sizeMb = (stat.size / 1024 / 1024).toFixed(1);
         await interaction.editReply(
-          `The file is too large to post (${sizeMb} MB). Discord's limit is 10 MB.`
+          `The file is too large to post (${sizeMb} MB). Discord's limit is 25 MB.`
         );
         return;
       }
@@ -135,7 +135,7 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
 
       if (valid.length === 0) {
         await interaction.editReply(
-          `All ${results.length} file(s) exceed Discord's 10 MB limit and cannot be posted.`
+          `All ${results.length} file(s) exceed Discord's 25 MB limit and cannot be posted.`
         );
         return;
       }
@@ -158,7 +158,7 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
 
       if (oversizedCount > 0) {
         await interaction.followUp(
-          `${oversizedCount} file(s) were skipped because they exceed Discord's 10 MB limit.`
+          `${oversizedCount} file(s) were skipped because they exceed Discord's 25 MB limit.`
         );
       }
     }

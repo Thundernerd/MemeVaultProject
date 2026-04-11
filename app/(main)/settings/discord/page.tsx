@@ -52,7 +52,6 @@ export default function DiscordSettingsPage() {
         <p className="text-sm text-text-muted">
           Run a Discord bot that lets you download media and post it directly in a channel via a slash command.
           The bot starts automatically when the app starts and restarts whenever these settings are saved.
-          Files larger than 10 MB cannot be posted and will be skipped with an explanatory message.
         </p>
       </div>
 
