@@ -4,6 +4,7 @@ import {
   getNextPendingItem,
   getQueueItem,
   countActiveDownloads,
+  resetStaleDownloads,
   updateQueueItem,
   insertMediaItem,
   insertAlbum,
@@ -23,9 +24,9 @@ export function cancelDownload(id: string): boolean {
     controller.abort();
     return true;
   }
-  // Item is pending (not yet processing) — mark cancelled directly
+  // Item is pending or a stale downloading (no active process) — mark cancelled directly
   const item = getQueueItem(id);
-  if (item && item.status === 'pending') {
+  if (item && (item.status === 'pending' || item.status === 'downloading')) {
     updateQueueItem(id, { status: 'cancelled', completed_at: new Date().toISOString() });
     return true;
   }
@@ -35,6 +36,8 @@ export function cancelDownload(id: string): boolean {
 export function startQueueProcessor(): void {
   if (initialized) return;
   initialized = true;
+  const stale = resetStaleDownloads();
+  if (stale > 0) logger.info(`reset ${stale} stale downloading item(s) to pending`);
   scheduleNext();
 }
 

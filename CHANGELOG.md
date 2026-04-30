@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixes
+- Stale downloading items are reset to pending on startup; cancelling orphaned downloads now works correctly
+
 ## [0.25.0] - 2026-04-30
 
 ### Features

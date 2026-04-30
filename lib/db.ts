@@ -285,6 +285,13 @@ export function countActiveDownloads(): number {
   return row.n;
 }
 
+export function resetStaleDownloads(): number {
+  const result = getDb()
+    .prepare(`UPDATE queue_items SET status = 'pending', progress = 0 WHERE status = 'downloading'`)
+    .run();
+  return result.changes;
+}
+
 const QUEUE_UPDATABLE_FIELDS = new Set<string>(['status', 'progress', 'error', 'completed_at']);
 
 export function updateQueueItem(
