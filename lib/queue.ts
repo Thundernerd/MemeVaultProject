@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import {
   getNextPendingItem,
+  getQueueItem,
   countActiveDownloads,
   updateQueueItem,
   insertMediaItem,
@@ -13,6 +14,23 @@ import { autoTagMedia } from './autotag';
 import { logger } from './logger';
 
 let initialized = false;
+
+const activeControllers = new Map<string, AbortController>();
+
+export function cancelDownload(id: string): boolean {
+  const controller = activeControllers.get(id);
+  if (controller) {
+    controller.abort();
+    return true;
+  }
+  // Item is pending (not yet processing) — mark cancelled directly
+  const item = getQueueItem(id);
+  if (item && item.status === 'pending') {
+    updateQueueItem(id, { status: 'cancelled', completed_at: new Date().toISOString() });
+    return true;
+  }
+  return false;
+}
 
 export function startQueueProcessor(): void {
   if (initialized) return;
@@ -33,15 +51,17 @@ async function processNext(): Promise<void> {
   const item = getNextPendingItem();
   if (!item) return;
 
+  const controller = new AbortController();
+  activeControllers.set(item.id, controller);
   updateQueueItem(item.id, { status: 'downloading', progress: 0 });
   logger.info(`starting download id=${item.id} downloader=${item.downloader} url=${item.url}`);
   const startedAt = Date.now();
 
   try {
     if (item.downloader === 'ytdlp') {
-      await processYtdlp(item.id, item.url);
+      await processYtdlp(item.id, item.url, controller.signal);
     } else {
-      await processGalleryDl(item.id, item.url);
+      await processGalleryDl(item.id, item.url, controller.signal);
     }
     const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
     logger.info(`completed download id=${item.id} elapsed=${elapsed}s`);
@@ -51,20 +71,27 @@ async function processNext(): Promise<void> {
       completed_at: new Date().toISOString(),
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.warn(`failed download id=${item.id} error=${msg}`);
-    updateQueueItem(item.id, {
-      status: 'failed',
-      error: msg,
-      completed_at: new Date().toISOString(),
-    });
+    if (controller.signal.aborted) {
+      logger.info(`cancelled download id=${item.id}`);
+      updateQueueItem(item.id, { status: 'cancelled', completed_at: new Date().toISOString() });
+    } else {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`failed download id=${item.id} error=${msg}`);
+      updateQueueItem(item.id, {
+        status: 'failed',
+        error: msg,
+        completed_at: new Date().toISOString(),
+      });
+    }
+  } finally {
+    activeControllers.delete(item.id);
   }
 }
 
-async function processYtdlp(queueItemId: string, url: string): Promise<void> {
+async function processYtdlp(queueItemId: string, url: string, signal: AbortSignal): Promise<void> {
   const result = await runYtdlp(url, (pct) => {
     updateQueueItem(queueItemId, { progress: pct });
-  });
+  }, signal);
 
   const m = result.metadata;
   const mediaItem = insertMediaItem({
@@ -94,10 +121,10 @@ async function processYtdlp(queueItemId: string, url: string): Promise<void> {
   });
 }
 
-async function processGalleryDl(queueItemId: string, url: string): Promise<void> {
+async function processGalleryDl(queueItemId: string, url: string, signal: AbortSignal): Promise<void> {
   const files = await runGalleryDl(url, (count) => {
     updateQueueItem(queueItemId, { progress: Math.min(count * 5, 95) });
-  });
+  }, signal);
 
   // For multi-image downloads, group everything into an album
   let albumId: string | null = null;

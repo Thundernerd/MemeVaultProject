@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Features
+- Cancel button on pending and downloading queue items; cancelled items show retry and remove actions
+
 ## [0.24.1] - 2026-04-11
 
 ### Features

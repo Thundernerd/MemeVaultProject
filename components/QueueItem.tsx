@@ -14,11 +14,13 @@ const statusColors: Record<QueueItem['status'], string> = {
   downloading: 'bg-blue-500/20 text-blue-400',
   completed: 'bg-green-500/20 text-green-400',
   failed: 'bg-red-500/20 text-red-400',
+  cancelled: 'bg-surface-2 text-text-muted',
 };
 
 export default function QueueItemRow({ item, onRemoved, onRetried }: Props) {
   const [removing, setRemoving] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   async function handleRetry() {
     setRetrying(true);
@@ -31,6 +33,20 @@ export default function QueueItemRow({ item, onRemoved, onRetried }: Props) {
       onRetried?.();
     } finally {
       setRetrying(false);
+    }
+  }
+
+  async function handleCancel() {
+    setCancelling(true);
+    try {
+      await fetch(`/api/queue/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel' }),
+      });
+      onRetried?.();
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -86,7 +102,16 @@ export default function QueueItemRow({ item, onRemoved, onRetried }: Props) {
           {new Date(item.created_at).toLocaleString()}
         </span>
         <div className="flex items-center gap-3">
-          {item.status !== 'downloading' && (
+          {(item.status === 'pending' || item.status === 'downloading') && (
+            <button
+              onClick={handleCancel}
+              disabled={cancelling}
+              className="text-xs text-text-muted hover:text-yellow-400 transition-colors disabled:opacity-50"
+            >
+              {cancelling ? 'Cancelling…' : 'Cancel'}
+            </button>
+          )}
+          {(item.status === 'failed' || item.status === 'cancelled' || item.status === 'completed') && (
             <button
               onClick={handleRetry}
               disabled={retrying}
@@ -95,7 +120,7 @@ export default function QueueItemRow({ item, onRemoved, onRetried }: Props) {
               {retrying ? 'Retrying…' : 'Retry'}
             </button>
           )}
-          {item.status !== 'downloading' && (
+          {(item.status === 'failed' || item.status === 'cancelled' || item.status === 'completed') && (
             <button
               onClick={handleRemove}
               disabled={removing}
