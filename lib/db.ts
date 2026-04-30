@@ -225,7 +225,7 @@ export function getEnvOverriddenKeys(): string[] {
 // ── Queue Items ──────────────────────────────────────────────────────────────
 
 export type Downloader = 'ytdlp' | 'gallery-dl';
-export type QueueStatus = 'pending' | 'downloading' | 'completed' | 'failed';
+export type QueueStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled';
 
 export interface QueueItem {
   id: string;
