@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/safe.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MVP — Meme Vault Project</title>
+    <script>
+      (function () {
+        try {
+          var theme = localStorage.getItem('mvp-theme') || 'dark';
+          var accent = localStorage.getItem('mvp-accent') || 'blue';
+          document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.setAttribute('data-accent', accent);
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.setAttribute('data-accent', 'blue');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
