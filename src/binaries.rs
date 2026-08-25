@@ -89,7 +89,18 @@ fn ytdlp_filename() -> &'static str {
     {
         "yt-dlp_linux_aarch64"
     }
-    #[cfg(all(not(target_os = "windows"), not(all(target_os = "linux", target_arch = "aarch64")), not(all(target_os = "macos", target_arch = "aarch64"))))]
+    // PyInstaller standalone (bundles Python). The plain `yt-dlp` asset is a
+    // zipimport that needs system python3 — which the Docker image does not ship.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    {
+        "yt-dlp_linux"
+    }
+    #[cfg(all(
+        not(target_os = "windows"),
+        not(all(target_os = "linux", target_arch = "aarch64")),
+        not(all(target_os = "linux", target_arch = "x86_64")),
+        not(all(target_os = "macos", target_arch = "aarch64"))
+    ))]
     {
         "yt-dlp"
     }
