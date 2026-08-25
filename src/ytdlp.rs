@@ -4,8 +4,10 @@ use crate::binaries;
 use crate::config::Config;
 use crate::cookies;
 use crate::db::{self, Db};
+use crate::ffprobe;
 use regex::Regex;
 use serde_json::Value;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
@@ -59,12 +61,21 @@ pub async fn run_ytdlp(
                 .to_string_lossy()
                 .into(),
         );
+        // TikTok (and some others) write covers as `.image`; convert so the UI can serve them.
+        args.push("--convert-thumbnails".into());
+        args.push("jpg".into());
     }
     if let Some(cookie) = cookies::cookie_path(config, "ytdlp") {
         if cookie.exists() {
             args.push("--cookies".into());
             args.push(cookie.to_string_lossy().into());
         }
+    }
+    // TikTok's default "best" is often HEVC. Chrome/Firefox play the AAC track and skip the
+    // video, which looks like an audio-only download. Prefer H.264 when the site offers it.
+    if is_tiktok_url(url) {
+        args.push("-S".into());
+        args.push("vcodec:h264".into());
     }
     args.push("-o".into());
     args.push(job_dir.join("%(title)s.%(ext)s").to_string_lossy().into());
@@ -81,6 +92,7 @@ pub async fn run_ytdlp(
         .spawn()?;
 
     let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
     let progress_re = Regex::new(r"\[download\]\s+([\d.]+)%").unwrap();
     let mut reader = BufReader::new(stdout).lines();
     let progress_tx = progress_tx.map(Arc::new);
@@ -95,6 +107,12 @@ pub async fn run_ytdlp(
                 }
             }
         }
+    };
+
+    // Drain stderr so ffmpeg thumbnail conversion cannot fill the pipe and deadlock.
+    let stderr_task = async {
+        let mut reader = BufReader::new(stderr).lines();
+        while let Ok(Some(_)) = reader.next_line().await {}
     };
 
     let wait_task = async {
@@ -112,18 +130,33 @@ pub async fn run_ytdlp(
         }
     };
 
-    let (_, status) = tokio::join!(read_task, wait_task);
+    let (_, _, status) = tokio::join!(read_task, stderr_task, wait_task);
     let status = status?;
     if !status.success() {
         // cancel was moved; check via channel clone before move — use status only
         anyhow::bail!("yt-dlp exited with {status}");
     }
 
-    finalize_job_dir(&job_dir)
+    let mut result = finalize_job_dir(&job_dir)?;
+    let thumb_missing = result
+        .thumbnail_path
+        .as_ref()
+        .map(|p| !p.exists())
+        .unwrap_or(true);
+    if thumb_missing {
+        let thumb = job_dir.join("thumbnail.jpg");
+        if ffprobe::generate_video_thumbnail(db, config, &result.file_path, &thumb).await {
+            result.thumbnail_path = Some(thumb);
+        } else {
+            result.thumbnail_path = None;
+        }
+    }
+    Ok(result)
 }
 
 fn finalize_job_dir(job_dir: &Path) -> anyhow::Result<YtdlpResult> {
     let mut video: Option<PathBuf> = None;
+    let mut audio: Option<PathBuf> = None;
     let mut thumb: Option<PathBuf> = None;
     let mut info: Option<PathBuf> = None;
 
@@ -131,46 +164,25 @@ fn finalize_job_dir(job_dir: &Path) -> anyhow::Result<YtdlpResult> {
         let entry = entry?;
         let path = entry.path();
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if name.ends_with(".info.json") {
-            info = Some(path);
-        } else if is_image_ext(&path) && (name.contains("thumbnail") || is_thumb_name(name)) {
+        if name.ends_with(".info.json") || name.ends_with(".part") {
+            if name.ends_with(".info.json") {
+                info = Some(path);
+            }
+            continue;
+        }
+        if is_image_ext(&path) {
             thumb = Some(path);
-        } else if is_video_ext(&path) || (is_media_ext(&path) && !name.ends_with(".json")) {
-            if video.is_none() && !name.ends_with(".json") && !is_image_ext(&path) {
-                video = Some(path);
-            } else if video.is_none() && is_video_ext(&path) {
-                video = Some(path);
-            }
+        } else if is_video_container(&path) {
+            // Prefer a real video file over an earlier audio-only download.
+            video = Some(path);
+        } else if is_audio_container(&path) && audio.is_none() {
+            audio = Some(path);
         }
     }
 
-    // Prefer video file; fall back to any non-json media
-    if video.is_none() {
-        for entry in std::fs::read_dir(job_dir)? {
-            let path = entry?.path();
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if name.ends_with(".json") || name.ends_with(".part") {
-                continue;
-            }
-            if is_media_ext(&path) {
-                video = Some(path);
-                break;
-            }
-        }
-    }
-
-    // Thumbnail: yt-dlp writes .webp/.jpg alongside
-    if thumb.is_none() {
-        for entry in std::fs::read_dir(job_dir)? {
-            let path = entry?.path();
-            if is_image_ext(&path) {
-                thumb = Some(path);
-                break;
-            }
-        }
-    }
-
-    let video = video.ok_or_else(|| anyhow::anyhow!("no media file found in job dir"))?;
+    let video = video
+        .or(audio)
+        .ok_or_else(|| anyhow::anyhow!("no media file found in job dir"))?;
     let ext = video
         .extension()
         .and_then(|e| e.to_str())
@@ -181,12 +193,27 @@ fn finalize_job_dir(job_dir: &Path) -> anyhow::Result<YtdlpResult> {
     }
 
     let final_thumb = if let Some(t) = thumb {
-        let text = t.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
-        let dest = job_dir.join(format!("thumbnail.{text}"));
-        if t != dest {
-            let _ = std::fs::rename(&t, &dest);
+        let mut ext = t
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("jpg")
+            .to_lowercase();
+        if ext == "image" || ext == "jpeg" {
+            ext = if ext == "image" {
+                detect_image_ext(&t).to_string()
+            } else {
+                "jpg".into()
+            };
         }
-        Some(dest)
+        let dest = job_dir.join(format!("thumbnail.{ext}"));
+        if t != dest {
+            std::fs::rename(&t, &dest)?;
+        }
+        if dest.exists() {
+            Some(dest)
+        } else {
+            None
+        }
     } else {
         None
     };
@@ -207,29 +234,133 @@ fn finalize_job_dir(job_dir: &Path) -> anyhow::Result<YtdlpResult> {
     })
 }
 
-fn is_video_ext(p: &Path) -> bool {
+fn ext_lower(p: &Path) -> String {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase()
+}
+
+fn is_video_container(p: &Path) -> bool {
     matches!(
-        p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase().as_str(),
-        "mp4" | "webm" | "mkv" | "avi" | "mov" | "flv" | "wmv" | "m4a" | "mp3" | "opus"
+        ext_lower(p).as_str(),
+        "mp4" | "webm" | "mkv" | "avi" | "mov" | "flv" | "wmv" | "m4v" | "3gp" | "ts"
+    )
+}
+
+fn is_audio_container(p: &Path) -> bool {
+    matches!(
+        ext_lower(p).as_str(),
+        "m4a" | "mp3" | "opus" | "ogg" | "aac" | "wav" | "flac"
     )
 }
 
 fn is_image_ext(p: &Path) -> bool {
     matches!(
-        p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase().as_str(),
-        "jpg" | "jpeg" | "png" | "webp" | "gif"
+        ext_lower(p).as_str(),
+        "jpg" | "jpeg" | "png" | "webp" | "gif" | "avif" | "image"
     )
 }
 
-fn is_media_ext(p: &Path) -> bool {
-    is_video_ext(p) || is_image_ext(p)
+fn detect_image_ext(path: &Path) -> &'static str {
+    let mut buf = [0u8; 12];
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return "jpg";
+    };
+    if f.read(&mut buf).unwrap_or(0) < 3 {
+        return "jpg";
+    }
+    if buf[0] == 0xff && buf[1] == 0xd8 && buf[2] == 0xff {
+        return "jpg";
+    }
+    if buf[0] == 0x89 && buf[1] == 0x50 && buf[2] == 0x4e && buf[3] == 0x47 {
+        return "png";
+    }
+    if buf[0] == 0x52
+        && buf[1] == 0x49
+        && buf[2] == 0x46
+        && buf[3] == 0x46
+        && buf[8] == 0x57
+        && buf[9] == 0x45
+        && buf[10] == 0x42
+        && buf[11] == 0x50
+    {
+        return "webp";
+    }
+    if buf[4] == b'f' && buf[5] == b't' && buf[6] == b'y' && buf[7] == b'p' {
+        return "avif";
+    }
+    "jpg"
 }
 
-fn is_thumb_name(name: &str) -> bool {
-    let lower = name.to_lowercase();
-    lower.contains(".jpg") || lower.contains(".webp") || lower.contains(".png")
+fn is_tiktok_url(url: &str) -> bool {
+    let host = url::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()));
+    match host {
+        Some(h) => {
+            h == "tiktok.com"
+                || h.ends_with(".tiktok.com")
+                || h == "tiktokv.com"
+                || h.ends_with(".tiktokv.com")
+        }
+        None => {
+            let lower = url.to_ascii_lowercase();
+            lower.contains("tiktok.com") || lower.contains("tiktokv.com")
+        }
+    }
 }
 
 fn shell_split(s: &str) -> Vec<String> {
     s.split_whitespace().map(|p| p.to_string()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn jpeg_bytes() -> Vec<u8> {
+        // Minimal JPEG SOI + extra bytes so detect_image_ext can read a header.
+        let mut b = vec![0xff, 0xd8, 0xff, 0xe0];
+        b.extend_from_slice(&[0u8; 16]);
+        b
+    }
+
+    #[test]
+    fn tiktok_hosts_are_detected() {
+        assert!(is_tiktok_url("https://vm.tiktok.com/ZGdxGkd5x/"));
+        assert!(is_tiktok_url("https://www.tiktok.com/@user/video/123"));
+        assert!(is_tiktok_url("https://vt.tiktok.com/abc"));
+        assert!(!is_tiktok_url("https://youtube.com/watch?v=abc"));
+        assert!(!is_tiktok_url("https://example.com/tiktok.com/fake"));
+    }
+
+    #[test]
+    fn finalize_renames_image_thumbnail_and_prefers_video() {
+        let dir = tempfile::tempdir().unwrap();
+        let job = dir.path();
+        fs::write(job.join("clip.m4a"), b"audio").unwrap();
+        fs::write(job.join("clip.mp4"), b"video").unwrap();
+        fs::write(job.join("clip.image"), jpeg_bytes()).unwrap();
+        fs::write(job.join("clip.info.json"), "{}").unwrap();
+
+        let result = finalize_job_dir(job).unwrap();
+        assert_eq!(result.file_path.file_name().unwrap(), "video.mp4");
+        let thumb = result.thumbnail_path.expect("thumbnail");
+        assert_eq!(thumb.file_name().unwrap(), "thumbnail.jpg");
+        assert!(thumb.exists());
+        assert!(job.join("data.json").exists());
+        assert!(!job.join("clip.m4a").exists() || result.file_path.extension().unwrap() != "m4a");
+    }
+
+    #[test]
+    fn finalize_falls_back_to_audio_if_no_video() {
+        let dir = tempfile::tempdir().unwrap();
+        let job = dir.path();
+        fs::write(job.join("track.m4a"), b"audio").unwrap();
+        let result = finalize_job_dir(job).unwrap();
+        assert_eq!(result.file_path.file_name().unwrap(), "video.m4a");
+        assert!(result.thumbnail_path.is_none());
+    }
 }
