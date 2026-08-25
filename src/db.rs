@@ -59,7 +59,9 @@ fn init_schema(db: &rusqlite::Connection, data_dir: &Path) -> anyhow::Result<()>
           progress     REAL NOT NULL DEFAULT 0,
           error        TEXT,
           created_at   TEXT NOT NULL,
-          completed_at TEXT
+          completed_at TEXT,
+          source       TEXT NOT NULL DEFAULT 'web',
+          source_label TEXT
         );
 
         CREATE TABLE IF NOT EXISTS media (
@@ -162,6 +164,23 @@ fn init_schema(db: &rusqlite::Connection, data_dir: &Path) -> anyhow::Result<()>
             "ALTER TABLE media ADD COLUMN include_in_random INTEGER NOT NULL DEFAULT 0",
             [],
         )?;
+    }
+
+    let queue_cols: Vec<String> = {
+        let mut stmt = db.prepare("PRAGMA table_info(queue_items)")?;
+        let cols = stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>, _>>()?;
+        cols
+    };
+    if !queue_cols.iter().any(|c| c == "source") {
+        db.execute(
+            "ALTER TABLE queue_items ADD COLUMN source TEXT NOT NULL DEFAULT 'web'",
+            [],
+        )?;
+    }
+    if !queue_cols.iter().any(|c| c == "source_label") {
+        db.execute("ALTER TABLE queue_items ADD COLUMN source_label TEXT", [])?;
     }
 
     let migrated: Option<String> = db
@@ -285,6 +304,8 @@ pub struct QueueItem {
     pub error: Option<String>,
     pub created_at: String,
     pub completed_at: Option<String>,
+    pub source: String,
+    pub source_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -429,14 +450,16 @@ fn now_iso() -> String {
 
 fn map_queue(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueueItem> {
     Ok(QueueItem {
-        id: row.get(0)?,
-        url: row.get(1)?,
-        downloader: row.get(2)?,
-        status: row.get(3)?,
-        progress: row.get(4)?,
-        error: row.get(5)?,
-        created_at: row.get(6)?,
-        completed_at: row.get(7)?,
+        id: row.get("id")?,
+        url: row.get("url")?,
+        downloader: row.get("downloader")?,
+        status: row.get("status")?,
+        progress: row.get("progress")?,
+        error: row.get("error")?,
+        created_at: row.get("created_at")?,
+        completed_at: row.get("completed_at")?,
+        source: row.get("source")?,
+        source_label: row.get("source_label")?,
     })
 }
 
@@ -469,6 +492,8 @@ pub fn insert_queue_item(
     conn: &rusqlite::Connection,
     url: &str,
     downloader: &str,
+    source: &str,
+    source_label: Option<&str>,
 ) -> rusqlite::Result<QueueItem> {
     let item = QueueItem {
         id: Uuid::new_v4().to_string(),
@@ -479,10 +504,12 @@ pub fn insert_queue_item(
         error: None,
         created_at: now_iso(),
         completed_at: None,
+        source: source.to_string(),
+        source_label: source_label.map(|s| s.to_string()),
     };
     conn.execute(
-        "INSERT INTO queue_items (id, url, downloader, status, progress, error, created_at, completed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO queue_items (id, url, downloader, status, progress, error, created_at, completed_at, source, source_label)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             item.id,
             item.url,
@@ -491,7 +518,9 @@ pub fn insert_queue_item(
             item.progress,
             item.error,
             item.created_at,
-            item.completed_at
+            item.completed_at,
+            item.source,
+            item.source_label
         ],
     )?;
     Ok(item)
@@ -510,7 +539,8 @@ pub fn list_queue_items(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<Que
 
 pub fn get_next_pending_item(conn: &rusqlite::Connection) -> rusqlite::Result<Option<QueueItem>> {
     conn.query_row(
-        "SELECT * FROM queue_items WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1",
+        "SELECT * FROM queue_items WHERE status = 'pending' AND source != 'discord'
+         ORDER BY created_at ASC LIMIT 1",
         [],
         map_queue,
     )
@@ -519,17 +549,25 @@ pub fn get_next_pending_item(conn: &rusqlite::Connection) -> rusqlite::Result<Op
 
 pub fn count_active_downloads(conn: &rusqlite::Connection) -> rusqlite::Result<i64> {
     conn.query_row(
-        "SELECT COUNT(*) FROM queue_items WHERE status = 'downloading'",
+        "SELECT COUNT(*) FROM queue_items WHERE status = 'downloading' AND source != 'discord'",
         [],
         |r| r.get(0),
     )
 }
 
+/// Reset interrupted vault downloads to pending; fail Discord jobs that cannot be resumed.
 pub fn reset_stale_downloads(conn: &rusqlite::Connection) -> rusqlite::Result<usize> {
-    conn.execute(
-        "UPDATE queue_items SET status = 'pending', progress = 0 WHERE status = 'downloading'",
+    let web = conn.execute(
+        "UPDATE queue_items SET status = 'pending', progress = 0
+         WHERE status = 'downloading' AND source != 'discord'",
         [],
-    )
+    )?;
+    let discord = conn.execute(
+        "UPDATE queue_items SET status = 'failed', error = 'interrupted', completed_at = ?
+         WHERE status = 'downloading' AND source = 'discord'",
+        params![now_iso()],
+    )?;
+    Ok(web + discord)
 }
 
 pub fn update_queue_item(
@@ -1282,8 +1320,10 @@ mod tests {
         };
         let db = Db::open(&config).unwrap();
         db.with_conn(|c| {
-            let item = insert_queue_item(c, "https://example.com/v", "ytdlp").unwrap();
+            let item = insert_queue_item(c, "https://example.com/v", "ytdlp", "web", None).unwrap();
             assert_eq!(item.status, "pending");
+            assert_eq!(item.source, "web");
+            assert_eq!(item.source_label, None);
             let media = insert_media_item(
                 c,
                 NewMedia {
@@ -1367,6 +1407,76 @@ mod tests {
             let items = list_media_items_with_tags(c).unwrap();
             assert_eq!(items.len(), 1);
             assert_eq!(items[0].media.id, "m1");
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn discord_queue_items_do_not_block_vault_worker() {
+        let dir = tempdir().unwrap();
+        let config = crate::config::Config {
+            data_dir: dir.path().to_path_buf(),
+            bind: "127.0.0.1:0".into(),
+            log_level: "error".into(),
+            static_dir: PathBuf::from("frontend/dist"),
+            oidc_issuer: None,
+            oidc_client_id: None,
+            oidc_client_secret: None,
+            auth_secret: None,
+            auth_url: None,
+            legacy_api_key: None,
+        };
+        let db = Db::open(&config).unwrap();
+        db.with_conn(|c| {
+            let discord_pending =
+                insert_queue_item(c, "https://example.com/d1", "ytdlp", "discord", Some("Discord"))
+                    .unwrap();
+            assert_eq!(discord_pending.source, "discord");
+            assert!(get_next_pending_item(c).unwrap().is_none());
+
+            let discord_dl = insert_queue_item(
+                c,
+                "https://example.com/d2",
+                "gallery-dl",
+                "discord",
+                Some("Discord"),
+            )
+            .unwrap();
+            update_queue_item(c, &discord_dl.id, Some("downloading"), Some(10.0), None, None)
+                .unwrap();
+            assert_eq!(count_active_downloads(c).unwrap(), 0);
+
+            let web = insert_queue_item(c, "https://example.com/w", "ytdlp", "web", None).unwrap();
+            let next = get_next_pending_item(c).unwrap().unwrap();
+            assert_eq!(next.id, web.id);
+            assert_eq!(next.source, "web");
+
+            let api = insert_queue_item(
+                c,
+                "https://example.com/api",
+                "ytdlp",
+                "api",
+                Some("Extra tool"),
+            )
+            .unwrap();
+            assert_eq!(api.source, "api");
+            assert_eq!(api.source_label.as_deref(), Some("Extra tool"));
+            let next_api = get_next_pending_item(c).unwrap().unwrap();
+            assert_eq!(next_api.id, web.id); // still oldest pending non-discord
+
+            update_queue_item(c, &web.id, Some("downloading"), Some(5.0), None, None).unwrap();
+            assert_eq!(count_active_downloads(c).unwrap(), 1);
+            let _ = api;
+
+            let n = reset_stale_downloads(c).unwrap();
+            assert!(n >= 2);
+            let discord_after = get_queue_item(c, &discord_dl.id).unwrap().unwrap();
+            assert_eq!(discord_after.status, "failed");
+            assert_eq!(discord_after.error.as_deref(), Some("interrupted"));
+            let web_after = get_queue_item(c, &web.id).unwrap().unwrap();
+            assert_eq!(web_after.status, "pending");
+
             Ok(())
         })
         .unwrap();

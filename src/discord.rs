@@ -3,10 +3,12 @@
 use crate::config::Config;
 use crate::db::{self, Db};
 use crate::gallerydl;
+use crate::queue::{spawn_progress_persister, QueueHandle};
 use crate::state::{AppState, DiscordControl};
 use crate::ytdlp;
 use serenity::all::*;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::watch;
 
 const WEBHOOK_NAME: &str = "MemeVault";
@@ -67,8 +69,9 @@ pub async fn restart_discord_bot(state: AppState) {
 
     tracing::info!(command = %command_name, "starting Discord bot");
 
+    let queue = state.queue.clone();
     tokio::spawn(async move {
-        if let Err(e) = run_bot(token, command_name, db, config, shutdown_rx).await {
+        if let Err(e) = run_bot(token, command_name, db, config, queue, shutdown_rx).await {
             tracing::error!("Discord bot error: {e:#}");
         }
     });
@@ -291,17 +294,39 @@ async fn edit_status(ctx: &Context, cmd: &CommandInteraction, content: impl Into
         .await;
 }
 
+fn finalize_discord_queue(db: &Db, item_id: &str, status: &str, error: Option<&str>) {
+    let completed = chrono::Utc::now().to_rfc3339();
+    let progress = if status == "completed" {
+        Some(100.0)
+    } else {
+        None
+    };
+    let _ = db.with_conn(|c| {
+        db::update_queue_item(
+            c,
+            item_id,
+            Some(status),
+            progress,
+            Some(error),
+            Some(Some(&completed)),
+        )?;
+        Ok(())
+    });
+}
+
 async fn run_bot(
     token: String,
     command_name: String,
     db: Db,
     config: Config,
+    queue: Arc<QueueHandle>,
     mut shutdown: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
     struct Handler {
         command_name: String,
         db: Db,
         config: Config,
+        queue: Arc<QueueHandle>,
     }
 
     #[async_trait::async_trait]
@@ -408,17 +433,45 @@ async fn run_bot(
             let downloader = if media_type == "image" {
                 "gallery-dl"
             } else {
-                "yt-dlp"
+                "ytdlp"
             };
-            tracing::info!(downloader = %downloader, url = %url, "discord download started");
 
-            let (_, cancel_rx) = watch::channel(false);
+            let queue_item = match self.db.with_conn(|c| {
+                Ok(db::insert_queue_item(c, &url, downloader, "discord", Some("Discord"))?)
+            }) {
+                Ok(item) => item,
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to insert Discord queue item");
+                    edit_status(&ctx, &cmd, "Failed to track download").await;
+                    return;
+                }
+            };
+            let item_id = queue_item.id.clone();
+
+            let (cancel_tx, cancel_rx) = watch::channel(false);
+            self.queue.register(&item_id, cancel_tx).await;
+
+            let (progress_tx, progress_rx) = watch::channel(0.0f64);
+            spawn_progress_persister(self.db.clone(), item_id.clone(), progress_rx);
+
+            let _ = self.db.with_conn(|c| {
+                db::update_queue_item(c, &item_id, Some("downloading"), Some(0.0), None, None)?;
+                Ok(())
+            });
+
+            tracing::info!(
+                item_id = %item_id,
+                downloader = %downloader,
+                url = %url,
+                "discord download started"
+            );
+
             let result = if media_type == "image" {
                 gallerydl::run_gallery_dl(
                     &self.db,
                     &self.config,
                     &url,
-                    None,
+                    Some(progress_tx),
                     cancel_rx,
                     Some(tmp.path().to_path_buf()),
                 )
@@ -434,7 +487,7 @@ async fn run_bot(
                     &self.db,
                     &self.config,
                     &url,
-                    None,
+                    Some(progress_tx),
                     cancel_rx,
                     Some(tmp.path().to_path_buf()),
                 )
@@ -442,9 +495,35 @@ async fn run_bot(
                 .map(|r| vec![r.file_path])
             };
 
+            self.queue.unregister(&item_id).await;
+
+            match &result {
+                Ok(paths) if !paths.is_empty() => {
+                    finalize_discord_queue(&self.db, &item_id, "completed", None);
+                }
+                Ok(_) => {
+                    finalize_discord_queue(
+                        &self.db,
+                        &item_id,
+                        "failed",
+                        Some("No files downloaded"),
+                    );
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    let cancelled = msg.contains("cancelled");
+                    if cancelled {
+                        finalize_discord_queue(&self.db, &item_id, "cancelled", Some("cancelled"));
+                    } else {
+                        finalize_discord_queue(&self.db, &item_id, "failed", Some(&msg));
+                    }
+                }
+            }
+
             match result {
                 Ok(paths) if !paths.is_empty() => {
                     tracing::info!(
+                        item_id = %item_id,
                         file_count = paths.len(),
                         url = %url,
                         "discord download succeeded"
@@ -527,8 +606,14 @@ async fn run_bot(
                     edit_status(&ctx, &cmd, "No files downloaded").await;
                 }
                 Err(e) => {
-                    tracing::error!(url = %url, error = %format!("{e:#}"), "discord download failed");
-                    edit_status(&ctx, &cmd, format!("Download failed: {e}")).await;
+                    let msg = e.to_string();
+                    if msg.contains("cancelled") {
+                        tracing::warn!(item_id = %item_id, url = %url, "discord download cancelled");
+                        edit_status(&ctx, &cmd, "Download cancelled").await;
+                    } else {
+                        tracing::error!(url = %url, error = %format!("{e:#}"), "discord download failed");
+                        edit_status(&ctx, &cmd, format!("Download failed: {e}")).await;
+                    }
                 }
             }
         }
@@ -538,6 +623,7 @@ async fn run_bot(
         command_name,
         db,
         config,
+        queue,
     };
     let mut client = Client::builder(&token, GatewayIntents::empty())
         .event_handler(handler)

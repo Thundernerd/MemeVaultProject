@@ -49,6 +49,8 @@ export interface QueueItem {
   error: string | null
   created_at: string
   completed_at: string | null
+  source: string
+  source_label: string | null
 }
 
 export interface ShareLink {

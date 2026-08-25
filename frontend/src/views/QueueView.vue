@@ -57,7 +57,14 @@ onUnmounted(() => clearInterval(timer))
     <div v-for="item in items" :key="item.id" class="bg-surface-1 border border-border rounded-xl p-4 flex flex-col gap-2">
       <div class="flex gap-3 items-start">
         <div class="flex-1 min-w-0">
-          <p class="text-sm truncate">{{ item.url }}</p>
+          <div class="flex items-center gap-2 min-w-0">
+            <p class="text-sm truncate">{{ item.url }}</p>
+            <span
+              v-if="item.source_label"
+              class="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded text-white"
+              :style="{ backgroundColor: item.source === 'discord' ? '#5865F2' : '#0d9488' }"
+            >{{ item.source_label }}</span>
+          </div>
           <p class="text-xs text-text-muted">{{ item.downloader }} · {{ item.status }}</p>
         </div>
         <div class="flex gap-1 shrink-0">
@@ -67,7 +74,7 @@ onUnmounted(() => clearInterval(timer))
             @click="cancel(item.id)"
           >Cancel</button>
           <button
-            v-if="item.status === 'failed' || item.status === 'cancelled'"
+            v-if="item.source !== 'discord' && (item.status === 'failed' || item.status === 'cancelled')"
             class="text-xs px-2 py-1 rounded bg-surface-2"
             @click="retry(item)"
           >Retry</button>

@@ -7,6 +7,7 @@ use subtle::ConstantTimeEq;
 #[derive(Clone, Debug)]
 pub struct ApiKeyContext {
     pub id: String,
+    pub name: String,
     pub permission: String,
 }
 
@@ -36,8 +37,18 @@ pub fn validate_api_key(db: &Db, config: &Config, header: Option<&str>) -> Optio
         .ok()
         .flatten();
 
-    if let Some(ApiKey { id, permission, .. }) = found {
-        let ctx = ApiKeyContext { id, permission };
+    if let Some(ApiKey {
+        id,
+        name,
+        permission,
+        ..
+    }) = found
+    {
+        let ctx = ApiKeyContext {
+            id,
+            name,
+            permission,
+        };
         tracing::debug!(key_id = %ctx.id, permission = %ctx.permission, "api key accepted");
         return Some(ctx);
     }
@@ -46,6 +57,7 @@ pub fn validate_api_key(db: &Db, config: &Config, header: Option<&str>) -> Optio
         if constant_time_eq(legacy.as_bytes(), key.as_bytes()) {
             let ctx = ApiKeyContext {
                 id: "__env__".into(),
+                name: "Environment".into(),
                 permission: "read_write".into(),
             };
             tracing::debug!(key_id = %ctx.id, permission = %ctx.permission, "api key accepted");

@@ -39,6 +39,7 @@ const { settings, save, saved, error } = useSettings()
     </label>
     <p class="text-xs text-text-muted">
       Downloads are posted to Discord only — they are not saved to the vault.
+      They still appear in the Queue (marked Discord) so you can track progress and cancel.
       When posting as the sender, the bot needs <strong>Manage Webhooks</strong>;
       messages use that person's name and avatar but are still webhook messages (not real user messages).
     </p>

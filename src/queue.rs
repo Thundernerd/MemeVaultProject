@@ -20,6 +20,16 @@ impl QueueHandle {
         }
     }
 
+    pub async fn register(&self, id: &str, tx: watch::Sender<bool>) {
+        let mut map = self.cancel_map.lock().await;
+        map.insert(id.to_string(), tx);
+    }
+
+    pub async fn unregister(&self, id: &str) {
+        let mut map = self.cancel_map.lock().await;
+        map.remove(id);
+    }
+
     pub async fn cancel(&self, id: &str) -> bool {
         let map = self.cancel_map.lock().await;
         if let Some(tx) = map.get(id) {
@@ -30,6 +40,38 @@ impl QueueHandle {
             false
         }
     }
+}
+
+/// Persist download progress updates to the queue item row.
+pub fn spawn_progress_persister(
+    db: Db,
+    item_id: String,
+    mut progress_rx: watch::Receiver<f64>,
+) {
+    tokio::spawn(async move {
+        let mut last = -1.0f64;
+        loop {
+            if progress_rx.changed().await.is_err() {
+                let pct = *progress_rx.borrow();
+                if (pct - last).abs() > 0.001 {
+                    let _ = db.with_conn(|c| {
+                        db::update_queue_item(c, &item_id, None, Some(pct), None, None)?;
+                        Ok(())
+                    });
+                }
+                break;
+            }
+            let pct = *progress_rx.borrow_and_update();
+            if (pct - last).abs() < 0.25 && pct < 99.0 {
+                continue;
+            }
+            last = pct;
+            let _ = db.with_conn(|c| {
+                db::update_queue_item(c, &item_id, None, Some(pct), None, None)?;
+                Ok(())
+            });
+        }
+    });
 }
 
 pub fn start_queue_processor(db: Db, config: Config, handle: Arc<QueueHandle>) {
@@ -61,10 +103,7 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
     };
 
     let (cancel_tx, cancel_rx) = watch::channel(false);
-    {
-        let mut map = handle.cancel_map.lock().await;
-        map.insert(item.id.clone(), cancel_tx);
-    }
+    handle.register(&item.id, cancel_tx).await;
 
     tracing::info!(
         item_id = %item.id,
@@ -73,33 +112,8 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
         "queue item started"
     );
 
-    let (progress_tx, mut progress_rx) = watch::channel(0.0f64);
-    let item_id = item.id.clone();
-    let db_prog = db.clone();
-    tokio::spawn(async move {
-        let mut last = -1.0f64;
-        loop {
-            if progress_rx.changed().await.is_err() {
-                let pct = *progress_rx.borrow();
-                if (pct - last).abs() > 0.001 {
-                    let _ = db_prog.with_conn(|c| {
-                        db::update_queue_item(c, &item_id, None, Some(pct), None, None)?;
-                        Ok(())
-                    });
-                }
-                break;
-            }
-            let pct = *progress_rx.borrow_and_update();
-            if (pct - last).abs() < 0.25 && pct < 99.0 {
-                continue;
-            }
-            last = pct;
-            let _ = db_prog.with_conn(|c| {
-                db::update_queue_item(c, &item_id, None, Some(pct), None, None)?;
-                Ok(())
-            });
-        }
-    });
+    let (progress_tx, progress_rx) = watch::channel(0.0f64);
+    spawn_progress_persister(db.clone(), item.id.clone(), progress_rx);
 
     let _ = db.with_conn(|c| {
         db::update_queue_item(c, &item.id, Some("downloading"), Some(0.0), None, None)?;
@@ -112,10 +126,7 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
         run_video(db, config, &item, progress_tx, cancel_rx).await
     };
 
-    {
-        let mut map = handle.cancel_map.lock().await;
-        map.remove(&item.id);
-    }
+    handle.unregister(&item.id).await;
 
     match result {
         Ok(()) => {

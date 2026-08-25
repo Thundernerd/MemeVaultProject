@@ -26,6 +26,6 @@ pub async fn create(
     }
     let item = state
         .db
-        .with_conn(|c| Ok(db::insert_queue_item(c, url, downloader)?))?;
+        .with_conn(|c| Ok(db::insert_queue_item(c, url, downloader, "web", None)?))?;
     Ok((StatusCode::CREATED, Json(item)))
 }

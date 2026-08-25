@@ -43,7 +43,7 @@ pub async fn submit(
     headers: HeaderMap,
     Json(body): Json<SubmitBody>,
 ) -> AppResult<(StatusCode, Json<Value>)> {
-    require_write(&state, &headers)?;
+    let ctx = require_write(&state, &headers)?;
     let url = body.url.trim();
     if url.is_empty() {
         return Err(AppError::bad_request("url required"));
@@ -53,9 +53,11 @@ pub async fn submit(
         "image" => "gallery-dl",
         _ => return Err(AppError::bad_request("type must be video or image")),
     };
-    let item = state
-        .db
-        .with_conn(|c| Ok(db::insert_queue_item(c, url, downloader)?))?;
+    let label = ctx.name.trim();
+    let label = if label.is_empty() { None } else { Some(label) };
+    let item = state.db.with_conn(|c| {
+        Ok(db::insert_queue_item(c, url, downloader, "api", label)?)
+    })?;
     Ok((StatusCode::CREATED, Json(json!({ "id": item.id }))))
 }
 

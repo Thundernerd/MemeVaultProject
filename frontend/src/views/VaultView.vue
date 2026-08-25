@@ -42,7 +42,11 @@ async function load() {
 async function pollQueue() {
   try {
     const items = await api<QueueItem[]>('/api/queue')
-    const active = items.filter((i) => i.status === 'pending' || i.status === 'downloading')
+    const active = items.filter(
+      (i) =>
+        i.source !== 'discord' &&
+        (i.status === 'pending' || i.status === 'downloading'),
+    )
     if (activeQueue.value.length > active.length) await load()
     activeQueue.value = active
   } catch { /* ignore */ }
