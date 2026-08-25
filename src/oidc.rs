@@ -112,17 +112,6 @@ pub fn session_valid(config: &Config, headers: &HeaderMap) -> bool {
     .is_ok()
 }
 
-pub fn require_session(config: &Config, headers: &HeaderMap, is_api: bool) -> AppResult<()> {
-    if !config.oidc_enabled() || session_valid(config, headers) {
-        return Ok(());
-    }
-    if is_api {
-        Err(AppError::Unauthorized)
-    } else {
-        Err(AppError::Unauthorized)
-    }
-}
-
 #[derive(Deserialize)]
 pub struct LoginQuery {
     pub callback_url: Option<String>,

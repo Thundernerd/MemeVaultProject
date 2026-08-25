@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use std::path::Path;
 #[cfg(test)]
 use std::path::PathBuf;
-use std::sync::Arc;
 use uuid::Uuid;
 
 pub type DbPool = Pool<SqliteConnectionManager>;
@@ -39,10 +38,6 @@ impl Db {
     {
         let conn = self.pool.get()?;
         f(&conn)
-    }
-
-    pub fn pool(&self) -> &DbPool {
-        &self.pool
     }
 }
 
@@ -1262,9 +1257,6 @@ pub fn is_share_expired(expires_at: &Option<String>) -> bool {
                 .unwrap_or(false)
         })
 }
-
-/// Helper used by tests / callers that need Arc
-pub type SharedDb = Arc<Db>;
 
 #[cfg(test)]
 mod tests {

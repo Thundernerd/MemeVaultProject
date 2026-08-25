@@ -3,7 +3,7 @@
 use crate::config::Config;
 use crate::db::{self, Db};
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Stdio;
 
 #[derive(Debug, Clone, Serialize)]
@@ -12,10 +12,6 @@ pub struct BinaryStatus {
     pub path: String,
     pub exists: bool,
     pub version: Option<String>,
-}
-
-pub fn bin_dir(config: &Config) -> PathBuf {
-    config.bin_dir()
 }
 
 pub fn get_ytdlp_path(db: &Db, config: &Config) -> String {

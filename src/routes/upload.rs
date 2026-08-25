@@ -156,7 +156,10 @@ pub async fn upload(
         let url = format!("local://{filename}");
         let file_path = dest.to_string_lossy().to_string();
         let file_size = Some(data.len() as i64);
-        let format = Some(ext.to_string());
+        let format = probe
+            .format
+            .clone()
+            .or_else(|| Some(ext.to_string()).filter(|s| !s.is_empty()));
 
         match state.db.with_conn(|c| {
             Ok(db::insert_media_item(

@@ -37,15 +37,19 @@ pub fn validate_api_key(db: &Db, config: &Config, header: Option<&str>) -> Optio
         .flatten();
 
     if let Some(ApiKey { id, permission, .. }) = found {
-        return Some(ApiKeyContext { id, permission });
+        let ctx = ApiKeyContext { id, permission };
+        tracing::debug!(key_id = %ctx.id, permission = %ctx.permission, "api key accepted");
+        return Some(ctx);
     }
 
     if let Some(ref legacy) = config.legacy_api_key {
         if constant_time_eq(legacy.as_bytes(), key.as_bytes()) {
-            return Some(ApiKeyContext {
+            let ctx = ApiKeyContext {
                 id: "__env__".into(),
                 permission: "read_write".into(),
-            });
+            };
+            tracing::debug!(key_id = %ctx.id, permission = %ctx.permission, "api key accepted");
+            return Some(ctx);
         }
     }
 
