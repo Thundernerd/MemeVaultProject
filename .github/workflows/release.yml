@@ -1,0 +1,159 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump type
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Compute new version
+        id: version
+        run: |
+          CURRENT=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)
+          BRANCH="${{ github.ref_name }}"
+          BUMP="${{ inputs.bump }}"
+
+          bump_base() {
+            local ver="$1"
+            local type="$2"
+            node -e "
+              const [maj, min, pat] = '$ver'.split('.').map(Number);
+              if ('$type' === 'major') process.stdout.write((maj+1)+'.0.0');
+              else if ('$type' === 'minor') process.stdout.write(maj+'.'+(min+1)+'.0');
+              else process.stdout.write(maj+'.'+min+'.'+(pat+1));
+            "
+          }
+
+          # Strip any existing prerelease suffix to get the numeric base
+          BASE=$(echo "$CURRENT" | sed 's/-.*//')
+
+          if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "main-2" ]; then
+            NEW=$(bump_base "$BASE" "$BUMP")
+            IS_PRE=false
+          else
+            SLUG="${BRANCH##*/}"
+            # If already a prerelease for this slug, just increment N
+            if [[ "$CURRENT" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-${SLUG}\.([0-9]+)$ ]]; then
+              PRERELEASE_BASE="${BASH_REMATCH[1]}"
+              N="${BASH_REMATCH[2]}"
+              NEW="${PRERELEASE_BASE}-${SLUG}.$((N + 1))"
+            else
+              NEW_BASE=$(bump_base "$BASE" "$BUMP")
+              NEW="${NEW_BASE}-${SLUG}.1"
+            fi
+            IS_PRE=true
+          fi
+
+          MAJOR_MINOR=$(echo "$NEW" | cut -d. -f1-2)
+
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$IS_PRE" >> "$GITHUB_OUTPUT"
+          echo "major_minor=$MAJOR_MINOR" >> "$GITHUB_OUTPUT"
+          echo "Current: $CURRENT → New: $NEW (prerelease=$IS_PRE)"
+
+      - name: Set lowercase image name
+        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
+
+      - name: Bump Cargo.toml version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Only rewrite the package version (first version = line in the file)
+          sed -i '0,/^version = "/s/^version = ".*"/version = "'"$VERSION"'"/' Cargo.toml
+
+      - name: Update CHANGELOG
+        if: steps.version.outputs.is_prerelease == 'false'
+        run: |
+          TODAY=$(date +%Y-%m-%d)
+          VERSION="${{ steps.version.outputs.version }}"
+          if [ ! -f CHANGELOG.md ]; then
+            printf '# Changelog\n\n## [Unreleased]\n\n' > CHANGELOG.md
+          fi
+          sed -i -E "s/## \[?Unreleased\]?/## [${VERSION}] - ${TODAY}/" CHANGELOG.md
+          sed -i "s/## \[${VERSION}\]/## [Unreleased]\n\n## [${VERSION}]/" CHANGELOG.md
+
+      - name: Commit and tag
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git add Cargo.toml
+          if [ "${{ steps.version.outputs.is_prerelease }}" = "false" ]; then
+            git add CHANGELOG.md
+          fi
+          git commit -m "chore: bump version to $VERSION"
+          git tag "v$VERSION"
+          git push origin "HEAD:${{ github.ref_name }}"
+          git push origin "v$VERSION"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if [ "${{ steps.version.outputs.is_prerelease }}" = "false" ]; then
+            NOTES=$(awk -v ver="$VERSION" '
+              $0 ~ "^## \\[" ver "\\]" { found=1; next }
+              found && /^## \[/ { exit }
+              found { print }
+            ' CHANGELOG.md)
+            if [ -z "$(echo "$NOTES" | tr -d '[:space:]')" ]; then
+              NOTES="Release v${VERSION}."
+            fi
+            gh release create "v${VERSION}" --title "v${VERSION}" --notes "$NOTES"
+          else
+            gh release create "v${VERSION}" --title "v${VERSION}" --notes "Pre-release build." --prerelease
+          fi
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push (release)
+        if: steps.version.outputs.is_prerelease == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE }}:${{ steps.version.outputs.major_minor }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push (prerelease)
+        if: steps.version.outputs.is_prerelease == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
