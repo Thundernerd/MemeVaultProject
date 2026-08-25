@@ -6,7 +6,10 @@ use crate::gallerydl;
 use crate::state::{AppState, DiscordControl};
 use crate::ytdlp;
 use serenity::all::*;
+use std::path::PathBuf;
 use tokio::sync::watch;
+
+const WEBHOOK_NAME: &str = "MemeVault";
 
 pub async fn restart_discord_bot(state: AppState) {
     // Stop previous
@@ -68,6 +71,183 @@ pub async fn restart_discord_bot(state: AppState) {
     });
 }
 
+fn post_as_user_enabled(db: &Db) -> bool {
+    db.with_conn(|c| Ok(db::get_setting(c, "discord_post_as_user")))
+        .ok()
+        .flatten()
+        .as_deref()
+        == Some("true")
+}
+
+fn sender_display_name(cmd: &CommandInteraction) -> String {
+    if let Some(member) = &cmd.member {
+        member.display_name().to_string()
+    } else {
+        cmd.user.display_name().to_string()
+    }
+}
+
+fn sender_avatar_url(cmd: &CommandInteraction) -> String {
+    if let Some(member) = &cmd.member {
+        member.face()
+    } else {
+        cmd.user.face()
+    }
+}
+
+/// Discord webhook usernames: 1–80 chars; no @ # : `; avoid banned substrings.
+fn sanitize_webhook_username(name: &str) -> String {
+    let mut s: String = name
+        .chars()
+        .filter(|c| !matches!(c, '@' | '#' | ':' | '`'))
+        .collect();
+    for banned in ["discord", "clyde", "everyone", "here"] {
+        let lower = s.to_lowercase();
+        if let Some(idx) = lower.find(banned) {
+            s.replace_range(idx..idx + banned.len(), "user");
+        }
+    }
+    s = s.split_whitespace().collect::<Vec<_>>().join(" ");
+    if s.chars().count() > 80 {
+        s = s.chars().take(80).collect();
+    }
+    if s.chars().count() < 2 {
+        "User".into()
+    } else {
+        s
+    }
+}
+
+fn webhook_channel_and_thread(cmd: &CommandInteraction) -> (ChannelId, Option<ChannelId>) {
+    if let Some(channel) = &cmd.channel {
+        match channel.kind {
+            ChannelType::PublicThread | ChannelType::PrivateThread | ChannelType::NewsThread => {
+                if let Some(parent) = channel.parent_id {
+                    return (parent, Some(cmd.channel_id));
+                }
+            }
+            _ => {}
+        }
+    }
+    (cmd.channel_id, None)
+}
+
+async fn get_or_create_webhook(
+    http: impl AsRef<Http>,
+    channel_id: ChannelId,
+    bot_user_id: UserId,
+) -> serenity::Result<Webhook> {
+    let http = http.as_ref();
+    let webhooks = channel_id.webhooks(http).await?;
+    if let Some(existing) = webhooks.into_iter().find(|w| {
+        w.name.as_deref() == Some(WEBHOOK_NAME)
+            && w.token.is_some()
+            && w.user.as_ref().is_some_and(|u| u.id == bot_user_id)
+    }) {
+        return Ok(existing);
+    }
+    channel_id
+        .create_webhook(http, CreateWebhook::new(WEBHOOK_NAME))
+        .await
+}
+
+async fn load_attachments(paths: &[PathBuf]) -> Vec<CreateAttachment> {
+    let mut out = Vec::new();
+    for p in paths.iter().take(10) {
+        if let Ok(att) = CreateAttachment::path(p).await {
+            out.push(att);
+        }
+    }
+    out
+}
+
+async fn post_via_webhook(
+    ctx: &Context,
+    cmd: &CommandInteraction,
+    paths: &[PathBuf],
+    url: &str,
+) -> anyhow::Result<()> {
+    if cmd.guild_id.is_none() {
+        anyhow::bail!("webhooks are not available in DMs");
+    }
+
+    let bot_user_id = ctx.cache.current_user().id;
+    let (webhook_channel, thread_id) = webhook_channel_and_thread(cmd);
+    let webhook = get_or_create_webhook(&ctx.http, webhook_channel, bot_user_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("webhook setup failed: {e}"))?;
+
+    let username = sanitize_webhook_username(&sender_display_name(cmd));
+    let avatar_url = sender_avatar_url(cmd);
+    let attachments = load_attachments(paths).await;
+    if attachments.is_empty() {
+        anyhow::bail!("no attachable files");
+    }
+    let file_count = attachments.len();
+    let content = format!("Downloaded {file_count} file(s) from <{url}>");
+
+    let mut builder = ExecuteWebhook::new()
+        .content(&content)
+        .username(&username)
+        .avatar_url(&avatar_url)
+        .files(attachments);
+    if let Some(thread) = thread_id {
+        builder = builder.in_thread(thread);
+    }
+
+    match webhook.execute(&ctx.http, false, builder).await {
+        Ok(_) => Ok(()),
+        Err(first_err) => {
+            tracing::warn!(
+                "webhook execute with username failed ({first_err}); retrying without identity override"
+            );
+            let retry_attachments = load_attachments(paths).await;
+            if retry_attachments.is_empty() {
+                anyhow::bail!("webhook execute failed: {first_err}");
+            }
+            let mut retry = ExecuteWebhook::new()
+                .content(&content)
+                .files(retry_attachments);
+            if let Some(thread) = thread_id {
+                retry = retry.in_thread(thread);
+            }
+            webhook
+                .execute(&ctx.http, false, retry)
+                .await
+                .map(|_| ())
+                .map_err(|e| anyhow::anyhow!("webhook execute failed: {e}"))
+        }
+    }
+}
+
+async fn post_as_bot_followups(
+    ctx: &Context,
+    cmd: &CommandInteraction,
+    paths: &[PathBuf],
+) {
+    for p in paths.iter().take(10) {
+        if let Ok(att) = CreateAttachment::path(p).await {
+            let _ = cmd
+                .create_followup(
+                    &ctx.http,
+                    CreateInteractionResponseFollowup::new()
+                        .ephemeral(false)
+                        .add_file(att),
+                )
+                .await;
+        }
+    }
+}
+
+async fn edit_status(ctx: &Context, cmd: &CommandInteraction, content: impl Into<String>) {
+    let _ = cmd
+        .edit_response(
+            &ctx.http,
+            EditInteractionResponse::new().content(content.into()),
+        )
+        .await;
+}
+
 async fn run_bot(
     token: String,
     command_name: String,
@@ -124,15 +304,16 @@ async fn run_bot(
                 .and_then(|o| o.value.as_str())
                 .unwrap_or("video");
 
-            let _ = cmd.defer(&ctx.http).await;
+            let as_user = post_as_user_enabled(&self.db);
+            if as_user {
+                let _ = cmd.defer_ephemeral(&ctx.http).await;
+            } else {
+                let _ = cmd.defer(&ctx.http).await;
+            }
+
             let tmp = tempfile::tempdir().ok();
             let Some(tmp) = tmp else {
-                let _ = cmd
-                    .edit_response(
-                        &ctx.http,
-                        EditInteractionResponse::new().content("Failed to create temp dir"),
-                    )
-                    .await;
+                edit_status(&ctx, &cmd, "Failed to create temp dir").await;
                 return;
             };
 
@@ -168,40 +349,47 @@ async fn run_bot(
 
             match result {
                 Ok(paths) if !paths.is_empty() => {
-                    let _ = cmd
-                        .edit_response(
-                            &ctx.http,
-                            EditInteractionResponse::new()
-                                .content(format!("Downloaded {} file(s) from <{url}>", paths.len())),
-                        )
-                        .await;
-                    for p in paths.iter().take(10) {
-                        if let Ok(att) = CreateAttachment::path(p).await {
-                            let _ = cmd
-                                .create_followup(
-                                    &ctx.http,
-                                    CreateInteractionResponseFollowup::new().add_file(att),
+                    if as_user {
+                        match post_via_webhook(&ctx, &cmd, &paths, &url).await {
+                            Ok(()) => {
+                                edit_status(
+                                    &ctx,
+                                    &cmd,
+                                    format!(
+                                        "Posted {} file(s) from <{url}> as you",
+                                        paths.len().min(10)
+                                    ),
                                 )
                                 .await;
+                            }
+                            Err(e) => {
+                                tracing::warn!("post-as-user failed ({e:#}); falling back to bot");
+                                edit_status(
+                                    &ctx,
+                                    &cmd,
+                                    format!(
+                                        "Could not post as you ({e}); posting as bot instead"
+                                    ),
+                                )
+                                .await;
+                                post_as_bot_followups(&ctx, &cmd, &paths).await;
+                            }
                         }
+                    } else {
+                        edit_status(
+                            &ctx,
+                            &cmd,
+                            format!("Downloaded {} file(s) from <{url}>", paths.len()),
+                        )
+                        .await;
+                        post_as_bot_followups(&ctx, &cmd, &paths).await;
                     }
                 }
                 Ok(_) => {
-                    let _ = cmd
-                        .edit_response(
-                            &ctx.http,
-                            EditInteractionResponse::new().content("No files downloaded"),
-                        )
-                        .await;
+                    edit_status(&ctx, &cmd, "No files downloaded").await;
                 }
                 Err(e) => {
-                    let _ = cmd
-                        .edit_response(
-                            &ctx.http,
-                            EditInteractionResponse::new()
-                                .content(format!("Download failed: {e}")),
-                        )
-                        .await;
+                    edit_status(&ctx, &cmd, format!("Download failed: {e}")).await;
                 }
             }
         }

@@ -22,6 +22,7 @@ const ALLOWED: &[&str] = &[
     "discord_bot_token",
     "discord_client_id",
     "discord_command_name",
+    "discord_post_as_user",
 ];
 
 pub async fn get(State(state): State<AppState>) -> AppResult<Json<Value>> {
