@@ -14,9 +14,13 @@ mod v1;
 
 use crate::oidc::{self, OidcState};
 use crate::state::AppState;
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, post};
 use axum::Router;
 use std::sync::Arc;
+
+/// Video uploads can be large; Axum's default body limit is 2 MiB.
+const UPLOAD_BODY_LIMIT: usize = 2 * 1024 * 1024 * 1024; // 2 GiB
 
 pub fn api_router(oidc: Option<Arc<OidcState>>) -> Router<AppState> {
     let mut router = Router::new()
@@ -30,7 +34,10 @@ pub fn api_router(oidc: Option<Arc<OidcState>>) -> Router<AppState> {
         .route("/api/downloads", post(downloads::create))
         // Media
         .route("/api/media", get(media::list))
-        .route("/api/media/upload", post(upload::upload))
+        .route(
+            "/api/media/upload",
+            post(upload::upload).layer(DefaultBodyLimit::max(UPLOAD_BODY_LIMIT)),
+        )
         .route(
             "/api/media/{id}",
             get(media::get).patch(media::patch).delete(media::delete),
