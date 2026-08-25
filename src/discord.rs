@@ -161,11 +161,27 @@ async fn load_attachments(paths: &[PathBuf]) -> Vec<CreateAttachment> {
     out
 }
 
+fn truncate_message(msg: &str) -> String {
+    let trimmed = msg.trim();
+    if trimmed.chars().count() <= 2000 {
+        trimmed.to_string()
+    } else {
+        trimmed.chars().take(2000).collect()
+    }
+}
+
+fn apply_optional_content(mut builder: ExecuteWebhook, message: Option<&str>) -> ExecuteWebhook {
+    if let Some(content) = message.filter(|m| !m.is_empty()) {
+        builder = builder.content(content);
+    }
+    builder
+}
+
 async fn post_via_webhook(
     ctx: &Context,
     cmd: &CommandInteraction,
     paths: &[PathBuf],
-    url: &str,
+    message: Option<&str>,
 ) -> anyhow::Result<()> {
     if cmd.guild_id.is_none() {
         anyhow::bail!("webhooks are not available in DMs");
@@ -183,11 +199,8 @@ async fn post_via_webhook(
     if attachments.is_empty() {
         anyhow::bail!("no attachable files");
     }
-    let file_count = attachments.len();
-    let content = format!("Downloaded {file_count} file(s) from <{url}>");
 
-    let mut builder = ExecuteWebhook::new()
-        .content(&content)
+    let mut builder = apply_optional_content(ExecuteWebhook::new(), message)
         .username(&username)
         .avatar_url(&avatar_url)
         .files(attachments);
@@ -205,8 +218,7 @@ async fn post_via_webhook(
             if retry_attachments.is_empty() {
                 anyhow::bail!("webhook execute failed: {first_err}");
             }
-            let mut retry = ExecuteWebhook::new()
-                .content(&content)
+            let mut retry = apply_optional_content(ExecuteWebhook::new(), message)
                 .files(retry_attachments);
             if let Some(thread) = thread_id {
                 retry = retry.in_thread(thread);
@@ -220,21 +232,26 @@ async fn post_via_webhook(
     }
 }
 
+/// Posts files as the bot. Puts optional `message` on the first follow-up only.
 async fn post_as_bot_followups(
     ctx: &Context,
     cmd: &CommandInteraction,
     paths: &[PathBuf],
+    message: Option<&str>,
 ) {
+    let mut first = true;
     for p in paths.iter().take(10) {
         if let Ok(att) = CreateAttachment::path(p).await {
-            let _ = cmd
-                .create_followup(
-                    &ctx.http,
-                    CreateInteractionResponseFollowup::new()
-                        .ephemeral(false)
-                        .add_file(att),
-                )
-                .await;
+            let mut followup = CreateInteractionResponseFollowup::new()
+                .ephemeral(false)
+                .add_file(att);
+            if first {
+                if let Some(content) = message.filter(|m| !m.is_empty()) {
+                    followup = followup.content(content);
+                }
+                first = false;
+            }
+            let _ = cmd.create_followup(&ctx.http, followup).await;
         }
     }
 }
@@ -275,6 +292,14 @@ async fn run_bot(
                     CreateCommandOption::new(CommandOptionType::String, "type", "video or image")
                         .add_string_choice("video", "video")
                         .add_string_choice("image", "image"),
+                )
+                .add_option(
+                    CreateCommandOption::new(
+                        CommandOptionType::String,
+                        "message",
+                        "Optional text to post with the media",
+                    )
+                    .required(false),
                 );
             if let Err(e) = Command::create_global_command(&ctx.http, cmd).await {
                 tracing::error!("failed to register slash command: {e}");
@@ -303,6 +328,15 @@ async fn run_bot(
                 .find(|o| o.name == "type")
                 .and_then(|o| o.value.as_str())
                 .unwrap_or("video");
+            let message = cmd
+                .data
+                .options
+                .iter()
+                .find(|o| o.name == "message")
+                .and_then(|o| o.value.as_str())
+                .map(truncate_message)
+                .filter(|s| !s.is_empty());
+            let message_ref = message.as_deref();
 
             let as_user = post_as_user_enabled(&self.db);
             if as_user {
@@ -350,7 +384,7 @@ async fn run_bot(
             match result {
                 Ok(paths) if !paths.is_empty() => {
                     if as_user {
-                        match post_via_webhook(&ctx, &cmd, &paths, &url).await {
+                        match post_via_webhook(&ctx, &cmd, &paths, message_ref).await {
                             Ok(()) => {
                                 edit_status(
                                     &ctx,
@@ -372,17 +406,27 @@ async fn run_bot(
                                     ),
                                 )
                                 .await;
-                                post_as_bot_followups(&ctx, &cmd, &paths).await;
+                                post_as_bot_followups(&ctx, &cmd, &paths, message_ref).await;
                             }
                         }
                     } else {
-                        edit_status(
-                            &ctx,
-                            &cmd,
-                            format!("Downloaded {} file(s) from <{url}>", paths.len()),
-                        )
-                        .await;
-                        post_as_bot_followups(&ctx, &cmd, &paths).await;
+                        // Public post: optional caption + files on the interaction response.
+                        let attachments = load_attachments(&paths).await;
+                        if attachments.is_empty() {
+                            edit_status(&ctx, &cmd, "No attachable files").await;
+                        } else {
+                            let mut atts = EditAttachments::new();
+                            for att in attachments {
+                                atts = atts.add(att);
+                            }
+                            let mut edit = EditInteractionResponse::new().attachments(atts);
+                            if let Some(content) = message_ref {
+                                edit = edit.content(content);
+                            }
+                            if cmd.edit_response(&ctx.http, edit).await.is_err() {
+                                post_as_bot_followups(&ctx, &cmd, &paths, message_ref).await;
+                            }
+                        }
                     }
                 }
                 Ok(_) => {
