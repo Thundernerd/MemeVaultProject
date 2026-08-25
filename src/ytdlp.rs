@@ -77,12 +77,10 @@ pub async fn run_ytdlp(
     } else {
         false
     };
-    // TikTok's default "best" is often HEVC. Chrome/Firefox play the AAC track and skip the
-    // video, which looks like an audio-only download. Prefer H.264 when the site offers it.
-    if is_tiktok_url(url) {
-        args.push("-S".into());
-        args.push("vcodec:h264".into());
-    }
+    // Prefer H.264 when the site offers it (e.g. TikTok's default "best" is often HEVC).
+    // Post-download ensure_h264_mp4 still re-encodes when no H.264 variant exists.
+    args.push("-S".into());
+    args.push("vcodec:h264".into());
     args.push("-o".into());
     args.push(job_dir.join("%(title)s.%(ext)s").to_string_lossy().into());
     for part in shell_split(&extra) {
@@ -153,6 +151,7 @@ pub async fn run_ytdlp(
         }
     };
 
+    let cancel_for_convert = cancel.clone();
     let wait_task = async {
         let mut cancel = cancel;
         loop {
@@ -171,6 +170,9 @@ pub async fn run_ytdlp(
     let (_, stderr_tail, status) = tokio::join!(read_task, stderr_task, wait_task);
     let status = status?;
     if !status.success() {
+        if *cancel_for_convert.borrow() {
+            anyhow::bail!("cancelled");
+        }
         let stderr_tail = truncate_stderr_tail(&stderr_tail);
         tracing::error!(
             url = %url,
@@ -182,7 +184,8 @@ pub async fn run_ytdlp(
     }
 
     if let Some(ref tx) = progress_tx {
-        let _ = tx.send(99.0);
+        // Download phase maps to 0–85%; convert fills 85–100%.
+        let _ = tx.send(85.0);
     }
 
     let mut result = finalize_job_dir(&job_dir)?;
@@ -196,6 +199,22 @@ pub async fn run_ytdlp(
         file = %file_name,
         "yt-dlp download finalized"
     );
+
+    // Normalize to H.264-in-MP4 when needed (skip audio-only).
+    if is_video_container(&result.file_path) {
+        result.file_path = ffprobe::ensure_h264_mp4(
+            db,
+            config,
+            &result.file_path,
+            progress_tx.as_deref(),
+            Some(cancel_for_convert),
+            85.0,
+        )
+        .await?;
+    } else if let Some(ref tx) = progress_tx {
+        let _ = tx.send(100.0);
+    }
+
     let thumb_missing = result
         .thumbnail_path
         .as_ref()
@@ -283,7 +302,8 @@ impl DownloadProgress {
             return None;
         }
         if line.starts_with("[mv-post]") || POSTPROCESS_RE.is_match(line) {
-            return self.emit(99.0);
+            // Leave headroom for H.264 normalize (85–100%).
+            return self.emit(85.0);
         }
         if self.skip_current {
             return None;
@@ -301,13 +321,14 @@ impl DownloadProgress {
         } else {
             (self.current_part as f64 - 1.0).clamp(0.0, parts - 1.0)
         };
-        let span = 97.0 / parts;
-        (idx * span + (part_pct.clamp(0.0, 100.0) / 100.0) * span).clamp(0.0, 97.0)
+        // Cap download phase at ~83% so convert can occupy 85–100%.
+        let span = 83.0 / parts;
+        (idx * span + (part_pct.clamp(0.0, 100.0) / 100.0) * span).clamp(0.0, 83.0)
     }
 
     fn emit(&mut self, pct: f64) -> Option<f64> {
-        let pct = pct.clamp(0.0, 99.0);
-        if self.last_emitted >= 0.0 && (pct - self.last_emitted).abs() < 0.5 && pct < 99.0 {
+        let pct = pct.clamp(0.0, 85.0);
+        if self.last_emitted >= 0.0 && (pct - self.last_emitted).abs() < 0.5 && pct < 85.0 {
             return None;
         }
         self.last_emitted = pct;
@@ -542,24 +563,6 @@ fn detect_image_ext(path: &Path) -> &'static str {
     "jpg"
 }
 
-fn is_tiktok_url(url: &str) -> bool {
-    let host = url::Url::parse(url)
-        .ok()
-        .and_then(|u| u.host_str().map(|h| h.to_ascii_lowercase()));
-    match host {
-        Some(h) => {
-            h == "tiktok.com"
-                || h.ends_with(".tiktok.com")
-                || h == "tiktokv.com"
-                || h.ends_with(".tiktokv.com")
-        }
-        None => {
-            let lower = url.to_ascii_lowercase();
-            lower.contains("tiktok.com") || lower.contains("tiktokv.com")
-        }
-    }
-}
-
 fn shell_split(s: &str) -> Vec<String> {
     s.split_whitespace().map(|p| p.to_string()).collect()
 }
@@ -574,15 +577,6 @@ mod tests {
         let mut b = vec![0xff, 0xd8, 0xff, 0xe0];
         b.extend_from_slice(&[0u8; 16]);
         b
-    }
-
-    #[test]
-    fn tiktok_hosts_are_detected() {
-        assert!(is_tiktok_url("https://vm.tiktok.com/ZGdxGkd5x/"));
-        assert!(is_tiktok_url("https://www.tiktok.com/@user/video/123"));
-        assert!(is_tiktok_url("https://vt.tiktok.com/abc"));
-        assert!(!is_tiktok_url("https://youtube.com/watch?v=abc"));
-        assert!(!is_tiktok_url("https://example.com/tiktok.com/fake"));
     }
 
     #[test]
@@ -616,10 +610,10 @@ mod tests {
     #[test]
     fn progress_uses_byte_totals_from_template() {
         let mut p = DownloadProgress::new();
-        assert_eq!(p.on_line("[mv] 25 100 NA NA NA"), Some(24.25)); // 25% of 97
+        assert_eq!(p.on_line("[mv] 25 100 NA NA NA"), Some(20.75)); // 25% of 83
         assert!(p.on_line("[mv] 25.2 100 NA NA NA").is_none()); // < 0.5% change
         let next = p.on_line("[mv] 50 100 NA NA NA").unwrap();
-        assert!((next - 48.5).abs() < 0.01);
+        assert!((next - 41.5).abs() < 0.01);
     }
 
     #[test]
@@ -628,7 +622,7 @@ mod tests {
         let pct = p
             .on_line("[download] Downloading fragment 30/120")
             .unwrap();
-        assert!((pct - 24.25).abs() < 0.01);
+        assert!((pct - 20.75).abs() < 0.01); // 25% of 83
     }
 
     #[test]
@@ -643,14 +637,14 @@ mod tests {
             .on_line("[download] Destination: clip.f303.mp4")
             .is_none());
         let video = p.on_line("[mv] 100 100 NA NA NA").unwrap();
-        assert!((video - 48.5).abs() < 0.01); // first of two parts at 100% → 97/2
+        assert!((video - 41.5).abs() < 0.01); // first of two parts at 100% → 83/2
         assert!(p
             .on_line("[download] Destination: clip.f251.m4a")
             .is_none());
         let audio_half = p.on_line("[mv] 50 100 NA NA NA").unwrap();
-        assert!((audio_half - 72.75).abs() < 0.01); // 48.5 + 25% of second span
+        assert!((audio_half - 62.25).abs() < 0.01); // 41.5 + 50% of second span
         let merge = p.on_line("[Merger] Merging formats into \"clip.mp4\"").unwrap();
-        assert_eq!(merge, 99.0);
+        assert_eq!(merge, 85.0);
     }
 
     #[test]
@@ -659,6 +653,6 @@ mod tests {
         let pct = p
             .on_line("[download]  42.3% of   12.34MiB at  1.23MiB/s ETA 00:07")
             .unwrap();
-        assert!((pct - 41.031).abs() < 0.05);
+        assert!((pct - 35.109).abs() < 0.05); // 42.3% of 83
     }
 }

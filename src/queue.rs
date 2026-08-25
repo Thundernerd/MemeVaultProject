@@ -3,9 +3,11 @@
 use crate::autotag;
 use crate::config::Config;
 use crate::db::{self, Db, NewMedia};
+use crate::ffprobe;
 use crate::gallerydl;
 use crate::ytdlp;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{watch, Mutex};
 
@@ -208,14 +210,25 @@ async fn run_video(
         .get("uploader")
         .or_else(|| meta.get("channel"))
         .and_then(|v| v.as_str());
-    let duration = meta.get("duration").and_then(|v| v.as_f64());
-    let width = meta.get("width").and_then(|v| v.as_i64());
-    let height = meta.get("height").and_then(|v| v.as_i64());
+    let probe = ffprobe::probe_file(db, config, &result.file_path).await;
+    let duration = meta
+        .get("duration")
+        .and_then(|v| v.as_f64())
+        .or(probe.duration);
+    let width = meta
+        .get("width")
+        .and_then(|v| v.as_i64())
+        .or(probe.width);
+    let height = meta
+        .get("height")
+        .and_then(|v| v.as_i64())
+        .or(probe.height);
     let format = result
         .file_path
         .extension()
         .and_then(|e| e.to_str())
-        .map(|s| s.to_string());
+        .map(|s| s.to_string())
+        .or_else(|| Some("mp4".into()));
     let file_size = std::fs::metadata(&result.file_path).ok().map(|m| m.len() as i64);
     let thumb = result
         .thumbnail_path
@@ -267,11 +280,12 @@ async fn run_gallery(
     progress_tx: watch::Sender<f64>,
     cancel_rx: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
+    let cancel_for_convert = cancel_rx.clone();
     let files = gallerydl::run_gallery_dl(
         db,
         config,
         &item.url,
-        Some(progress_tx),
+        Some(progress_tx.clone()),
         cancel_rx,
         None,
     )
@@ -306,6 +320,9 @@ async fn run_gallery(
         None
     };
 
+    let video_count = files.iter().filter(|f| f.media_type == "video").count();
+    let mut video_idx = 0usize;
+
     for f in &files {
         let meta = &f.metadata;
         let title = meta.get("title").and_then(|v| v.as_str());
@@ -313,21 +330,72 @@ async fn run_gallery(
             .get("uploader")
             .or_else(|| meta.get("author"))
             .and_then(|v| v.as_str());
-        let format = f
-            .file_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|s| s.to_string());
-        let file_size = std::fs::metadata(&f.file_path).ok().map(|m| m.len() as i64);
-        let thumb = if f.media_type == "image" {
-            Some(f.file_path.to_string_lossy().to_string())
-        } else {
-            None
-        };
         let raw = serde_json::to_string(meta).ok();
-        let file_path = f.file_path.to_string_lossy().to_string();
-        let width = meta.get("width").and_then(|v| v.as_i64());
-        let height = meta.get("height").and_then(|v| v.as_i64());
+
+        let (file_path, format, file_size, width, height, duration, thumb) =
+            if f.media_type == "video" {
+                video_idx += 1;
+                let base = if video_count > 0 {
+                    85.0 + (video_idx.saturating_sub(1) as f64) * (15.0 / video_count as f64)
+                } else {
+                    85.0
+                };
+                let _ = progress_tx.send(base);
+                let normalized = ffprobe::ensure_h264_mp4(
+                    db,
+                    config,
+                    &f.file_path,
+                    Some(&progress_tx),
+                    Some(cancel_for_convert.clone()),
+                    base,
+                )
+                .await?;
+                let probe = ffprobe::probe_file(db, config, &normalized).await;
+                let thumb_path = {
+                    let parent = normalized
+                        .parent()
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| PathBuf::from("."));
+                    let stem = normalized
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("video");
+                    let thumb = parent.join(format!("{stem}_thumbnail.jpg"));
+                    if ffprobe::generate_video_thumbnail(db, config, &normalized, &thumb).await {
+                        Some(thumb.to_string_lossy().to_string())
+                    } else {
+                        None
+                    }
+                };
+                let file_size = std::fs::metadata(&normalized).ok().map(|m| m.len() as i64);
+                (
+                    normalized.to_string_lossy().to_string(),
+                    Some("mp4".to_string()),
+                    file_size,
+                    probe.width.or_else(|| meta.get("width").and_then(|v| v.as_i64())),
+                    probe
+                        .height
+                        .or_else(|| meta.get("height").and_then(|v| v.as_i64())),
+                    probe.duration,
+                    thumb_path,
+                )
+            } else {
+                let format = f
+                    .file_path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|s| s.to_string());
+                let file_size = std::fs::metadata(&f.file_path).ok().map(|m| m.len() as i64);
+                (
+                    f.file_path.to_string_lossy().to_string(),
+                    format,
+                    file_size,
+                    meta.get("width").and_then(|v| v.as_i64()),
+                    meta.get("height").and_then(|v| v.as_i64()),
+                    None,
+                    Some(f.file_path.to_string_lossy().to_string()),
+                )
+            };
 
         let media = db.with_conn(|c| {
             Ok(db::insert_media_item(
@@ -339,7 +407,7 @@ async fn run_gallery(
                     title,
                     description: None,
                     uploader,
-                    duration: None,
+                    duration,
                     thumbnail_path: thumb.as_deref(),
                     file_path: &file_path,
                     file_size,
@@ -364,5 +432,6 @@ async fn run_gallery(
         );
     }
 
+    let _ = progress_tx.send(100.0);
     Ok(())
 }

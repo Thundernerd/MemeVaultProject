@@ -142,6 +142,31 @@ pub async fn upload(
             continue;
         }
 
+        let dest = if media_type == "video" {
+            match ffprobe::ensure_h264_mp4(
+                &state.db,
+                &state.config,
+                &dest,
+                None,
+                None,
+                0.0,
+            )
+            .await
+            {
+                Ok(p) => p,
+                Err(e) => {
+                    results.push(json!({
+                        "success": false,
+                        "filename": filename,
+                        "error": e.to_string(),
+                    }));
+                    continue;
+                }
+            }
+        } else {
+            dest
+        };
+
         let probe = ffprobe::probe_file(&state.db, &state.config, &dest).await;
         let mut thumb_path: Option<String> = None;
         if media_type == "video" {
@@ -155,11 +180,15 @@ pub async fn upload(
 
         let url = format!("local://{filename}");
         let file_path = dest.to_string_lossy().to_string();
-        let file_size = Some(data.len() as i64);
-        let format = probe
-            .format
-            .clone()
-            .or_else(|| Some(ext.to_string()).filter(|s| !s.is_empty()));
+        let file_size = std::fs::metadata(&dest).ok().map(|m| m.len() as i64);
+        let format = if media_type == "video" {
+            Some("mp4".to_string())
+        } else {
+            probe
+                .format
+                .clone()
+                .or_else(|| Some(ext.to_string()).filter(|s| !s.is_empty()))
+        };
 
         match state.db.with_conn(|c| {
             Ok(db::insert_media_item(

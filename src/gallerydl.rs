@@ -100,7 +100,7 @@ pub async fn run_gallery_dl(
                 {
                     files_seen += 1;
                     if let Some(ref tx) = progress_tx {
-                        let pct = (files_seen as f64 * 5.0).min(95.0);
+                        let pct = (files_seen as f64 * 5.0).min(85.0);
                         let _ = tx.send(pct);
                     }
                 }
@@ -162,7 +162,8 @@ pub async fn run_gallery_dl(
         "gallery-dl download finalized"
     );
     if let Some(tx) = progress_tx {
-        let _ = tx.send(100.0);
+        // Leave 85–100% for H.264 normalize of any video files.
+        let _ = tx.send(85.0);
     }
     Ok(files)
 }
