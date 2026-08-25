@@ -42,6 +42,15 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
+    tracing::info!(
+        log_level = %config.log_level,
+        bind = %config.bind,
+        data_dir = %config.data_dir.display(),
+        oidc_enabled = config.oidc_enabled(),
+        static_frontend = config.static_dir.join("index.html").exists(),
+        "starting MemeVault"
+    );
+
     std::fs::create_dir_all(&config.data_dir)?;
     std::fs::create_dir_all(config.bin_dir())?;
     std::fs::create_dir_all(config.cookies_dir())?;
@@ -49,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
     let db = Db::open(&config)?;
     let queue = Arc::new(QueueHandle::new());
     queue::start_queue_processor(db.clone(), config.clone(), queue.clone());
+    tracing::info!("download queue processor started");
 
     let state = AppState {
         db: db.clone(),

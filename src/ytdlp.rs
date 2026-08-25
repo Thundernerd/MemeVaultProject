@@ -65,12 +65,17 @@ pub async fn run_ytdlp(
         args.push("--convert-thumbnails".into());
         args.push("jpg".into());
     }
-    if let Some(cookie) = cookies::cookie_path(config, "ytdlp") {
+    let cookies = if let Some(cookie) = cookies::cookie_path(config, "ytdlp") {
         if cookie.exists() {
             args.push("--cookies".into());
             args.push(cookie.to_string_lossy().into());
+            true
+        } else {
+            false
         }
-    }
+    } else {
+        false
+    };
     // TikTok's default "best" is often HEVC. Chrome/Firefox play the AAC track and skip the
     // video, which looks like an audio-only download. Prefer H.264 when the site offers it.
     if is_tiktok_url(url) {
@@ -83,6 +88,17 @@ pub async fn run_ytdlp(
         args.push(part);
     }
     args.push(url.to_string());
+
+    let binary_name = Path::new(&ytdlp)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("yt-dlp");
+    tracing::info!(
+        url = %url,
+        binary = %binary_name,
+        cookies,
+        "spawning yt-dlp"
+    );
 
     let mut child = Command::new(&ytdlp)
         .args(&args)
@@ -110,9 +126,17 @@ pub async fn run_ytdlp(
     };
 
     // Drain stderr so ffmpeg thumbnail conversion cannot fill the pipe and deadlock.
+    // Keep a short tail for failure diagnostics.
     let stderr_task = async {
         let mut reader = BufReader::new(stderr).lines();
-        while let Ok(Some(_)) = reader.next_line().await {}
+        let mut tail: Vec<String> = Vec::new();
+        while let Ok(Some(line)) = reader.next_line().await {
+            if tail.len() >= 8 {
+                tail.remove(0);
+            }
+            tail.push(line);
+        }
+        tail
     };
 
     let wait_task = async {
@@ -130,14 +154,30 @@ pub async fn run_ytdlp(
         }
     };
 
-    let (_, _, status) = tokio::join!(read_task, stderr_task, wait_task);
+    let (_, stderr_tail, status) = tokio::join!(read_task, stderr_task, wait_task);
     let status = status?;
     if !status.success() {
-        // cancel was moved; check via channel clone before move — use status only
+        let stderr_tail = truncate_stderr_tail(&stderr_tail);
+        tracing::error!(
+            url = %url,
+            status = %status,
+            stderr_tail = %stderr_tail,
+            "yt-dlp exited with non-zero status"
+        );
         anyhow::bail!("yt-dlp exited with {status}");
     }
 
     let mut result = finalize_job_dir(&job_dir)?;
+    let file_name = result
+        .file_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("?");
+    tracing::info!(
+        url = %url,
+        file = %file_name,
+        "yt-dlp download finalized"
+    );
     let thumb_missing = result
         .thumbnail_path
         .as_ref()
@@ -152,6 +192,15 @@ pub async fn run_ytdlp(
         }
     }
     Ok(result)
+}
+
+fn truncate_stderr_tail(lines: &[String]) -> String {
+    let joined = lines.join(" | ");
+    if joined.chars().count() <= 500 {
+        joined
+    } else {
+        joined.chars().take(500).collect::<String>() + "…"
+    }
 }
 
 fn finalize_job_dir(job_dir: &Path) -> anyhow::Result<YtdlpResult> {

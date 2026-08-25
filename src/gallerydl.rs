@@ -48,16 +48,32 @@ pub async fn run_gallery_dl(
         "--directory".into(),
         job_dir.to_string_lossy().into(),
     ];
-    if let Some(cookie) = cookies::cookie_path(config, "gallerydl") {
+    let cookies = if let Some(cookie) = cookies::cookie_path(config, "gallerydl") {
         if cookie.exists() {
             args.push("--cookies".into());
             args.push(cookie.to_string_lossy().into());
+            true
+        } else {
+            false
         }
-    }
+    } else {
+        false
+    };
     for part in extra.split_whitespace() {
         args.push(part.to_string());
     }
     args.push(url.to_string());
+
+    let binary_name = Path::new(&bin)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("gallery-dl");
+    tracing::info!(
+        url = %url,
+        binary = %binary_name,
+        cookies,
+        "spawning gallery-dl"
+    );
 
     let mut child = Command::new(&bin)
         .args(&args)
@@ -67,6 +83,7 @@ pub async fn run_gallery_dl(
         .spawn()?;
 
     let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
     let mut reader = BufReader::new(stdout).lines();
     let progress_tx = progress_tx.map(Arc::new);
     let mut files_seen = 0u32;
@@ -92,6 +109,18 @@ pub async fn run_gallery_dl(
         files_seen
     };
 
+    let stderr_task = async {
+        let mut reader = BufReader::new(stderr).lines();
+        let mut tail: Vec<String> = Vec::new();
+        while let Ok(Some(line)) = reader.next_line().await {
+            if tail.len() >= 8 {
+                tail.remove(0);
+            }
+            tail.push(line);
+        }
+        tail
+    };
+
     let wait_task = async {
         loop {
             tokio::select! {
@@ -109,21 +138,42 @@ pub async fn run_gallery_dl(
         }
     };
 
-    let (count, status) = tokio::join!(read_task, wait_task);
+    let (count, stderr_tail, status) = tokio::join!(read_task, stderr_task, wait_task);
     let status = status?;
     if !status.success() {
         if *cancel.borrow() {
             anyhow::bail!("cancelled");
         }
+        let stderr_tail = truncate_stderr_tail(&stderr_tail);
+        tracing::error!(
+            url = %url,
+            status = %status,
+            stderr_tail = %stderr_tail,
+            "gallery-dl exited with non-zero status"
+        );
         anyhow::bail!("gallery-dl exited with {status}");
     }
     let _ = count;
 
     let files = collect_files(&job_dir)?;
+    tracing::info!(
+        url = %url,
+        file_count = files.len(),
+        "gallery-dl download finalized"
+    );
     if let Some(tx) = progress_tx {
         let _ = tx.send(100.0);
     }
     Ok(files)
+}
+
+fn truncate_stderr_tail(lines: &[String]) -> String {
+    let joined = lines.join(" | ");
+    if joined.chars().count() <= 500 {
+        joined
+    } else {
+        joined.chars().take(500).collect::<String>() + "…"
+    }
 }
 
 fn collect_files(job_dir: &Path) -> anyhow::Result<Vec<GalleryDlFile>> {

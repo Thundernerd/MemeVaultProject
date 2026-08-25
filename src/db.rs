@@ -21,7 +21,9 @@ pub struct Db {
 impl Db {
     pub fn open(config: &Config) -> anyhow::Result<Self> {
         std::fs::create_dir_all(&config.data_dir)?;
-        let manager = SqliteConnectionManager::file(config.db_path());
+        let db_path = config.db_path();
+        tracing::info!(db_path = %db_path.display(), "opening database");
+        let manager = SqliteConnectionManager::file(&db_path);
         let pool = Pool::builder().max_size(8).build(manager)?;
         let conn = pool.get()?;
         conn.execute_batch(

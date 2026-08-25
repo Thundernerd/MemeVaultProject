@@ -68,6 +68,7 @@ pub async fn put(
     })?;
 
     if discord_changed {
+        tracing::info!("discord settings changed; restarting Discord bot");
         discord::restart_discord_bot(state.clone()).await;
     }
 

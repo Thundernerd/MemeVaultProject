@@ -385,8 +385,13 @@ pub async fn ensure_binaries(db: &Db, config: &Config) {
         };
         if !status.exists && !has_override {
             tracing::info!("downloading missing binary: {name}");
-            if let Err(e) = download_binary(db, config, name).await {
-                tracing::warn!("failed to download {name}: {e:#}");
+            match download_binary(db, config, name).await {
+                Ok(_) => {
+                    tracing::info!("downloaded binary: {name}");
+                }
+                Err(e) => {
+                    tracing::warn!("failed to download {name}: {e:#}");
+                }
             }
         }
     }

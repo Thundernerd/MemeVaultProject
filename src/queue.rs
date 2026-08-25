@@ -24,6 +24,7 @@ impl QueueHandle {
         let map = self.cancel_map.lock().await;
         if let Some(tx) = map.get(id) {
             let _ = tx.send(true);
+            tracing::info!(item_id = %id, "queue item cancel signaled");
             true
         } else {
             false
@@ -64,6 +65,13 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
         let mut map = handle.cancel_map.lock().await;
         map.insert(item.id.clone(), cancel_tx);
     }
+
+    tracing::info!(
+        item_id = %item.id,
+        url = %item.url,
+        downloader = %item.downloader,
+        "queue item started"
+    );
 
     let (progress_tx, mut progress_rx) = watch::channel(0.0f64);
     let item_id = item.id.clone();
@@ -107,6 +115,12 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
                 )?;
                 Ok(())
             });
+            tracing::info!(
+                item_id = %item.id,
+                url = %item.url,
+                downloader = %item.downloader,
+                "queue item completed"
+            );
         }
         Err(e) => {
             let msg = e.to_string();
@@ -123,6 +137,21 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
                 )?;
                 Ok(())
             });
+            if cancelled {
+                tracing::warn!(
+                    item_id = %item.id,
+                    url = %item.url,
+                    "queue item cancelled"
+                );
+            } else {
+                tracing::error!(
+                    item_id = %item.id,
+                    url = %item.url,
+                    downloader = %item.downloader,
+                    error = %msg,
+                    "queue item failed"
+                );
+            }
         }
     }
 

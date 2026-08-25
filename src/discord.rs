@@ -16,6 +16,7 @@ pub async fn restart_discord_bot(state: AppState) {
     {
         let mut guard = state.discord.lock().await;
         if let Some(ctrl) = guard.take() {
+            tracing::info!("stopping previous Discord bot instance");
             let _ = ctrl.shutdown.send(true);
         }
     }
@@ -63,6 +64,8 @@ pub async fn restart_discord_bot(state: AppState) {
         .flatten()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "get".into());
+
+    tracing::info!(command = %command_name, "starting Discord bot");
 
     tokio::spawn(async move {
         if let Err(e) = run_bot(token, command_name, db, config, shutdown_rx).await {
@@ -304,7 +307,11 @@ async fn run_bot(
     #[async_trait::async_trait]
     impl EventHandler for Handler {
         async fn ready(&self, ctx: Context, ready: Ready) {
-            tracing::info!("Discord bot logged in as {}", ready.user.name);
+            tracing::info!(
+                bot_user = %ready.user.name,
+                bot_user_id = %ready.user.id,
+                "Discord bot logged in"
+            );
             let cmd = CreateCommand::new(&self.command_name)
                 .description("Download media and post it here")
                 .add_option(
@@ -324,8 +331,17 @@ async fn run_bot(
                     )
                     .required(false),
                 );
-            if let Err(e) = Command::create_global_command(&ctx.http, cmd).await {
-                tracing::error!("failed to register slash command: {e}");
+            match Command::create_global_command(&ctx.http, cmd).await {
+                Ok(_) => {
+                    tracing::info!(
+                        command = %self.command_name,
+                        bot_user_id = %ready.user.id,
+                        "registered Discord slash command"
+                    );
+                }
+                Err(e) => {
+                    tracing::error!("failed to register slash command: {e}");
+                }
             }
         }
 
@@ -362,17 +378,39 @@ async fn run_bot(
             let message_ref = message.as_deref();
 
             let as_user = post_as_user_enabled(&self.db);
+            tracing::info!(
+                command = %cmd.data.name,
+                user_id = %cmd.user.id,
+                guild_id = ?cmd.guild_id,
+                channel_id = %cmd.channel_id,
+                url = %url,
+                media_type = %media_type,
+                post_as_user = as_user,
+                has_caption = message_ref.is_some(),
+                "discord slash command received"
+            );
+
             if as_user {
-                let _ = cmd.defer_ephemeral(&ctx.http).await;
-            } else {
-                let _ = cmd.defer(&ctx.http).await;
+                if let Err(e) = cmd.defer_ephemeral(&ctx.http).await {
+                    tracing::warn!(error = %e, "failed to defer ephemeral Discord interaction");
+                }
+            } else if let Err(e) = cmd.defer(&ctx.http).await {
+                tracing::warn!(error = %e, "failed to defer Discord interaction");
             }
 
             let tmp = tempfile::tempdir().ok();
             let Some(tmp) = tmp else {
+                tracing::error!("failed to create Discord download temp dir");
                 edit_status(&ctx, &cmd, "Failed to create temp dir").await;
                 return;
             };
+
+            let downloader = if media_type == "image" {
+                "gallery-dl"
+            } else {
+                "yt-dlp"
+            };
+            tracing::info!(downloader = %downloader, url = %url, "discord download started");
 
             let (_, cancel_rx) = watch::channel(false);
             let result = if media_type == "image" {
@@ -406,9 +444,19 @@ async fn run_bot(
 
             match result {
                 Ok(paths) if !paths.is_empty() => {
+                    tracing::info!(
+                        file_count = paths.len(),
+                        url = %url,
+                        "discord download succeeded"
+                    );
                     if as_user {
                         match post_via_webhook(&ctx, &cmd, &paths, &url, message_ref).await {
                             Ok(()) => {
+                                tracing::info!(
+                                    file_count = paths.len().min(10),
+                                    url = %url,
+                                    "discord posted as user via webhook"
+                                );
                                 edit_status(
                                     &ctx,
                                     &cmd,
@@ -420,7 +468,10 @@ async fn run_bot(
                                 .await;
                             }
                             Err(e) => {
-                                tracing::warn!("post-as-user failed ({e:#}); falling back to bot");
+                                tracing::warn!(
+                                    error = %format!("{e:#}"),
+                                    "post-as-user failed; falling back to bot"
+                                );
                                 edit_status(
                                     &ctx,
                                     &cmd,
@@ -430,12 +481,18 @@ async fn run_bot(
                                 )
                                 .await;
                                 post_as_bot_followups(&ctx, &cmd, &paths, &url, message_ref).await;
+                                tracing::info!(
+                                    file_count = paths.len().min(10),
+                                    url = %url,
+                                    "discord posted as bot after webhook fallback"
+                                );
                             }
                         }
                     } else {
                         // Public post: optional caption + files + Open original on the response.
                         let attachments = load_attachments(&paths).await;
                         if attachments.is_empty() {
+                            tracing::warn!(url = %url, "discord download produced no attachable files");
                             edit_status(&ctx, &cmd, "No attachable files").await;
                         } else {
                             let mut atts = EditAttachments::new();
@@ -450,15 +507,27 @@ async fn run_bot(
                                 edit = edit.button(button);
                             }
                             if cmd.edit_response(&ctx.http, edit).await.is_err() {
+                                tracing::warn!(
+                                    url = %url,
+                                    "edit_response failed; posting as bot follow-ups"
+                                );
                                 post_as_bot_followups(&ctx, &cmd, &paths, &url, message_ref).await;
+                            } else {
+                                tracing::info!(
+                                    file_count = paths.len().min(10),
+                                    url = %url,
+                                    "discord posted as bot"
+                                );
                             }
                         }
                     }
                 }
                 Ok(_) => {
+                    tracing::warn!(url = %url, "discord download returned no files");
                     edit_status(&ctx, &cmd, "No files downloaded").await;
                 }
                 Err(e) => {
+                    tracing::error!(url = %url, error = %format!("{e:#}"), "discord download failed");
                     edit_status(&ctx, &cmd, format!("Download failed: {e}")).await;
                 }
             }
