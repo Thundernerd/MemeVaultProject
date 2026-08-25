@@ -63,10 +63,54 @@ fn platform_from_url(url: &str) -> String {
     };
     let host = parsed.host_str().unwrap_or("").to_lowercase();
     let host = host.strip_prefix("www.").unwrap_or(&host);
-    let label = host.split('.').next().unwrap_or(host);
+    // Registrable-domain label (second-to-last), matching V1. Subdomains like
+    // vm.tiktok.com / vt.tiktok.com must tag as tiktok, not vm/vt.
+    let mut parts = host.rsplit('.');
+    let _tld = parts.next();
+    let label = parts.next().unwrap_or(host);
     match label {
         "twitter" | "t" => "x".into(),
         "youtu" => "youtube".into(),
         other => other.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn platform_from_url_uses_registrable_domain() {
+        assert_eq!(
+            platform_from_url("https://www.youtube.com/watch?v=abc"),
+            "youtube"
+        );
+        assert_eq!(platform_from_url("https://youtu.be/abc123"), "youtube");
+        assert_eq!(
+            platform_from_url("https://twitter.com/user/status/123"),
+            "x"
+        );
+        assert_eq!(platform_from_url("https://t.co/abc"), "x");
+        assert_eq!(platform_from_url("https://www.reddit.com/r/test"), "reddit");
+        assert_eq!(platform_from_url("https://vimeo.com/123456"), "vimeo");
+        assert_eq!(platform_from_url("local://upload/file.mp4"), "upload");
+        assert_eq!(platform_from_url("not-a-url"), "unknown");
+    }
+
+    #[test]
+    fn tiktok_short_links_tag_as_tiktok() {
+        assert_eq!(
+            platform_from_url("https://vm.tiktok.com/ZGdxGkd5x/"),
+            "tiktok"
+        );
+        assert_eq!(platform_from_url("https://vt.tiktok.com/abc"), "tiktok");
+        assert_eq!(
+            platform_from_url("https://www.tiktok.com/@user/video/123"),
+            "tiktok"
+        );
+        assert_eq!(
+            platform_from_url("https://m.tiktok.com/v/123"),
+            "tiktok"
+        );
     }
 }
