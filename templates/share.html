@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-accent="blue">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }} — MemeVault</title>
+  {{ og_meta|safe }}
+  <style>
+    :root {
+      --surface-base: #09090b; --surface-1: #18181b; --surface-2: #27272a;
+      --border: #27272a; --text-primary: #fafafa; --text-muted: #71717a;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; background: var(--surface-base); color: var(--text-primary); min-height: 100vh; display: flex; flex-direction: column; }
+    header { height: 64px; background: rgba(24,24,27,0.7); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; font-weight: 700; }
+    .player { background: #000; display: flex; align-items: center; justify-content: center; width: 100%; max-height: 70vh; }
+    .player video, .player img { max-height: 70vh; width: 100%; object-fit: contain; }
+    .meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; max-width: 48rem; margin: 0 auto; width: 100%; }
+    .meta h1 { font-size: 1rem; font-weight: 500; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .btn { background: var(--surface-2); color: var(--text-primary); text-decoration: none; padding: 6px 16px; border-radius: 8px; font-size: 0.875rem; }
+    footer { margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); text-align: center; color: var(--text-muted); font-size: 0.75rem; }
+    .album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; padding: 16px; max-width: 64rem; margin: 0 auto; width: 100%; }
+    .album-grid img, .album-grid video { width: 100%; height: 160px; object-fit: cover; border-radius: 8px; background: #000; }
+  </style>
+</head>
+<body>
+  <header>MVP</header>
+  {% if is_album %}
+  <div class="album-grid" id="album"></div>
+  <script>
+    const items = {{ album_items_json|safe }};
+    const root = document.getElementById('album');
+    const pathToken = location.pathname.split('/').pop();
+    for (const m of items) {
+      const src = m.has_thumbnail
+        ? `/api/share/${pathToken}/media/${m.id}/thumbnail`
+        : `/api/share/${pathToken}/media/${m.id}/file`;
+      if (m.type === 'video') {
+        const v = document.createElement('video');
+        v.src = `/api/share/${pathToken}/media/${m.id}/file`;
+        v.controls = true;
+        root.appendChild(v);
+      } else {
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = m.title || '';
+        root.appendChild(img);
+      }
+    }
+  </script>
+  {% else %}
+  <div class="player">
+    {% if media_type == "video" %}
+    <video src="{{ file_src }}" controls autoplay{% if let Some(t) = thumbnail_src %} poster="{{ t }}"{% endif %}></video>
+    {% else %}
+    <img src="{% if let Some(t) = thumbnail_src %}{{ t }}{% else %}{{ file_src }}{% endif %}" alt="{{ title }}" />
+    {% endif %}
+  </div>
+  <div class="meta">
+    <h1>{{ title }}</h1>
+    {% if allow_download %}
+    <a class="btn" href="{{ file_src }}" download>Download</a>
+    {% endif %}
+  </div>
+  {% endif %}
+  <footer>Shared via MemeVault</footer>
+</body>
+</html>
