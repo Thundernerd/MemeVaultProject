@@ -206,11 +206,27 @@ async fn download_ytdlp(config: &Config) -> anyhow::Result<()> {
 }
 
 async fn download_gallerydl(config: &Config) -> anyhow::Result<()> {
+    // Codeberg/Forgejo has no GitHub-style /releases/latest/download/{asset}
+    // shortcut — resolve the latest tag via the API, then download by tag.
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build()?;
+    let release: serde_json::Value = client
+        .get("https://codeberg.org/api/v1/repos/mikf/gallery-dl/releases/latest")
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let tag = release["tag_name"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("gallery-dl release missing tag_name"))?;
+
     let asset = gallerydl_filename();
     let urls = [
-        format!("https://github.com/mikf/gallery-dl/releases/latest/download/{asset}"),
-        "https://github.com/mikf/gallery-dl/releases/latest/download/gallery-dl.bin".into(),
-        "https://github.com/mikf/gallery-dl/releases/latest/download/gallery-dl".into(),
+        format!("https://codeberg.org/mikf/gallery-dl/releases/download/{tag}/{asset}"),
+        format!("https://codeberg.org/mikf/gallery-dl/releases/download/{tag}/gallery-dl.bin"),
+        format!("https://codeberg.org/mikf/gallery-dl/releases/download/{tag}/gallery-dl"),
     ];
     let dest = config.bin_dir().join(asset);
     let mut last_err = None;
