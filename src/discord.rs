@@ -170,9 +170,21 @@ fn truncate_message(msg: &str) -> String {
     }
 }
 
+fn open_original_button(url: &str) -> Option<CreateButton> {
+    let ok = (url.starts_with("http://") || url.starts_with("https://")) && url.len() <= 512;
+    ok.then(|| CreateButton::new_link(url).label("Open original"))
+}
+
 fn apply_optional_content(mut builder: ExecuteWebhook, message: Option<&str>) -> ExecuteWebhook {
     if let Some(content) = message.filter(|m| !m.is_empty()) {
         builder = builder.content(content);
+    }
+    builder
+}
+
+fn apply_open_original(mut builder: ExecuteWebhook, url: &str) -> ExecuteWebhook {
+    if let Some(button) = open_original_button(url) {
+        builder = builder.button(button);
     }
     builder
 }
@@ -181,6 +193,7 @@ async fn post_via_webhook(
     ctx: &Context,
     cmd: &CommandInteraction,
     paths: &[PathBuf],
+    url: &str,
     message: Option<&str>,
 ) -> anyhow::Result<()> {
     if cmd.guild_id.is_none() {
@@ -200,10 +213,13 @@ async fn post_via_webhook(
         anyhow::bail!("no attachable files");
     }
 
-    let mut builder = apply_optional_content(ExecuteWebhook::new(), message)
-        .username(&username)
-        .avatar_url(&avatar_url)
-        .files(attachments);
+    let mut builder = apply_open_original(
+        apply_optional_content(ExecuteWebhook::new(), message),
+        url,
+    )
+    .username(&username)
+    .avatar_url(&avatar_url)
+    .files(attachments);
     if let Some(thread) = thread_id {
         builder = builder.in_thread(thread);
     }
@@ -218,8 +234,11 @@ async fn post_via_webhook(
             if retry_attachments.is_empty() {
                 anyhow::bail!("webhook execute failed: {first_err}");
             }
-            let mut retry = apply_optional_content(ExecuteWebhook::new(), message)
-                .files(retry_attachments);
+            let mut retry = apply_open_original(
+                apply_optional_content(ExecuteWebhook::new(), message),
+                url,
+            )
+            .files(retry_attachments);
             if let Some(thread) = thread_id {
                 retry = retry.in_thread(thread);
             }
@@ -232,11 +251,12 @@ async fn post_via_webhook(
     }
 }
 
-/// Posts files as the bot. Puts optional `message` on the first follow-up only.
+/// Posts files as the bot. Puts optional `message` and Open original on the first follow-up only.
 async fn post_as_bot_followups(
     ctx: &Context,
     cmd: &CommandInteraction,
     paths: &[PathBuf],
+    url: &str,
     message: Option<&str>,
 ) {
     let mut first = true;
@@ -248,6 +268,9 @@ async fn post_as_bot_followups(
             if first {
                 if let Some(content) = message.filter(|m| !m.is_empty()) {
                     followup = followup.content(content);
+                }
+                if let Some(button) = open_original_button(url) {
+                    followup = followup.button(button);
                 }
                 first = false;
             }
@@ -384,7 +407,7 @@ async fn run_bot(
             match result {
                 Ok(paths) if !paths.is_empty() => {
                     if as_user {
-                        match post_via_webhook(&ctx, &cmd, &paths, message_ref).await {
+                        match post_via_webhook(&ctx, &cmd, &paths, &url, message_ref).await {
                             Ok(()) => {
                                 edit_status(
                                     &ctx,
@@ -406,11 +429,11 @@ async fn run_bot(
                                     ),
                                 )
                                 .await;
-                                post_as_bot_followups(&ctx, &cmd, &paths, message_ref).await;
+                                post_as_bot_followups(&ctx, &cmd, &paths, &url, message_ref).await;
                             }
                         }
                     } else {
-                        // Public post: optional caption + files on the interaction response.
+                        // Public post: optional caption + files + Open original on the response.
                         let attachments = load_attachments(&paths).await;
                         if attachments.is_empty() {
                             edit_status(&ctx, &cmd, "No attachable files").await;
@@ -423,8 +446,11 @@ async fn run_bot(
                             if let Some(content) = message_ref {
                                 edit = edit.content(content);
                             }
+                            if let Some(button) = open_original_button(&url) {
+                                edit = edit.button(button);
+                            }
                             if cmd.edit_response(&ctx.http, edit).await.is_err() {
-                                post_as_bot_followups(&ctx, &cmd, &paths, message_ref).await;
+                                post_as_bot_followups(&ctx, &cmd, &paths, &url, message_ref).await;
                             }
                         }
                     }
