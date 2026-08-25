@@ -77,8 +77,23 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
     let item_id = item.id.clone();
     let db_prog = db.clone();
     tokio::spawn(async move {
-        while progress_rx.changed().await.is_ok() {
-            let pct = *progress_rx.borrow();
+        let mut last = -1.0f64;
+        loop {
+            if progress_rx.changed().await.is_err() {
+                let pct = *progress_rx.borrow();
+                if (pct - last).abs() > 0.001 {
+                    let _ = db_prog.with_conn(|c| {
+                        db::update_queue_item(c, &item_id, None, Some(pct), None, None)?;
+                        Ok(())
+                    });
+                }
+                break;
+            }
+            let pct = *progress_rx.borrow_and_update();
+            if (pct - last).abs() < 0.25 && pct < 99.0 {
+                continue;
+            }
+            last = pct;
             let _ = db_prog.with_conn(|c| {
                 db::update_queue_item(c, &item_id, None, Some(pct), None, None)?;
                 Ok(())

@@ -84,3 +84,12 @@ html, body, #app {
 [data-theme="light"] body {
   background: linear-gradient(160deg, #ffffff 0%, #eeeef2 55%);
 }
+
+@keyframes mv-progress-indeterminate {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+.mv-progress-indeterminate {
+  animation: mv-progress-indeterminate 1.2s ease-in-out infinite;
+}

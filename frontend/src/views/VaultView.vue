@@ -5,6 +5,7 @@ import MediaCard from '@/components/MediaCard.vue'
 import AlbumCard from '@/components/AlbumCard.vue'
 import MediaModal from '@/components/MediaModal.vue'
 import AddUrlModal from '@/components/AddUrlModal.vue'
+import DownloadProgress from '@/components/DownloadProgress.vue'
 
 const media = ref<MediaItem[]>([])
 const albums = ref<Album[]>([])
@@ -50,7 +51,7 @@ async function pollQueue() {
 onMounted(() => {
   load()
   pollQueue()
-  timer = window.setInterval(pollQueue, 2000)
+  timer = window.setInterval(pollQueue, 100)
 })
 onUnmounted(() => clearInterval(timer))
 
@@ -155,10 +156,8 @@ function toggleTag(name: string) {
         :key="q.id"
         class="aspect-square rounded-xl border border-dashed border-border-strong bg-surface-2/50 flex flex-col items-center justify-center p-3 gap-2"
       >
-        <p class="text-xs text-text-muted truncate w-full text-center">{{ q.status }}</p>
-        <div class="w-full h-1.5 bg-surface-3 rounded-full overflow-hidden">
-          <div class="h-full bg-accent transition-all" :style="{ width: `${q.progress}%` }" />
-        </div>
+        <p class="text-xs text-text-muted truncate w-full text-center" :title="q.url">{{ q.url }}</p>
+        <DownloadProgress :status="q.status" :progress="q.progress" />
       </div>
     </div>
 

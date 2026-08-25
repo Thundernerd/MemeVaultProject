@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { api, type QueueItem } from '@/api'
 import AddUrlModal from '@/components/AddUrlModal.vue'
+import DownloadProgress from '@/components/DownloadProgress.vue'
 
 const items = ref<QueueItem[]>([])
 const error = ref('')
@@ -37,7 +38,7 @@ async function retry(item: QueueItem) {
 
 onMounted(() => {
   load()
-  timer = window.setInterval(load, 2000)
+  timer = window.setInterval(load, 100)
 })
 onUnmounted(() => clearInterval(timer))
 </script>
@@ -73,9 +74,7 @@ onUnmounted(() => clearInterval(timer))
           <button class="text-xs px-2 py-1 rounded text-rose-400 hover:bg-surface-2" @click="remove(item.id)">Remove</button>
         </div>
       </div>
-      <div v-if="item.status === 'downloading' || item.status === 'pending'" class="h-1.5 bg-surface-3 rounded-full overflow-hidden">
-        <div class="h-full bg-accent" :style="{ width: `${item.progress}%` }" />
-      </div>
+      <DownloadProgress :status="item.status" :progress="item.progress" />
       <p v-if="item.error" class="text-xs text-rose-400">{{ item.error }}</p>
     </div>
     <AddUrlModal v-model:open="addOpen" @done="load" />
