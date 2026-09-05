@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Features
+- Vault filters (type and tags) can be collapsed; they start hidden on small screens
+
 ## [1.0.1] - 2026-08-25
 
 ## [1.0.0] - 2026-08-25

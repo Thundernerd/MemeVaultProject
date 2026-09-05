@@ -19,7 +19,14 @@ const tagMode = ref<'any' | 'all'>('any')
 const addOpen = ref(false)
 const selected = ref<MediaItem | null>(null)
 const activeQueue = ref<QueueItem[]>([])
+const filtersOpen = ref(false)
 let timer: number | undefined
+
+const activeFilterCount = computed(() => {
+  let n = selectedTags.value.length
+  if (filter.value !== 'all') n += 1
+  return n
+})
 
 async function load() {
   try {
@@ -53,6 +60,7 @@ async function pollQueue() {
 }
 
 onMounted(() => {
+  filtersOpen.value = window.matchMedia('(min-width: 768px)').matches
   load()
   pollQueue()
   timer = window.setInterval(pollQueue, 100)
@@ -123,11 +131,35 @@ function toggleTag(name: string) {
           placeholder="Search…"
           class="bg-surface-2 border border-border rounded-lg px-3 py-1.5 text-sm"
         />
-        <select v-model="filter" class="bg-surface-2 border border-border rounded-lg px-2 py-1.5 text-sm">
-          <option value="all">All</option>
-          <option value="video">Video</option>
-          <option value="image">Image</option>
-        </select>
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 border rounded-lg px-3 py-1.5 text-sm transition-colors"
+          :class="filtersOpen
+            ? 'bg-accent-subtle border-accent text-accent'
+            : 'bg-surface-2 border-border text-text-secondary hover:border-border-strong hover:text-text-primary'"
+          :aria-expanded="filtersOpen"
+          aria-controls="vault-filters"
+          @click="filtersOpen = !filtersOpen"
+        >
+          <svg
+            class="w-3.5 h-3.5 shrink-0 transition-transform"
+            :class="filtersOpen ? 'rotate-180' : ''"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.75"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M2 4l4 4 4-4" />
+          </svg>
+          {{ filtersOpen ? 'Hide filters' : 'Show filters' }}
+          <span
+            v-if="!filtersOpen && activeFilterCount"
+            class="min-w-5 h-5 px-1.5 rounded-full bg-accent text-white text-[11px] leading-5 text-center"
+          >{{ activeFilterCount }}</span>
+        </button>
         <button
           class="bg-accent hover:bg-accent-hover text-white px-4 py-1.5 rounded-lg text-sm font-medium"
           @click="addOpen = true"
@@ -135,20 +167,31 @@ function toggleTag(name: string) {
       </div>
     </div>
 
-    <div v-if="tags.length" class="flex flex-wrap gap-1.5">
-      <button
-        v-for="t in tags.slice(0, 40)"
-        :key="t.id"
-        class="text-xs px-2 py-1 rounded-full border transition-colors"
-        :class="selectedTags.includes(t.name)
-          ? 'border-accent bg-accent-subtle text-accent'
-          : 'border-border text-text-secondary hover:border-border-strong'"
-        @click="toggleTag(t.name)"
-      >{{ t.name }}</button>
-      <button
-        class="text-xs px-2 py-1 text-text-muted"
-        @click="tagMode = tagMode === 'any' ? 'all' : 'any'"
-      >match: {{ tagMode }}</button>
+    <div
+      v-show="filtersOpen"
+      id="vault-filters"
+      class="flex flex-col gap-3 rounded-xl border border-border bg-surface-2/40 p-3"
+    >
+      <select v-model="filter" class="bg-surface-1 border border-border rounded-lg px-2 py-1.5 text-sm self-start">
+        <option value="all">All</option>
+        <option value="video">Video</option>
+        <option value="image">Image</option>
+      </select>
+      <div v-if="tags.length" class="flex flex-wrap gap-1.5">
+        <button
+          v-for="t in tags.slice(0, 40)"
+          :key="t.id"
+          class="text-xs px-2 py-1 rounded-full border transition-colors"
+          :class="selectedTags.includes(t.name)
+            ? 'border-accent bg-accent-subtle text-accent'
+            : 'border-border text-text-secondary hover:border-border-strong'"
+          @click="toggleTag(t.name)"
+        >{{ t.name }}</button>
+        <button
+          class="text-xs px-2 py-1 text-text-muted"
+          @click="tagMode = tagMode === 'any' ? 'all' : 'any'"
+        >match: {{ tagMode }}</button>
+      </div>
     </div>
 
     <p v-if="error" class="text-rose-400 text-sm">{{ error }}</p>
