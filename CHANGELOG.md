@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-05
+
 ### Features
 - Vault filters (type and tags) can be collapsed; they start hidden on small screens
 - Copy button on media share links, including auto-copy after creating a share
