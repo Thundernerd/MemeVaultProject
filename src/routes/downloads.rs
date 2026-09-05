@@ -7,9 +7,12 @@ use axum::Json;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateBody {
     pub url: String,
     pub downloader: Option<String>,
+    #[serde(default)]
+    pub include_in_random: bool,
 }
 
 pub async fn create(
@@ -26,6 +29,6 @@ pub async fn create(
     }
     let item = state
         .db
-        .with_conn(|c| Ok(db::insert_queue_item(c, url, downloader, "web", None)?))?;
+        .with_conn(|c| Ok(db::insert_queue_item(c, url, downloader, "web", None, body.include_in_random)?))?;
     Ok((StatusCode::CREATED, Json(item)))
 }

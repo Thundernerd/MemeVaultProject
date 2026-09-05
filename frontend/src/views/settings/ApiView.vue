@@ -42,6 +42,7 @@ onMounted(load)
     <p class="text-xs text-text-muted">
       The key name is shown as a badge on queue items submitted via
       <code class="text-text-secondary">POST /api/v1/submit</code>.
+      Pass <code class="text-text-secondary">includeInRandom: true</code> to add the item to random selection when it finishes.
     </p>
     <form class="flex flex-col gap-2" @submit.prevent="create">
       <input v-model="name" required placeholder="Key name (e.g. Extra tool)" class="bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm" />

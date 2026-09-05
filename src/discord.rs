@@ -437,7 +437,7 @@ async fn run_bot(
             };
 
             let queue_item = match self.db.with_conn(|c| {
-                Ok(db::insert_queue_item(c, &url, downloader, "discord", Some("Discord"))?)
+                Ok(db::insert_queue_item(c, &url, downloader, "discord", Some("Discord"), false)?)
             }) {
                 Ok(item) => item,
                 Err(e) => {

@@ -51,6 +51,7 @@ export interface QueueItem {
   completed_at: string | null
   source: string
   source_label: string | null
+  include_in_random: number
 }
 
 export interface ShareLink {

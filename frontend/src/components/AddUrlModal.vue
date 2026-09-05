@@ -27,6 +27,7 @@ const busy = ref(false)
 const dragOver = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFiles = ref<FileStatus[]>([])
+const includeInRandom = ref(false)
 
 const pendingCount = computed(() => selectedFiles.value.filter((f) => f.state === 'pending').length)
 const allDone = computed(
@@ -98,7 +99,11 @@ async function submitUrl() {
   try {
     await api('/api/downloads', {
       method: 'POST',
-      body: JSON.stringify({ url: url.value, downloader: downloader.value }),
+      body: JSON.stringify({
+        url: url.value,
+        downloader: downloader.value,
+        includeInRandom: includeInRandom.value,
+      }),
     })
     url.value = ''
     open.value = false
@@ -121,7 +126,8 @@ async function handleUpload() {
   for (const { file } of pending) fd.append('files', file)
 
   try {
-    const res = await fetch('/api/media/upload', { method: 'POST', body: fd })
+    const qs = includeInRandom.value ? '?includeInRandom=true' : ''
+    const res = await fetch(`/api/media/upload${qs}`, { method: 'POST', body: fd })
     if (!res.ok) {
       const text = await res.text().catch(() => '')
       throw new Error(text || `Upload failed (${res.status})`)
@@ -156,6 +162,10 @@ async function handleUpload() {
     <div class="absolute inset-0 bg-black/70" @click="open = false" />
     <div class="relative bg-surface-1 border border-border rounded-2xl w-full max-w-md p-5 flex flex-col gap-4">
       <h2 class="text-lg font-semibold">Add to vault</h2>
+      <label class="flex items-center gap-2 text-sm text-text-secondary">
+        <input type="checkbox" v-model="includeInRandom" />
+        Include in random
+      </label>
       <form class="flex flex-col gap-3" @submit.prevent="submitUrl">
         <input
           v-model="url"

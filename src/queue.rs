@@ -256,7 +256,7 @@ async fn run_video(
                 height,
                 raw_metadata: raw.as_deref(),
                 album_id: None,
-                include_in_random: 0,
+                include_in_random: item.include_in_random,
             },
         )?)
     })?;
@@ -416,7 +416,7 @@ async fn run_gallery(
                     height,
                     raw_metadata: raw.as_deref(),
                     album_id: album_id.as_deref(),
-                    include_in_random: 0,
+                    include_in_random: item.include_in_random,
                 },
             )?)
         })?;

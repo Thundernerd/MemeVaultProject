@@ -36,6 +36,8 @@ pub struct SubmitBody {
     pub url: String,
     #[serde(rename = "type")]
     pub media_type: String,
+    #[serde(default, rename = "includeInRandom")]
+    pub include_in_random: bool,
 }
 
 pub async fn submit(
@@ -56,7 +58,7 @@ pub async fn submit(
     let label = ctx.name.trim();
     let label = if label.is_empty() { None } else { Some(label) };
     let item = state.db.with_conn(|c| {
-        Ok(db::insert_queue_item(c, url, downloader, "api", label)?)
+        Ok(db::insert_queue_item(c, url, downloader, "api", label, body.include_in_random)?)
     })?;
     Ok((StatusCode::CREATED, Json(json!({ "id": item.id }))))
 }

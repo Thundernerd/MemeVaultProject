@@ -61,7 +61,8 @@ fn init_schema(db: &rusqlite::Connection, data_dir: &Path) -> anyhow::Result<()>
           created_at   TEXT NOT NULL,
           completed_at TEXT,
           source       TEXT NOT NULL DEFAULT 'web',
-          source_label TEXT
+          source_label TEXT,
+          include_in_random INTEGER NOT NULL DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS media (
@@ -181,6 +182,12 @@ fn init_schema(db: &rusqlite::Connection, data_dir: &Path) -> anyhow::Result<()>
     }
     if !queue_cols.iter().any(|c| c == "source_label") {
         db.execute("ALTER TABLE queue_items ADD COLUMN source_label TEXT", [])?;
+    }
+    if !queue_cols.iter().any(|c| c == "include_in_random") {
+        db.execute(
+            "ALTER TABLE queue_items ADD COLUMN include_in_random INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
     }
 
     let migrated: Option<String> = db
@@ -306,6 +313,7 @@ pub struct QueueItem {
     pub completed_at: Option<String>,
     pub source: String,
     pub source_label: Option<String>,
+    pub include_in_random: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -460,6 +468,7 @@ fn map_queue(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueueItem> {
         completed_at: row.get("completed_at")?,
         source: row.get("source")?,
         source_label: row.get("source_label")?,
+        include_in_random: row.get("include_in_random")?,
     })
 }
 
@@ -494,6 +503,7 @@ pub fn insert_queue_item(
     downloader: &str,
     source: &str,
     source_label: Option<&str>,
+    include_in_random: bool,
 ) -> rusqlite::Result<QueueItem> {
     let item = QueueItem {
         id: Uuid::new_v4().to_string(),
@@ -506,10 +516,11 @@ pub fn insert_queue_item(
         completed_at: None,
         source: source.to_string(),
         source_label: source_label.map(|s| s.to_string()),
+        include_in_random: if include_in_random { 1 } else { 0 },
     };
     conn.execute(
-        "INSERT INTO queue_items (id, url, downloader, status, progress, error, created_at, completed_at, source, source_label)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO queue_items (id, url, downloader, status, progress, error, created_at, completed_at, source, source_label, include_in_random)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             item.id,
             item.url,
@@ -520,7 +531,8 @@ pub fn insert_queue_item(
             item.created_at,
             item.completed_at,
             item.source,
-            item.source_label
+            item.source_label,
+            item.include_in_random
         ],
     )?;
     Ok(item)
@@ -1320,10 +1332,23 @@ mod tests {
         };
         let db = Db::open(&config).unwrap();
         db.with_conn(|c| {
-            let item = insert_queue_item(c, "https://example.com/v", "ytdlp", "web", None).unwrap();
+            let item = insert_queue_item(c, "https://example.com/v", "ytdlp", "web", None, false).unwrap();
             assert_eq!(item.status, "pending");
             assert_eq!(item.source, "web");
             assert_eq!(item.source_label, None);
+            assert_eq!(item.include_in_random, 0);
+            let flagged = insert_queue_item(
+                c,
+                "https://example.com/r",
+                "ytdlp",
+                "api",
+                Some("bot"),
+                true,
+            )
+            .unwrap();
+            assert_eq!(flagged.include_in_random, 1);
+            let loaded = get_queue_item(c, &flagged.id).unwrap().unwrap();
+            assert_eq!(loaded.include_in_random, 1);
             let media = insert_media_item(
                 c,
                 NewMedia {
@@ -1407,6 +1432,9 @@ mod tests {
             let items = list_media_items_with_tags(c).unwrap();
             assert_eq!(items.len(), 1);
             assert_eq!(items[0].media.id, "m1");
+            let migrated = insert_queue_item(c, "https://example.com/v1", "ytdlp", "web", None, false)
+                .unwrap();
+            assert_eq!(migrated.include_in_random, 0);
             Ok(())
         })
         .unwrap();
@@ -1430,7 +1458,7 @@ mod tests {
         let db = Db::open(&config).unwrap();
         db.with_conn(|c| {
             let discord_pending =
-                insert_queue_item(c, "https://example.com/d1", "ytdlp", "discord", Some("Discord"))
+                insert_queue_item(c, "https://example.com/d1", "ytdlp", "discord", Some("Discord"), false)
                     .unwrap();
             assert_eq!(discord_pending.source, "discord");
             assert!(get_next_pending_item(c).unwrap().is_none());
@@ -1441,13 +1469,14 @@ mod tests {
                 "gallery-dl",
                 "discord",
                 Some("Discord"),
+                false,
             )
             .unwrap();
             update_queue_item(c, &discord_dl.id, Some("downloading"), Some(10.0), None, None)
                 .unwrap();
             assert_eq!(count_active_downloads(c).unwrap(), 0);
 
-            let web = insert_queue_item(c, "https://example.com/w", "ytdlp", "web", None).unwrap();
+            let web = insert_queue_item(c, "https://example.com/w", "ytdlp", "web", None, false).unwrap();
             let next = get_next_pending_item(c).unwrap().unwrap();
             assert_eq!(next.id, web.id);
             assert_eq!(next.source, "web");
@@ -1458,6 +1487,7 @@ mod tests {
                 "ytdlp",
                 "api",
                 Some("Extra tool"),
+                false,
             )
             .unwrap();
             assert_eq!(api.source, "api");
