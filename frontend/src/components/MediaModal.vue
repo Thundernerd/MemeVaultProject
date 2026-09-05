@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { api, type MediaItem, type ShareLink, type Tag } from '@/api'
 
 const props = defineProps<{ item: MediaItem }>()
@@ -10,6 +10,8 @@ const tags = ref<Tag[]>([...(props.item.tags || [])])
 const shares = ref<ShareLink[]>([])
 const includeRandom = ref(props.item.include_in_random === 1)
 const busy = ref(false)
+const copiedToken = ref<string | null>(null)
+let copiedTimer: number | undefined
 
 watch(
   () => props.item,
@@ -21,6 +23,10 @@ watch(
 
 onMounted(async () => {
   shares.value = await api(`/api/media/${props.item.id}/share`)
+})
+
+onUnmounted(() => {
+  if (copiedTimer !== undefined) window.clearTimeout(copiedTimer)
 })
 
 async function saveTags() {
@@ -51,12 +57,24 @@ async function toggleRandom() {
   emit('updated', updated)
 }
 
+async function copyShareUrl(token: string) {
+  try {
+    await navigator.clipboard.writeText(shareUrl(token))
+    copiedToken.value = token
+    if (copiedTimer !== undefined) window.clearTimeout(copiedTimer)
+    copiedTimer = window.setTimeout(() => {
+      copiedToken.value = null
+    }, 1500)
+  } catch { /* clipboard may be unavailable */ }
+}
+
 async function createShare() {
   const link = await api<ShareLink>(`/api/media/${props.item.id}/share`, {
     method: 'POST',
     body: JSON.stringify({ allowDownload: true }),
   })
   shares.value.unshift(link)
+  await copyShareUrl(link.token)
 }
 
 async function revokeShare(token: string) {
@@ -130,6 +148,10 @@ function shareUrl(token: string) {
           </div>
           <div v-for="s in shares" :key="s.token" class="flex items-center gap-2 text-xs">
             <a :href="shareUrl(s.token)" class="text-accent truncate flex-1" target="_blank">{{ shareUrl(s.token) }}</a>
+            <button
+              class="text-text-muted hover:text-text-primary shrink-0"
+              @click="copyShareUrl(s.token)"
+            >{{ copiedToken === s.token ? 'Copied' : 'Copy' }}</button>
             <button class="text-text-muted hover:text-rose-400" @click="revokeShare(s.token)">Revoke</button>
           </div>
         </div>

@@ -4,6 +4,7 @@
 
 ### Features
 - Vault filters (type and tags) can be collapsed; they start hidden on small screens
+- Copy button on media share links, including auto-copy after creating a share
 
 ## [1.0.1] - 2026-08-25
 
