@@ -226,5 +226,6 @@ pub async fn session_info(State(state): State<AppState>, headers: HeaderMap) -> 
     Json(json!({
         "oidcEnabled": state.config.oidc_enabled(),
         "authenticated": session_valid(&state.config, &headers),
+        "version": env!("CARGO_PKG_VERSION"),
     }))
 }

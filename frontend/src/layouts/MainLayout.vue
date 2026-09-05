@@ -8,11 +8,13 @@ const { theme } = provideTheme()
 const route = useRoute()
 const oidcEnabled = ref(false)
 const drawer = ref(false)
+const version = ref('')
 
 onMounted(async () => {
   try {
     const s = await fetch('/api/auth/session').then((r) => r.json())
     oidcEnabled.value = !!s.oidcEnabled
+    version.value = s.version || ''
   } catch { /* ignore */ }
 })
 
@@ -42,7 +44,7 @@ function isActive(href: string) {
           />
           <div class="flex flex-col leading-none gap-0.5">
             <span class="text-base font-bold text-text-primary tracking-tight">MVP</span>
-            <span class="text-[10px] text-text-muted">v0.1.0</span>
+            <span v-if="version" class="text-[10px] text-text-muted">v{{ version }}</span>
           </div>
         </div>
         <nav class="hidden md:flex items-center gap-1">
