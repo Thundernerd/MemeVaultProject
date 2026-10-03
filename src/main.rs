@@ -8,6 +8,7 @@ mod discord;
 mod error;
 mod ffprobe;
 mod files;
+mod fluxer;
 mod gallerydl;
 mod oidc;
 mod queue;
@@ -65,6 +66,7 @@ async fn main() -> anyhow::Result<()> {
         config: config.clone(),
         queue,
         discord: Arc::new(Mutex::new(None)),
+        fluxer: Arc::new(Mutex::new(None)),
     };
 
     // Background binary bootstrap
@@ -77,6 +79,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     discord::start_if_configured(state.clone()).await;
+    fluxer::start_if_configured(state.clone()).await;
 
     let oidc = match oidc::try_build_oidc(&config).await {
         Ok(o) => o.map(Arc::new),

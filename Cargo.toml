@@ -27,7 +27,7 @@ futures = "0.3"
 tokio-util = { version = "0.7", features = ["io"] }
 mime_guess = "2"
 http-range-header = "0.4"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
 flate2 = "1"
 tar = "0.4"
 zip = "2"
@@ -46,6 +46,7 @@ openidconnect = { version = "3.5", default-features = false, features = ["reqwes
 cookie = "0.18"
 jsonwebtoken = "9"
 serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "http", "rustls_backend", "cache"] }
+tokio-tungstenite = { version = "0.21", features = ["rustls-tls-webpki-roots"] }
 tempfile = "3"
 walkdir = "2"
 which = "7"

@@ -9,6 +9,7 @@ const tabs = [
   { href: '/settings/sharing', label: 'Sharing' },
   { href: '/settings/api', label: 'API' },
   { href: '/settings/discord', label: 'Discord' },
+  { href: '/settings/fluxer', label: 'Fluxer' },
 ]
 </script>
 

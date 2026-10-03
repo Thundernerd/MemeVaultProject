@@ -51,7 +51,7 @@ async function pollQueue() {
     const items = await api<QueueItem[]>('/api/queue')
     const active = items.filter(
       (i) =>
-        i.source !== 'discord' &&
+        !['discord', 'fluxer'].includes(i.source) &&
         (i.status === 'pending' || i.status === 'downloading'),
     )
     if (activeQueue.value.length > active.length) await load()

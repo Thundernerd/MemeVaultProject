@@ -22,6 +22,7 @@ const router = createRouter({
             { path: 'sharing', component: () => import('@/views/settings/SharingView.vue') },
             { path: 'api', component: () => import('@/views/settings/ApiView.vue') },
             { path: 'discord', component: () => import('@/views/settings/DiscordView.vue') },
+            { path: 'fluxer', component: () => import('@/views/settings/FluxerView.vue') },
           ],
         },
       ],

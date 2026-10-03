@@ -12,8 +12,13 @@ pub struct AppState {
     pub config: Config,
     pub queue: Arc<QueueHandle>,
     pub discord: Arc<Mutex<Option<DiscordControl>>>,
+    pub fluxer: Arc<Mutex<Option<FluxerControl>>>,
 }
 
 pub struct DiscordControl {
+    pub shutdown: tokio::sync::watch::Sender<bool>,
+}
+
+pub struct FluxerControl {
     pub shutdown: tokio::sync::watch::Sender<bool>,
 }
