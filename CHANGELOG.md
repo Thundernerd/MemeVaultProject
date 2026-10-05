@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-05
+
 ### Features
 - Optional Fluxer bot: configurable message command (prefix + name) posts downloads back to Fluxer, with per-instance endpoint discovery, optional post-as-sender webhooks, and optional deletion of the sender's command message
 
