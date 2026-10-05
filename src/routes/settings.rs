@@ -1,6 +1,7 @@
 use crate::db;
 use crate::discord;
 use crate::error::AppResult;
+use crate::fluxer;
 use crate::state::AppState;
 use axum::extract::State;
 use axum::Json;
@@ -23,6 +24,13 @@ const ALLOWED: &[&str] = &[
     "discord_client_id",
     "discord_command_name",
     "discord_post_as_user",
+    "fluxer_enabled",
+    "fluxer_bot_token",
+    "fluxer_instance_url",
+    "fluxer_command_name",
+    "fluxer_command_prefix",
+    "fluxer_post_as_user",
+    "fluxer_delete_command_message",
 ];
 
 pub async fn get(State(state): State<AppState>) -> AppResult<Json<Value>> {
@@ -44,6 +52,7 @@ pub async fn put(
     Json(body): Json<HashMap<String, Value>>,
 ) -> AppResult<Json<Value>> {
     let mut discord_changed = false;
+    let mut fluxer_changed = false;
     state.db.with_conn(|c| {
         for (key, value) in &body {
             if key == "regenerate_api_key" {
@@ -62,6 +71,9 @@ pub async fn put(
             if key.starts_with("discord_") {
                 discord_changed = true;
             }
+            if key.starts_with("fluxer_") {
+                fluxer_changed = true;
+            }
             db::set_setting(c, key, &s)?;
         }
         Ok(())
@@ -70,6 +82,11 @@ pub async fn put(
     if discord_changed {
         tracing::info!("discord settings changed; restarting Discord bot");
         discord::restart_discord_bot(state.clone()).await;
+    }
+
+    if fluxer_changed {
+        tracing::info!("fluxer settings changed; restarting Fluxer bot");
+        fluxer::restart_fluxer_bot(state.clone()).await;
     }
 
     get(State(state)).await

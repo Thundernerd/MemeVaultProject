@@ -62,7 +62,7 @@ onUnmounted(() => clearInterval(timer))
             <span
               v-if="item.source_label"
               class="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded text-white"
-              :style="{ backgroundColor: item.source === 'discord' ? '#5865F2' : '#0d9488' }"
+              :style="{ backgroundColor: item.source === 'discord' ? '#5865F2' : item.source === 'fluxer' ? '#7c3aed' : '#0d9488' }"
             >{{ item.source_label }}</span>
           </div>
           <p class="text-xs text-text-muted">{{ item.downloader }} · {{ item.status }}</p>
@@ -74,7 +74,7 @@ onUnmounted(() => clearInterval(timer))
             @click="cancel(item.id)"
           >Cancel</button>
           <button
-            v-if="item.source !== 'discord' && (item.status === 'failed' || item.status === 'cancelled')"
+            v-if="!['discord', 'fluxer'].includes(item.source) && (item.status === 'failed' || item.status === 'cancelled')"
             class="text-xs px-2 py-1 rounded bg-surface-2"
             @click="retry(item)"
           >Retry</button>

@@ -6,7 +6,7 @@ Self-hosted media downloader and library — **Rust (Axum) backend** + **Vue 3 S
 
 - Download queue (yt-dlp / gallery-dl), manual uploads, albums, tags, sharing with OG embeds
 - External `/api/v1/*` API with multi-key auth
-- Optional OIDC UI gate and Discord slash-command bot
+- Optional OIDC UI gate, Discord slash-command bot, and Fluxer message-command bot
 - Single production process: Rust serves API, share HTML, and the compiled SPA
 
 ## Quick start (development)
