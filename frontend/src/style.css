@@ -280,6 +280,8 @@
   .pill { display: inline-block; padding: 1px 6px; border: var(--bw-thin) solid var(--border); margin-right: 4px; }
   .pill-ok { background: var(--ok); color: var(--on-ok); }
   .pill-off { background: var(--surface-3); color: var(--text-primary); }
+  .file-btn { position: relative; }
+  .file-btn:focus-within { outline: var(--bw) dashed var(--accent); outline-offset: 3px; }
 
   @media (max-width: 767px) {
     .settings-form { padding: 14px; }
