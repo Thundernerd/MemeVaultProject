@@ -6,12 +6,14 @@ import DownloadProgress from '@/components/DownloadProgress.vue'
 
 const items = ref<QueueItem[]>([])
 const error = ref('')
+const loaded = ref(false)
 const addOpen = ref(false)
 let timer: number | undefined
 
 async function load() {
   try {
     items.value = await api('/api/queue')
+    loaded.value = true
     error.value = ''
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed'
@@ -44,46 +46,99 @@ onUnmounted(() => clearInterval(timer))
 </script>
 
 <template>
-  <div class="flex flex-col gap-4 pb-12">
-    <div class="flex items-center gap-3">
-      <h1 class="text-2xl font-bold">Queue</h1>
-      <button
-        class="ml-auto bg-accent hover:bg-accent-hover text-white px-4 py-1.5 rounded-lg text-sm"
-        @click="addOpen = true"
-      >Add URL</button>
-    </div>
-    <p v-if="error" class="text-rose-400 text-sm">{{ error }}</p>
-    <div v-if="!items.length" class="text-text-muted text-sm py-8 text-center">Queue is empty</div>
-    <div v-for="item in items" :key="item.id" class="bg-surface-1 border border-border rounded-xl p-4 flex flex-col gap-2">
-      <div class="flex gap-3 items-start">
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 min-w-0">
-            <p class="text-sm truncate">{{ item.url }}</p>
-            <span
-              v-if="item.source_label"
-              class="shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded text-white"
-              :style="{ backgroundColor: item.source === 'discord' ? '#5865F2' : item.source === 'fluxer' ? '#7c3aed' : '#0d9488' }"
-            >{{ item.source_label }}</span>
-          </div>
-          <p class="text-xs text-text-muted">{{ item.downloader }} · {{ item.status }}</p>
-        </div>
-        <div class="flex gap-1 shrink-0">
-          <button
-            v-if="item.status === 'pending' || item.status === 'downloading'"
-            class="text-xs px-2 py-1 rounded bg-surface-2"
-            @click="cancel(item.id)"
-          >Cancel</button>
-          <button
-            v-if="!['discord', 'fluxer'].includes(item.source) && (item.status === 'failed' || item.status === 'cancelled')"
-            class="text-xs px-2 py-1 rounded bg-surface-2"
-            @click="retry(item)"
-          >Retry</button>
-          <button class="text-xs px-2 py-1 rounded text-rose-400 hover:bg-surface-2" @click="remove(item.id)">Remove</button>
-        </div>
+  <div class="flex flex-col gap-5 pb-12">
+    <div class="page-head">
+      <h1>Queue</h1>
+      <div class="tools">
+        <button class="btn btn-primary" type="button" @click="addOpen = true">Add URL</button>
       </div>
-      <DownloadProgress :status="item.status" :progress="item.progress" />
-      <p v-if="item.error" class="text-xs text-rose-400">{{ item.error }}</p>
+    </div>
+    <div class="queue">
+      <div v-if="error" class="state state-error" role="alert">
+        <span class="state-tag label">error</span>
+        <p class="state-text">{{ error }}</p>
+      </div>
+      <!-- Rows from the last successful poll stay listed under the error, as before. -->
+      <div v-else-if="!loaded" class="state state-loading" role="status">
+        <span class="state-tag label">loading</span>
+        <p class="state-text">Loading…</p>
+      </div>
+      <div v-else-if="!items.length" class="state state-empty" role="status">
+        <span class="state-tag label">empty</span>
+        <p class="state-text">Queue is empty</p>
+      </div>
+      <article v-for="item in items" :key="item.id" class="q-row" :class="`q-${item.status}`">
+        <span class="q-status label">{{ item.status }}</span>
+        <div class="q-main">
+          <div class="q-top">
+            <div class="q-info">
+              <div class="q-url-line">
+                <p class="q-url truncate" :title="item.url">{{ item.url }}</p>
+                <span
+                  v-if="item.source_label"
+                  class="badge label"
+                  :class="`badge-${item.source}`"
+                >{{ item.source_label }}</span>
+              </div>
+              <p class="q-meta label">{{ item.downloader }} · {{ item.status }}</p>
+            </div>
+            <div class="q-actions">
+              <button
+                v-if="item.status === 'pending' || item.status === 'downloading'"
+                class="btn btn-sm"
+                type="button"
+                @click="cancel(item.id)"
+              >Cancel</button>
+              <button
+                v-if="!['discord', 'fluxer'].includes(item.source) && (item.status === 'failed' || item.status === 'cancelled')"
+                class="btn btn-sm"
+                type="button"
+                @click="retry(item)"
+              >Retry</button>
+              <button class="btn btn-sm btn-danger" type="button" @click="remove(item.id)">Remove</button>
+            </div>
+          </div>
+          <DownloadProgress :status="item.status" :progress="item.progress" />
+          <p v-if="item.error" class="q-error">{{ item.error }}</p>
+        </div>
+      </article>
     </div>
     <AddUrlModal v-model:open="addOpen" @done="load" />
   </div>
 </template>
+
+<style scoped>
+/* Ported from prototypes/brutalist/styles.css (queue). */
+.queue { display: flex; flex-direction: column; gap: 16px; }
+.q-row {
+  display: flex; min-width: 0;
+  border: var(--bw) solid var(--border); background: var(--surface-1); box-shadow: 5px 5px 0 var(--shadow);
+}
+.q-status {
+  flex: none; width: 34px; writing-mode: vertical-rl; transform: rotate(180deg);
+  display: flex; align-items: center; justify-content: center; padding: 8px 0;
+  border-left: var(--bw) solid var(--border); font-size: 0.65rem; color: var(--on-pop);
+}
+.q-pending .q-status { background: var(--pop-3); }
+.q-downloading .q-status { background: var(--accent); color: var(--on-accent); }
+.q-completed .q-status { background: var(--ok); color: var(--on-ok); }
+.q-failed .q-status { background: var(--danger); color: var(--on-danger); }
+.q-cancelled .q-status { background: var(--surface-3); color: var(--text-primary); }
+.q-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; }
+.q-top { display: flex; gap: 12px; align-items: flex-start; }
+.q-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.q-url-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.q-url { font-family: var(--font-mono); font-size: 0.85rem; font-weight: 700; }
+.q-meta { color: var(--text-muted); text-transform: none; letter-spacing: 0.02em; }
+.q-actions { display: flex; gap: 8px; flex: none; }
+.q-error {
+  font-family: var(--font-mono); font-size: 0.78rem; font-weight: 700; color: var(--danger);
+  border-left: 6px solid var(--danger); padding-left: 8px; overflow-wrap: anywhere;
+}
+.q-completed .q-url, .q-cancelled .q-url { color: var(--text-secondary); }
+
+@media (max-width: 767px) {
+  .q-top { flex-direction: column; align-items: stretch; }
+  .q-actions { flex-wrap: wrap; }
+}
+</style>

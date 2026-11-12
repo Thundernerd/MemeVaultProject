@@ -212,8 +212,12 @@
   .chip:hover { color: var(--text-primary); box-shadow: 2px 2px 0 var(--shadow); }
   .chip.on { background: var(--accent); color: var(--on-accent); box-shadow: 2px 2px 0 var(--shadow); }
 
-  /* Pair with .label and a background (e.g. bg-accent, or a per-source colour). */
+  /* Pair with .label and a background (e.g. bg-accent, or a .badge-<source> colour). */
   .badge { flex: none; padding: 2px 6px; border: var(--bw-thin) solid var(--border); color: #fff; font-size: 0.62rem; }
+  /* Per-source brand colours (queue items from Discord, Fluxer or the API). */
+  .badge-discord { background: #5865f2; }
+  .badge-fluxer { background: #7c3aed; }
+  .badge-api { background: #0d9488; }
 
   /* progress */
 
@@ -230,6 +234,14 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .progress-track.indeterminate .progress-fill { animation: none; width: 100%; opacity: 0.5; }
+  }
+
+  /* page heading: display h1 with its tools pushed right (stacked on mobile) */
+
+  .page-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; }
+  .page-head .tools { margin-left: auto; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  @media (max-width: 767px) {
+    .page-head .tools { margin-left: 0; width: 100%; }
   }
 
   /* empty / loading / error states */
@@ -251,16 +263,3 @@
 
 @keyframes brutal-slide { from { transform: translateX(-110%); } to { transform: translateX(300%); } }
 @keyframes brutal-blink { 50% { opacity: 0.2; } }
-
-/*
- * Legacy indeterminate bar, still used by components/DownloadProgress.vue.
- * Remove once that component moves to .progress-track.indeterminate.
- */
-@keyframes mv-progress-indeterminate {
-  0% { transform: translateX(-120%); }
-  100% { transform: translateX(320%); }
-}
-
-.mv-progress-indeterminate {
-  animation: mv-progress-indeterminate 1.2s ease-in-out infinite;
-}
