@@ -6,6 +6,11 @@
  * Role tokens keep the names the app already uses; the style-only tokens after
  * them are extra to this look. Attribute names ([data-theme], [data-accent])
  * match theme.ts, so saved mvp-theme / mvp-accent values keep working.
+ *
+ * Classes used by more than one component live here in @layer components.
+ * Classes for a single component's own parts (e.g. the dropzone in
+ * AddUrlModal.vue) go in that component's <style scoped>; scoped CSS is
+ * unlayered, so it wins over both these classes and Tailwind utilities.
  */
 
 /* ------------------------------------------------------------ role tokens */
@@ -206,8 +211,8 @@
   }
 
   .field { display: flex; flex-direction: column; gap: 6px; }
-  .stack { display: flex; flex-direction: column; gap: 10px; }
   .field > .label { color: var(--text-secondary); }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
 
   /* chips and badges */
 
@@ -239,7 +244,7 @@
     .progress-track.indeterminate .progress-fill { animation: none; width: 100%; opacity: 0.5; }
   }
 
-  /* modals: AddUrlModal.vue and MediaModal.vue */
+  /* modals: .modal > .modal-backdrop + .modal-box (add .modal-wide for edge-to-edge media) */
 
   .modal { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 16px; }
   .modal-backdrop { position: absolute; inset: 0; background: var(--overlay); }
