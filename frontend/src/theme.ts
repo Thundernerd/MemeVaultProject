@@ -1,21 +1,24 @@
 import { computed, inject, provide, ref, type InjectionKey, type Ref } from 'vue'
 
+// The pre-paint snippets in frontend/index.html and templates/share.html copy
+// these lists and the storage keys; keep them in sync.
 export const THEMES = ['dark', 'light'] as const
 export const ACCENTS = ['blue', 'purple', 'green', 'orange', 'rose'] as const
 
 export type Theme = (typeof THEMES)[number]
 export type Accent = (typeof ACCENTS)[number]
 
-/** The saved theme, or 'dark' when it is missing or not a known theme. */
-export function storedTheme(): Theme {
-  const saved = localStorage.getItem('mvp-theme')
-  return (THEMES as readonly string[]).includes(saved ?? '') ? (saved as Theme) : 'dark'
-}
+const THEME_KEY = 'mvp-theme'
+const ACCENT_KEY = 'mvp-accent'
 
-/** The saved accent, or 'blue' when it is missing or not a known accent. */
-export function storedAccent(): Accent {
-  const saved = localStorage.getItem('mvp-accent')
-  return (ACCENTS as readonly string[]).includes(saved ?? '') ? (saved as Accent) : 'blue'
+/** The saved value under `key`, or `fallback` when it is missing, unknown, or unreadable. */
+function readStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const saved = localStorage.getItem(key)
+    return allowed.find((v) => v === saved) ?? fallback
+  } catch {
+    return fallback
+  }
 }
 
 interface ThemeCtx {
@@ -28,8 +31,8 @@ interface ThemeCtx {
 const KEY: InjectionKey<ThemeCtx> = Symbol('theme')
 
 export function provideTheme() {
-  const theme = ref<Theme>(storedTheme())
-  const accent = ref<Accent>(storedAccent())
+  const theme = ref<Theme>(readStored(THEME_KEY, THEMES, 'dark'))
+  const accent = ref<Accent>(readStored(ACCENT_KEY, ACCENTS, 'blue'))
 
   function apply() {
     document.documentElement.setAttribute('data-theme', theme.value)
@@ -39,12 +42,12 @@ export function provideTheme() {
 
   function setTheme(t: Theme) {
     theme.value = t
-    localStorage.setItem('mvp-theme', t)
+    localStorage.setItem(THEME_KEY, t)
     apply()
   }
   function setAccent(a: Accent) {
     accent.value = a
-    localStorage.setItem('mvp-accent', a)
+    localStorage.setItem(ACCENT_KEY, a)
     apply()
   }
 
