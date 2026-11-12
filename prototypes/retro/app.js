@@ -18,30 +18,8 @@
 
   // ------------------------------------------------------------ helpers
 
-  /** h('div', {class: 'x', onclick: fn}, [children]) */
-  function h(tag, props, kids) {
-    var e = document.createElement(tag)
-    if (props) {
-      Object.keys(props).forEach(function (k) {
-        var v = props[k]
-        if (v == null || v === false) return
-        if (k === 'class') e.className = v
-        else if (k === 'text') e.textContent = v
-        else if (k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), v)
-        else if (k === 'value') e.value = v
-        else if (k === 'checked') e.checked = !!v
-        else e.setAttribute(k, v === true ? '' : v)
-      })
-    }
-    append(e, kids)
-    return e
-  }
-  function append(e, kids) {
-    if (kids == null || kids === false) return
-    if (Array.isArray(kids)) kids.forEach(function (k) { append(e, k) })
-    else e.appendChild(typeof kids === 'string' || typeof kids === 'number' ? document.createTextNode(String(kids)) : kids)
-  }
-  function clear(e) { while (e.firstChild) e.removeChild(e.firstChild) }
+  var D = window.RetroDom
+  var h = D.h, append = D.append, clear = D.clear
   function clone(o) { return JSON.parse(JSON.stringify(o)) }
 
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -836,12 +814,6 @@
     ])
   }
 
-  function fmtDuration(s) {
-    if (s == null) return '0:00'
-    var m = Math.floor(s / 60), sec = s % 60
-    return (m >= 60 ? Math.floor(m / 60) + ':' + ('0' + (m % 60)).slice(-2) : m) + ':' + ('0' + sec).slice(-2)
-  }
-
   // MediaModal.vue
   function mediaModal(r) {
     var item = S.media.filter(function (m) { return m.id === r.q.id })[0]
@@ -855,18 +827,7 @@
     var status = h('span', null, item.type + ' · ' + item.width + '×' + item.height)
     var thumb = M.thumbnail(item)
 
-    var player = item.type === 'video'
-      ? h('div', { class: 'player video' }, [
-        h('div', { class: 'screen' }, thumb
-          ? [h('img', { src: thumb, alt: '' })]
-          : [h('span', { class: 'no-signal' }, 'NO SIGNAL')]),
-        h('div', { class: 'transport' }, [
-          h('button', { class: 'btn small', type: 'button', 'aria-label': 'Play' }, '▶'),
-          h('div', { class: 'seek' }, h('div')),
-          h('span', { class: 'time' }, '0:00 / ' + fmtDuration(item.duration)),
-        ]),
-      ])
-      : h('div', { class: 'player image' }, h('div', { class: 'screen' }, h('img', { src: thumb, alt: item.title || '' })))
+    var player = D.player(item, thumb)
 
     var chipBox = h('div', { class: 'chips' })
     function paintTags() {
@@ -1194,6 +1155,4 @@
   renderStartMenu()
   render()
 
-  // Exposed for the later view sections of this file and for poking around in the console.
-  window.Retro = { h: h, win: win, S: S, route: route, go: go, withParams: withParams }
 })()

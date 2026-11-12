@@ -41,6 +41,7 @@
   <script src="../shared/mock-data.js"></script>
   <script src="pixel-font.js"></script>
   <script src="icons.js"></script>
+  <script src="dom.js"></script>
   <script>
     (function () {
       'use strict'
@@ -48,42 +49,8 @@
       var px = window.PixelFont.render
       var icon = window.Icons.render
 
-      function h(tag, props, kids) {
-        var e = document.createElement(tag)
-        Object.keys(props || {}).forEach(function (k) {
-          var v = props[k]
-          if (v == null || v === false) return
-          if (k === 'class') e.className = v
-          else if (k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), v)
-          else e.setAttribute(k, v === true ? '' : v)
-        })
-        ;[].concat(kids == null ? [] : kids).forEach(function (c) {
-          if (c != null) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c)
-        })
-        return e
-      }
-
-      function duration(s) {
-        if (s == null) return '0:00'
-        var m = Math.floor(s / 60)
-        return m + ':' + ('0' + (s % 60)).slice(-2)
-      }
-
-      /** Video: poster with fake transport. Image: the picture itself. */
-      function player(m) {
-        var src = M.thumbnail(m)
-        if (m.type !== 'video') {
-          return h('div', { class: 'player image' }, h('div', { class: 'screen' }, h('img', { src: src, alt: m.title || '' })))
-        }
-        return h('div', { class: 'player video' }, [
-          h('div', { class: 'screen' }, src ? h('img', { src: src, alt: '' }) : h('span', { class: 'no-signal' }, 'NO SIGNAL')),
-          h('div', { class: 'transport' }, [
-            h('button', { class: 'btn small', type: 'button', 'aria-label': 'Play' }, '▶'),
-            h('div', { class: 'seek' }, h('div')),
-            h('span', { class: 'time' }, '0:00 / ' + duration(m.duration)),
-          ]),
-        ])
-      }
+      var h = window.RetroDom.h
+      function player(m) { return window.RetroDom.player(m, M.thumbnail(m)) }
 
       function windowWith(title, iconName, body) {
         return h('section', { class: 'win', 'aria-label': title }, [
