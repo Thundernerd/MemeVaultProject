@@ -318,9 +318,8 @@
 
   // GET /api/settings: every value is a string; _overridden_by_env lists
   // keys locked by environment variables (shown disabled in the UI).
-  // The bot toggles are 'true' / 'false' (discord.rs, fluxer.rs and the
-  // settings views compare against 'true'); share_default_allow_download
-  // is '1' / '0' (SharingView.vue).
+  // Discord/Fluxer flags are 'true'/'false' (discord.rs, fluxer.rs and the
+  // settings views compare against 'true'); the share download default is '1'/'0'.
   var settings = {
     download_path: '/data/media',
     random_mode: 'flag', // or 'shared' (SharingView.vue)
