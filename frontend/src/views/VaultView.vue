@@ -131,7 +131,7 @@ function toggleTag(name: string) {
           type="search"
           placeholder="Search…"
           aria-label="Search"
-          class="input basis-full md:basis-auto md:w-56"
+          class="input basis-full md:basis-auto md:w-[220px]"
         />
         <button
           type="button"
@@ -142,7 +142,7 @@ function toggleTag(name: string) {
           @click="filtersOpen = !filtersOpen"
         >
           <span
-            class="inline-block text-[0.6rem] transition-transform"
+            class="inline-block text-[0.6rem] transition-transform duration-[120ms]"
             :class="{ 'rotate-180': filtersOpen }"
             aria-hidden="true"
           >▼</span>
@@ -155,8 +155,8 @@ function toggleTag(name: string) {
 
     <div v-show="filtersOpen" id="vault-filters" class="filters">
       <div class="flex items-center gap-2.5">
-        <span class="label">Type</span>
-        <select v-model="filter" aria-label="Type" class="select w-auto min-w-36">
+        <label for="vault-type" class="label">Type</label>
+        <select id="vault-type" v-model="filter" class="select w-auto min-w-[140px]">
           <option value="all">All</option>
           <option value="video">Video</option>
           <option value="image">Image</option>
@@ -189,13 +189,15 @@ function toggleTag(name: string) {
       <p class="state-text">Loading…</p>
     </div>
 
-    <h2 v-if="activeQueue.length" class="label text-text-muted">Downloading · {{ activeQueue.length }}</h2>
-    <div v-if="activeQueue.length" class="vault-grid">
-      <div v-for="q in activeQueue" :key="q.id" class="pending-card">
-        <p class="pending-url truncate" :title="q.url">{{ q.url }}</p>
-        <DownloadProgress :status="q.status" :progress="q.progress" />
+    <template v-if="activeQueue.length">
+      <h2 class="label text-text-muted">Downloading · {{ activeQueue.length }}</h2>
+      <div class="vault-grid">
+        <div v-for="q in activeQueue" :key="q.id" class="pending-card">
+          <p class="pending-url truncate" :title="q.url">{{ q.url }}</p>
+          <DownloadProgress :status="q.status" :progress="q.progress" />
+        </div>
       </div>
-    </div>
+    </template>
 
     <div v-if="entries.length" class="vault-grid">
       <template v-for="e in entries" :key="e.kind === 'media' ? e.item.id : e.album.id">

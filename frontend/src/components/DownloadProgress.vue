@@ -33,7 +33,7 @@ const label = computed(() => {
       :aria-label="label"
       aria-valuemin="0"
       aria-valuemax="100"
-      :aria-valuenow="indeterminate ? undefined : Math.round(width)"
+      :aria-valuenow="indeterminate || waiting ? undefined : Math.round(width)"
     >
       <div class="progress-fill" :style="indeterminate ? undefined : { width: `${width}%` }" />
     </div>
