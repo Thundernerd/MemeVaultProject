@@ -7,6 +7,7 @@ const props = defineProps<{
 }>()
 
 const active = computed(() => props.status === 'pending' || props.status === 'downloading')
+const waiting = computed(() => props.status === 'pending')
 const indeterminate = computed(
   () => props.status === 'downloading' && props.progress < 1,
 )
@@ -23,18 +24,18 @@ const label = computed(() => {
 </script>
 
 <template>
-  <div v-if="active" class="flex flex-col gap-1 w-full">
-    <p class="text-xs text-text-muted tabular-nums">{{ label }}</p>
-    <div class="h-2 bg-surface-3 rounded-full overflow-hidden">
-      <div
-        v-if="indeterminate"
-        class="h-full w-1/3 bg-accent rounded-full mv-progress-indeterminate"
-      />
-      <div
-        v-else
-        class="h-full bg-accent rounded-full transition-all duration-300"
-        :style="{ width: `${width}%` }"
-      />
+  <div v-if="active" class="progress">
+    <p class="label progress-label">{{ label }}</p>
+    <div
+      class="progress-track"
+      :class="{ indeterminate, waiting }"
+      role="progressbar"
+      :aria-label="label"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      :aria-valuenow="indeterminate ? undefined : Math.round(width)"
+    >
+      <div class="progress-fill" :style="indeterminate ? undefined : { width: `${width}%` }" />
     </div>
   </div>
 </template>
