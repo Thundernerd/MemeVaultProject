@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { MediaItem } from '@/api'
 
 defineProps<{ item: MediaItem }>()
 const emit = defineEmits<{ click: [] }>()
+
+const thumbFailed = ref(false)
 </script>
 
 <template>
@@ -14,11 +17,11 @@ const emit = defineEmits<{ click: [] }>()
   >
     <span class="card-thumb">
       <img
-        v-if="item.thumbnail_path || item.type === 'image'"
+        v-if="(item.thumbnail_path || item.type === 'image') && !thumbFailed"
         :src="`/api/media/${item.id}/thumbnail`"
         :alt="item.title || ''"
         loading="lazy"
-        @error="($event.target as HTMLImageElement).style.display = 'none'"
+        @error="thumbFailed = true"
       />
       <span v-else class="no-thumb label">No thumbnail</span>
     </span>
