@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-accent="blue">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MemeVault · Brutalist</title>
+  <!--
+    Brutalist / bold style prototype (issue #11). Throwaway: the app never imports it.
+    One page with a hash router: #/vault, #/queue, #/tags, #/settings/<tab>, plus
+    modal and state routes. The floating "Screens" button lists every screen in
+    ../SCREENS.md. The public share page is share.html (it is served without the SPA).
+  -->
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="theme.js"></script>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <a class="logo" href="#/vault" aria-label="MVP home">
+        <span class="logo-mark">MVP</span>
+        <span class="logo-ver" id="version"></span>
+      </a>
+      <nav class="nav" id="nav" aria-label="Main"></nav>
+      <div class="header-tools">
+        <div class="theme-switch">
+          <button class="btn btn-sm btn-icon" id="theme-toggle" type="button"></button>
+          <div class="swatches" id="swatches"></div>
+        </div>
+        <a class="signout" href="#/vault">Sign out</a>
+        <button class="btn btn-sm btn-icon menu-btn" id="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="drawer">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="drawer" id="drawer" hidden>
+    <div class="drawer-backdrop" data-close-drawer></div>
+    <nav class="drawer-panel" id="drawer-nav" aria-label="Main"></nav>
+  </div>
+
+  <main class="main" id="view"></main>
+  <div id="modal-root"></div>
+
+  <script src="../shared/mock-data.js"></script>
+  <script src="screens.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
