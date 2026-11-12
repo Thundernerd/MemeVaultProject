@@ -103,16 +103,32 @@
         b.addEventListener('click', function () { filter.match = b.getAttribute('data-match'); render() })
       })
 
-      function visibleMedia() {
-        return media.filter(function (m) {
-          if (filter.type && m.type !== filter.type) return false
-          if (filter.q && (m.title || '').toLowerCase().indexOf(filter.q) < 0) return false
-          if (filter.tags.length) {
-            var names = m.tags.map(function (t) { return t.name })
-            var hit = filter.tags.filter(function (t) { return names.indexOf(t) >= 0 }).length
-            if (filter.match === 'all' ? hit < filter.tags.length : hit === 0) return false
+      // Same rules as the entries list in VaultView.vue: media and albums
+      // sorted together by date; an album passes the Image type filter, its
+      // title and URL are searched, and its tags are its media's tags.
+      function matchesTags(names) {
+        if (!filter.tags.length) return true
+        var hit = filter.tags.filter(function (t) { return names.indexOf(t) >= 0 }).length
+        return filter.match === 'all' ? hit === filter.tags.length : hit > 0
+      }
+      function tagNames(list) { return list.map(function (t) { return t.name }) }
+      function visibleEntries() {
+        var entries = media.map(function (m) { return { item: m, at: m.created_at } })
+          .concat(M.albums.map(function (a) { return { album: a, at: a.created_at } }))
+        entries.sort(function (a, b) { return b.at.localeCompare(a.at) })
+        var q = filter.q
+        return entries.filter(function (e) {
+          if (e.album) {
+            var a = e.album
+            if (filter.type && filter.type !== 'image') return false
+            if (q && (a.title || '').toLowerCase().indexOf(q) < 0 && a.url.toLowerCase().indexOf(q) < 0) return false
+            return matchesTags([].concat.apply([], a.media.map(function (m) { return tagNames(m.tags) })))
           }
-          return true
+          var m = e.item
+          if (filter.type && m.type !== filter.type) return false
+          if (q && (m.title || '').toLowerCase().indexOf(q) < 0 && m.url.toLowerCase().indexOf(q) < 0 &&
+            !tagNames(m.tags).some(function (n) { return n.toLowerCase().indexOf(q) >= 0 })) return false
+          return matchesTags(tagNames(m.tags))
         })
       }
 
@@ -124,7 +140,6 @@
       }
 
       function mediaCard(item, i) {
-        var duration = ED.fmtDuration(item.duration)
         return el('button', { class: 'card', type: 'button', style: { 'animation-delay': Math.min(i, 12) * 30 + 'ms' },
           'aria-label': (item.title || 'Untitled ' + item.type) + ', ' + item.type,
           onclick: function () { location.hash = 'media=' + item.id } },
@@ -132,8 +147,7 @@
           el('div', { class: 'card-caption' },
             el('p', { class: 'card-title' + (item.title ? '' : ' is-untitled'), title: item.title || null }, item.title || item.type),
             el('div', { class: 'card-meta' },
-              el('span', { class: 'badge' }, item.type),
-              duration ? el('span', { class: 'badge' }, duration) : null)))
+              el('span', { class: 'badge' }, item.type))))
       }
 
       function albumCard(album, i) {
@@ -156,13 +170,7 @@
       }
 
       // ------------------------------------------------------------- states
-      function stateBlock(title, note, cls) {
-        return el('div', { class: 'state' },
-          el('p', { class: 'eyebrow' }, 'Vault'),
-          el('h2', { class: 'state-title ' + (cls || '') }, title),
-          note ? el('p', { class: 'note' }, note) : null)
-      }
-
+      // ------------------------------------------------------------- render
       function render() {
         renderFilterChrome()
         var st = ED.hashState()
@@ -181,31 +189,33 @@
         }
         if (st.error) {
           count.textContent = ''
-          content.appendChild(stateBlock(M.states.vault.error, 'The vault could not be reached. Check that the server is running, then try again.', 'is-error'))
+          content.appendChild(ED.stateBlock('Vault', M.states.vault.error, 'The vault could not be reached. Check that the server is running, then try again.', 'is-error'))
           content.lastChild.appendChild(el('button', { class: 'btn btn-ghost', type: 'button', onclick: function () { location.hash = '' } }, 'Try again'))
           return
         }
         if (st.empty) {
           count.textContent = '0'
-          content.appendChild(stateBlock(M.states.vault.empty))
+          content.appendChild(ED.stateBlock('Vault', M.states.vault.empty))
           content.lastChild.appendChild(el('button', { class: 'btn', type: 'button', onclick: function () { location.hash = 'add' } }, 'Add'))
           return
         }
 
-        var list = visibleMedia()
+        var list = visibleEntries()
         var filtering = !!(filter.q || activeFilters())
-        count.textContent = String(list.length + (filtering ? 0 : M.albums.length))
+        count.textContent = String(list.length)
 
-        var active = filtering ? [] : M.activeQueue()
+        // Active downloads show whatever the filters are, as in the app.
+        var active = M.activeQueue()
         content.appendChild(el('div', { class: 'section-label' },
-          el('h2', { class: 'eyebrow' }, filtering ? list.length + ' results' : 'Latest' + (active.length ? ' · ' + active.length + ' downloading' : '')),
+          el('h2', { class: 'eyebrow' }, (filtering ? list.length + ' results' : 'Latest') + (active.length ? ' · ' + active.length + ' downloading' : '')),
           active.length ? el('a', { class: 'link-btn', href: 'queue.html' }, 'Open queue') : null))
+        var cards = active.map(pendingCard).concat(list.map(function (e, i) {
+          return e.album ? albumCard(e.album, i) : mediaCard(e.item, i)
+        }))
+        content.appendChild(el('div', { class: 'grid' }, cards))
         if (!list.length) {
           content.appendChild(el('p', { class: 'state-title', style: { padding: '24px 0 48px' } }, 'Nothing matches these filters.'))
-          return
         }
-        var cards = active.map(pendingCard).concat(filtering ? [] : M.albums.map(albumCard)).concat(list.map(function (m, i) { return mediaCard(m, i + M.albums.length) }))
-        content.appendChild(el('div', { class: 'grid' }, cards))
       }
 
       // ------------------------------------------------------------- modals
@@ -230,7 +240,6 @@
       }
 
       document.getElementById('add').addEventListener('click', function () { location.hash = 'add' })
-      window.addEventListener('hashchange', function () { render(); syncModal() })
 
       ED.protoBar('Vault states', [
         { label: 'Vault', hash: '' },
@@ -246,15 +255,24 @@
         { label: 'Media modal (no thumbnail)', hash: 'media=' + M.media[6].id },
       ])
 
-      // "#filters" opens the panel with a type and two tags picked, for review.
+      // "#filters" opens the panel with a type and two tags picked, for review;
+      // leaving that state clears them again so "Vault" shows the full grid.
+      var filtersFromHash = false
       function applyFilterHash() {
-        if (!ED.hashState().filters) return
-        filter.open = true
-        filter.type = 'video'
-        filter.tags = ['reaction', 'cats']
-        document.getElementById('type').value = 'video'
+        if (ED.hashState().filters) {
+          filtersFromHash = true
+          filter.open = true
+          filter.type = 'video'
+          filter.tags = ['reaction', 'cats']
+        } else if (filtersFromHash) {
+          filtersFromHash = false
+          filter.open = false
+          filter.type = ''
+          filter.tags = []
+        }
+        document.getElementById('type').value = filter.type
       }
-      window.addEventListener('hashchange', function () { if (ED.hashState().filters) { applyFilterHash(); render() } })
+      window.addEventListener('hashchange', function () { applyFilterHash(); render(); syncModal() })
       applyFilterHash()
       render()
       syncModal()
