@@ -161,7 +161,7 @@
   .btn:hover { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--shadow); }
   .btn:active { transform: translate(var(--lift), var(--lift)); box-shadow: 0 0 0 var(--shadow); }
   .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: var(--lift) var(--lift) 0 var(--shadow); }
-  .btn:focus-visible, .chip:focus-visible {
+  .btn:focus-visible, .chip:focus-visible, .card:focus-visible {
     outline: var(--bw) dashed var(--accent); outline-offset: 3px;
   }
 
@@ -247,7 +247,11 @@
   @media (prefers-reduced-motion: reduce) {
     .state-loading .state-tag { animation: none; }
   }
+}
 
+/* -------------------------------------------------------------- screens */
+
+@layer components {
   /* vault (views/VaultView.vue, MediaCard.vue, AlbumCard.vue) */
 
   .btn-on { background: var(--accent-subtle); border-color: var(--accent); color: var(--text-primary); }
@@ -287,7 +291,6 @@
   .vault-grid > .card:nth-child(4n)   { --tilt: 1.3deg; }
   .card:hover { transform: rotate(0deg) translate(3px, 3px); box-shadow: 3px 3px 0 var(--shadow); }
   .card:active { transform: translate(6px, 6px); box-shadow: 0 0 0 var(--shadow); }
-  .card:focus-visible { outline: var(--bw) dashed var(--accent); outline-offset: 3px; }
   @media (prefers-reduced-motion: reduce) {
     .card, .card:hover, .card:active { transform: none; transition: none; }
   }
@@ -302,15 +305,16 @@
   .card-sub { color: var(--text-muted); font-size: 0.65rem; }
   .sticker {
     position: absolute; top: -10px; right: -8px; padding: 3px 7px;
-    border: var(--bw-thin) solid var(--border); color: var(--on-pop); transform: rotate(6deg);
+    border: var(--bw-thin) solid var(--border); background: var(--surface-1); color: var(--text-primary); transform: rotate(6deg);
     box-shadow: 2px 2px 0 var(--shadow);
   }
-  .card-video .sticker { background: var(--pop-1); }
-  .card-image .sticker { background: var(--pop-3); }
-  .card-album .sticker { background: var(--pop-2); }
+  .card-video .sticker { background: var(--pop-1); color: var(--on-pop); }
+  .card-image .sticker { background: var(--pop-3); color: var(--on-pop); }
+  .card-album .sticker { background: var(--pop-2); color: var(--on-pop); }
   /* Albums read as a stack of posters. */
   .card-album { box-shadow: 6px 6px 0 -1px var(--surface-1), 6px 6px 0 2px var(--border), 12px 12px 0 2px var(--shadow); }
   .card-album:hover { box-shadow: 3px 3px 0 -1px var(--surface-1), 3px 3px 0 2px var(--border), 6px 6px 0 2px var(--shadow); }
+  .card-album:active { box-shadow: 0 0 0 -1px var(--surface-1), 0 0 0 2px var(--border), 0 0 0 2px var(--shadow); }
 }
 
 @keyframes brutal-slide { from { transform: translateX(-110%); } to { transform: translateX(300%); } }
