@@ -125,6 +125,7 @@
             include_in_random: add.includeInRandom ? 1 : 0,
           })
           add.url = ''
+          A.invalidate()
           location.hash = '#/queue'
         },
       }, [
@@ -264,8 +265,8 @@
           class: 'btn btn-ghost btn-danger', type: 'button',
           onclick: function () {
             A.db.media = A.db.media.filter(function (m) { return m !== item })
+            A.invalidate()
             closeAll()
-            A.rerender()
           },
         }, 'Delete')),
       ]),

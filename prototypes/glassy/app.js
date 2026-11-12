@@ -414,7 +414,7 @@
   }
 
   // Exposed for the later slices of this file (modals, other views).
-  window.GlassApp = { h: h, icon: icon, ICONS: ICONS, db: db, VIEWS: VIEWS, MODALS: MODALS, setParams: setParams, parseRoute: parseRoute, progress: progress, notice: notice, pageHead: pageHead, fmtDate: fmtDate, render: render, rerender: function () { lastView = null; render() } }
+  window.GlassApp = { h: h, icon: icon, ICONS: ICONS, db: db, VIEWS: VIEWS, MODALS: MODALS, setParams: setParams, parseRoute: parseRoute, progress: progress, notice: notice, pageHead: pageHead, fmtDate: fmtDate, render: render, invalidate: function () { lastView = null } }
 
   initShell()
   window.addEventListener('hashchange', render)
