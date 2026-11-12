@@ -344,6 +344,283 @@
     ])
   }
 
+  // ------------------------------------------------------------ dialogs
+
+  function closeModal() { go(withParams({ modal: null, id: null, demo: null })) }
+
+  /** An OS-style dialog over a dimmed desktop. */
+  function dialog(title, opts, body) {
+    var layer = h('div', { class: 'layer' }, [
+      h('div', { class: 'backdrop', onclick: opts.onClose }),
+      h('div', { class: 'dialog-wrap' + (opts.wide ? ' wide' : '') }, win(title, {
+        onClose: opts.onClose, icon: opts.icon, class: 'dialog', label: opts.label || title, status: opts.status,
+      }, body)),
+    ])
+    layer.setAttribute('role', 'dialog')
+    layer.setAttribute('aria-modal', 'true')
+    layer.setAttribute('aria-label', opts.label || title)
+    return layer
+  }
+
+  /** Stand-in for window.confirm(), styled as a system message box. */
+  function confirmBox(message, okLabel, onOk) {
+    var root = document.getElementById('modal-root')
+    var box
+    function close() { root.removeChild(box) }
+    box = dialog('Confirm', { onClose: close, icon: 'warn' }, [
+      h('div', { class: 'msgbox' }, [icon('warn'), h('p', null, message)]),
+      h('div', { class: 'actions' }, [
+        h('button', { class: 'btn danger', type: 'button', onclick: function () { close(); onOk() } }, okLabel),
+        h('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'),
+      ]),
+    ])
+    box.classList.add('top')
+    root.appendChild(box)
+    box.querySelector('.btn').focus()
+  }
+
+  // AddUrlModal.vue
+  var DEMO_FILES = [
+    { name: 'IMG_4021.png', state: 'pending' },
+    { name: 'reaction-final-FINAL(2).mp4', state: 'pending' },
+    { name: 'cat.jpg', state: 'done' },
+    { name: 'notes.pdf', state: 'error', error: 'Unsupported file type: application/pdf' },
+  ]
+
+  function addModal(r) {
+    var files = r.q.demo === 'files' ? clone(DEMO_FILES) : []
+    var busy = false
+    var drag = r.q.demo === 'drag'
+    var url = h('input', { class: 'field', type: 'url', required: true, placeholder: 'https://...', 'aria-label': 'URL' })
+    var downloader = 'ytdlp'
+    var zone = h('div', {
+      class: 'dropzone', role: 'button', tabindex: '0', 'aria-label': 'Drop files here or browse',
+      onclick: browse, onkeydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); browse() } },
+      ondragover: function (e) { e.preventDefault(); setDrag(true) },
+      ondragleave: function () { setDrag(false) },
+      ondrop: function (e) {
+        e.preventDefault(); setDrag(false)
+        var dropped = e.dataTransfer && e.dataTransfer.files ? Array.prototype.slice.call(e.dataTransfer.files) : []
+        addFiles(dropped.map(function (f) { return f.name }))
+      },
+    }, [
+      icon('page'),
+      h('p', null, ['Drop files here or ', h('span', { class: 'link' }, 'browse')]),
+      h('p', { class: 'hint' }, 'Videos and images'),
+    ])
+    var list = h('ul', { class: 'files' })
+    var uploadBtn = h('div')
+
+    function setDrag(on) { drag = on; zone.classList.toggle('over', on) }
+    function browse() { addFiles(['clip_0042.mp4', 'meme-template.png']) }
+    function addFiles(names) {
+      names.forEach(function (n) {
+        if (!files.some(function (f) { return f.name === n })) files.push({ name: n, state: 'pending' })
+      })
+      paint()
+    }
+    function paint() {
+      zone.classList.toggle('over', drag)
+      clear(list)
+      list.hidden = !files.length
+      files.forEach(function (f) {
+        list.appendChild(h('li', { class: 'file ' + f.state }, [
+          h('span', { class: 'file-state', 'aria-label': f.state }, f.state === 'pending' ? '○' : f.state === 'done' ? '✓' : '✕'),
+          h('span', { class: 'file-name', title: f.name }, f.name),
+          f.state === 'error' && f.error ? h('span', { class: 'file-error' }, f.error) : null,
+          f.state === 'pending' && !busy ? h('button', {
+            class: 'tb-btn', type: 'button', 'aria-label': 'Remove',
+            onclick: function () { files = files.filter(function (x) { return x !== f }); paint() },
+          }, '×') : null,
+        ]))
+      })
+      var pending = files.filter(function (f) { return f.state === 'pending' }).length
+      var allDone = files.length > 0 && files.every(function (f) { return f.state !== 'pending' })
+      clear(uploadBtn)
+      uploadBtn.appendChild(allDone
+        ? h('button', { class: 'btn primary', type: 'button', onclick: closeModal }, 'Done')
+        : h('button', {
+          class: 'btn primary', type: 'button', disabled: pending === 0 || busy,
+          onclick: function () {
+            busy = true; paint()
+            setTimeout(function () {
+              files.forEach(function (f) { if (f.state === 'pending') f.state = 'done' })
+              busy = false; paint()
+            }, 900)
+          },
+        }, busy ? 'Uploading…' : pending > 0 ? 'Upload ' + pending + ' file' + (pending !== 1 ? 's' : '') : 'Upload'))
+    }
+    paint()
+
+    var form = h('form', {
+      class: 'stack-form',
+      onsubmit: function (e) {
+        e.preventDefault()
+        S.queue.unshift({
+          id: 'local-' + Date.now(), url: url.value, downloader: downloader, status: 'pending', progress: 0,
+          error: null, created_at: new Date().toISOString(), completed_at: null, source: 'web', source_label: null, include_in_random: 1,
+        })
+        closeModal()
+      },
+    }, [
+      url,
+      h('div', { class: 'radios', role: 'radiogroup', 'aria-label': 'Downloader' }, [['ytdlp', 'yt-dlp (video)'], ['gallery-dl', 'gallery-dl']].map(function (o) {
+        return h('label', { class: 'check' }, [
+          h('input', { type: 'radio', name: 'downloader', value: o[0], checked: o[0] === downloader, onchange: function () { downloader = o[0] } }),
+          o[1],
+        ])
+      })),
+      h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'submit' }, 'Queue download')),
+    ])
+
+    return dialog('Add to vault', { onClose: closeModal, icon: 'star' }, [
+      h('label', { class: 'check' }, [h('input', { type: 'checkbox', checked: true }), 'Include in random']),
+      h('fieldset', { class: 'groupbox' }, [h('legend', null, 'Download a URL'), form]),
+      h('fieldset', { class: 'groupbox' }, [h('legend', null, 'Or upload files'), zone, list, h('div', { class: 'actions' }, uploadBtn)]),
+    ])
+  }
+
+  function fmtDuration(s) {
+    if (s == null) return '0:00'
+    var m = Math.floor(s / 60), sec = s % 60
+    return (m >= 60 ? Math.floor(m / 60) + ':' + ('0' + (m % 60)).slice(-2) : m) + ':' + ('0' + sec).slice(-2)
+  }
+
+  // MediaModal.vue
+  function mediaModal(r) {
+    var item = S.media.filter(function (m) { return m.id === r.q.id })[0]
+    if (!item) {
+      return dialog('Error', { onClose: closeModal, icon: 'error' }, [
+        h('div', { class: 'msgbox' }, [icon('error'), h('p', null, 'This item is no longer in the vault.')]),
+        h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', onclick: closeModal }, 'OK')),
+      ])
+    }
+    var tags = item.tags.slice()
+    var status = h('span', null, item.type + ' · ' + item.width + '×' + item.height)
+    var thumb = M.thumbnail(item)
+
+    var player = item.type === 'video'
+      ? h('div', { class: 'player video' }, [
+        h('div', { class: 'screen' }, thumb
+          ? [h('img', { src: thumb, alt: '' })]
+          : [h('span', { class: 'no-signal' }, 'NO SIGNAL')]),
+        h('div', { class: 'transport' }, [
+          h('button', { class: 'btn small', type: 'button', 'aria-label': 'Play' }, '▶'),
+          h('div', { class: 'seek' }, h('div')),
+          h('span', { class: 'time' }, '0:00 / ' + fmtDuration(item.duration)),
+        ]),
+      ])
+      : h('div', { class: 'player image' }, h('div', { class: 'screen' }, h('img', { src: thumb, alt: item.title || '' })))
+
+    var chipBox = h('div', { class: 'chips' })
+    function paintTags() {
+      clear(chipBox)
+      if (!tags.length) chipBox.appendChild(h('span', { class: 'muted' }, 'No tags'))
+      tags.forEach(function (t) { chipBox.appendChild(h('span', { class: 'chip static', title: t.name }, t.name)) })
+    }
+    paintTags()
+    var tagInput = h('input', { class: 'field', placeholder: 'Add tag', 'aria-label': 'Add tag' })
+
+    var shareBox = h('div', { class: 'shares' })
+    var copied = null
+    function paintShares() {
+      clear(shareBox)
+      var mine = S.shares.filter(function (s) { return s.media_id === item.id })
+      if (!mine.length) shareBox.appendChild(h('p', { class: 'muted' }, 'No share links yet.'))
+      mine.forEach(function (s) {
+        var link = M.shareUrl(s.token)
+        shareBox.appendChild(h('div', { class: 'share-row' }, [
+          h('a', { href: 'share.html?token=' + s.token, target: '_blank', class: 'share-url', title: link }, link),
+          h('div', { class: 'share-actions' }, [
+            h('button', {
+              class: 'btn small', type: 'button',
+              onclick: function () {
+                try { navigator.clipboard.writeText(link).catch(function () {}) } catch (e) { /* no clipboard on file:// */ }
+                copied = s.token; paintShares()
+                setTimeout(function () { if (copied === s.token) { copied = null; paintShares() } }, 1500)
+              },
+            }, copied === s.token ? 'Copied' : 'Copy'),
+            h('button', {
+              class: 'btn small danger', type: 'button',
+              onclick: function () { S.shares = S.shares.filter(function (x) { return x !== s }); paintShares() },
+            }, 'Revoke'),
+          ]),
+        ]))
+      })
+    }
+    paintShares()
+
+    return dialog('Media Player', {
+      onClose: closeModal, icon: item.type === 'video' ? 'film' : 'picture', wide: true,
+      label: item.title || 'Untitled', status: [status, h('span', null, fmtDate(item.created_at))],
+    }, h('div', { class: 'media-layout' }, [
+      player,
+      h('div', { class: 'media-side' }, [
+        h('div', { class: 'media-head' }, [
+          h('h2', { class: item.title ? '' : 'untitled' }, item.title || 'Untitled'),
+          h('p', { class: 'source', title: item.url }, item.url),
+        ]),
+        h('fieldset', { class: 'groupbox' }, [
+          h('legend', null, 'Tags'),
+          chipBox,
+          h('form', {
+            class: 'inline-form',
+            onsubmit: function (e) {
+              e.preventDefault()
+              var name = tagInput.value.trim()
+              if (!name) return
+              if (!tags.some(function (t) { return t.name === name })) tags.push({ id: 'new-' + name, name: name })
+              tagInput.value = ''; paintTags()
+            },
+          }, [tagInput, h('button', { class: 'btn', type: 'submit' }, 'Add')]),
+          h('div', { class: 'actions' }, h('button', {
+            class: 'btn', type: 'button',
+            onclick: function () { item.tags = tags.slice(); status.textContent = 'Tags saved'; status.className = 'ok' },
+          }, 'Save tags')),
+        ]),
+        h('label', { class: 'check' }, [
+          h('input', {
+            type: 'checkbox', checked: item.include_in_random === 1,
+            onchange: function (e) { item.include_in_random = e.target.checked ? 1 : 0 },
+          }),
+          'Include in random',
+        ]),
+        h('fieldset', { class: 'groupbox' }, [
+          h('legend', null, 'Share links'),
+          h('div', { class: 'actions start' }, h('button', {
+            class: 'btn', type: 'button',
+            onclick: function () {
+              S.shares.push({ token: Math.random().toString(36).slice(2, 14), media_id: item.id, allow_download: 1, expires_at: null, created_at: new Date().toISOString() })
+              paintShares()
+            },
+          }, 'Create')),
+          shareBox,
+        ]),
+        h('div', { class: 'actions footer' }, h('button', {
+          class: 'btn danger', type: 'button',
+          onclick: function () {
+            confirmBox('Delete this item? This removes the file from disk.', 'Delete', function () {
+              S.media = S.media.filter(function (m) { return m !== item })
+              closeModal()
+            })
+          },
+        }, 'Delete')),
+      ]),
+    ]))
+  }
+
+  function renderModal(r) {
+    var root = document.getElementById('modal-root')
+    clear(root)
+    document.body.classList.remove('modal-open')
+    var m = r.q.modal === 'add' ? addModal(r) : r.q.modal === 'media' ? mediaModal(r) : null
+    if (!m) return
+    root.appendChild(m)
+    document.body.classList.add('modal-open')
+    var f = m.querySelector('input:not([type=checkbox]), .tb-btn')
+    if (f) f.focus({ preventScroll: true })
+  }
+
   // ------------------------------------------------------------- header
 
   function themeSwitch() {
@@ -531,7 +808,10 @@
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return
     if (startOpen) { setStart(false); return }
-    if (drawerOpen) { drawerOpen = false; renderDrawer(route()) }
+    if (drawerOpen) { drawerOpen = false; renderDrawer(route()); return }
+    var top = document.querySelector('#modal-root .layer.top')
+    if (top) { top.parentNode.removeChild(top); return }
+    if (route().q.modal) closeModal()
   })
 
   // ------------------------------------------------------------- render
@@ -545,8 +825,13 @@
     var main = document.getElementById('main')
     clear(main)
     main.appendChild(VIEWS[r.path[0]](r))
-    window.scrollTo(0, 0)
+    renderModal(r)
+    // Only jump to the top on a new screen, not when a dialog opens or closes.
+    var path = r.path.join('/')
+    if (path !== lastPath) window.scrollTo(0, 0)
+    lastPath = path
   }
+  var lastPath = null
 
   window.addEventListener('hashchange', render)
   renderStartMenu()
