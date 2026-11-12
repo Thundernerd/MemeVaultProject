@@ -318,6 +318,9 @@
 
   // GET /api/settings: every value is a string; _overridden_by_env lists
   // keys locked by environment variables (shown disabled in the UI).
+  // The bot toggles are 'true' / 'false' (discord.rs, fluxer.rs and the
+  // settings views compare against 'true'); share_default_allow_download
+  // is '1' / '0' (SharingView.vue).
   var settings = {
     download_path: '/data/media',
     random_mode: 'flag', // or 'shared' (SharingView.vue)
@@ -329,18 +332,18 @@
     share_default_expiry_days: '7',
     share_default_allow_download: '1',
     share_base_url: 'https://memes.example.com',
-    discord_enabled: '1',
+    discord_enabled: 'true',
     discord_bot_token: '••••••••••••••••',
     discord_client_id: '1234567890123456789',
     discord_command_name: 'get',
-    discord_post_as_user: '1',
-    fluxer_enabled: '0',
+    discord_post_as_user: 'true',
+    fluxer_enabled: 'false',
     fluxer_bot_token: '',
     fluxer_instance_url: 'https://fluxer.app',
     fluxer_command_prefix: '!',
     fluxer_command_name: 'get',
-    fluxer_post_as_user: '0',
-    fluxer_delete_command_message: '1',
+    fluxer_post_as_user: 'false',
+    fluxer_delete_command_message: 'true',
     _overridden_by_env: ['download_path'],
   }
 
