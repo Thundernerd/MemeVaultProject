@@ -252,7 +252,7 @@
           onclick: function () { VF.mode = VF.mode === 'any' ? 'all' : 'any'; refresh() },
         }, 'match: ' + VF.mode),
       ]))
-      panel.appendChild(h('div', { class: 'chips', role: 'group', 'aria-label': 'Tags' }, S.tags.filter(function (t) { return t.usage_count > 0 }).map(function (t) {
+      panel.appendChild(h('div', { class: 'chips', role: 'group', 'aria-label': 'Tags' }, S.tags.slice(0, 40).map(function (t) {
         var on = VF.tags.indexOf(t.name) >= 0
         return h('button', {
           class: 'chip' + (on ? ' on' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', title: t.name,
@@ -436,7 +436,7 @@
   function textField(key, label, opts) {
     opts = opts || {}
     return h('label', { class: 'stack' + (opts.class ? ' ' + opts.class : '') }, [
-      h('span', null, [label, isEnv(key) ? h('span', { class: 'env-tag', title: 'Set by an environment variable' }, 'env') : null]),
+      h('span', { title: isEnv(key) ? 'Set by an environment variable' : null }, label + (isEnv(key) ? ' (env)' : '')),
       h('input', {
         class: 'field', type: opts.type || 'text', value: S.settings[key], placeholder: opts.placeholder,
         disabled: isEnv(key), oninput: function (e) { S.settings[key] = e.target.value },

@@ -89,7 +89,7 @@
           player(m),
           h('div', { class: 'share-meta' }, [
             h('h1', null, m.title || 'Shared media'),
-            link.allow_download ? h('a', { class: 'btn primary', href: M.thumbnail(m) || '#', download: (m.title || 'media') + '.' + m.format }, '⇩ Download') : null,
+            link.allow_download ? h('a', { class: 'btn primary', href: M.thumbnail(m) || '#', download: (m.title || 'media') + '.' + m.format }, 'Download') : null,
           ]),
         ]))
       }
