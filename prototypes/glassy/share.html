@@ -22,8 +22,6 @@
     .stage .player img, .stage .player video { max-height: 70vh; }
     .meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; }
     .meta h1 { font-size: 1rem; font-weight: 600; }
-    .album-head { padding: 16px 20px; display: flex; flex-direction: column; gap: 2px; }
-    .album-head h1 { font-size: 1.1rem; font-weight: 650; overflow-wrap: anywhere; }
     .album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
     .album-grid > * { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 18px; background: #000; display: block; border: 1px solid var(--border); box-shadow: var(--glass-shadow); }
     @media (max-width: 420px) { .album-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -70,10 +68,6 @@
         if (share.album_id) {
           var album = M.albums.filter(function (a) { return a.id === share.album_id })[0]
           document.title = (album.title || 'Album') + ' — MemeVault'
-          main.appendChild(el('section', { class: 'glass album-head' }, [
-            el('h1', null, [album.title || 'Album']),
-            el('p', { class: 'xs muted' }, [album.media.length + ' items']),
-          ]))
           main.appendChild(el('div', { class: 'album-grid' }, album.media.map(function (m) { return media(m, true) })))
           return
         }

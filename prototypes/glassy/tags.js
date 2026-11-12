@@ -21,10 +21,6 @@
 
     function redraw() {
       body.innerHTML = ''
-      if (!A.db.tags.length) {
-        body.appendChild(A.notice('empty', 'No tags yet'))
-        return
-      }
       grouped().forEach(function (g) {
         body.appendChild(h('section', { class: 'tag-group glass', 'aria-label': g[0] }, [
           h('h2', null, g[0]),

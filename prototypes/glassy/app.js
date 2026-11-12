@@ -258,7 +258,7 @@
     container.innerHTML = ''
     var entries = vaultEntries()
     if (!entries.length) {
-      container.appendChild(notice('empty', vault.search || activeFilterCount() ? 'Nothing matches these filters.' : M.states.vault.empty))
+      container.appendChild(notice('empty', M.states.vault.empty))
       return
     }
     var grid = h('div', { class: 'grid' })

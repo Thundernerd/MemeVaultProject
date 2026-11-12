@@ -109,7 +109,7 @@
           ]),
           h('div', { style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap' }, [
             h('input', { class: 'file-input', type: 'file', accept: '.txt', 'aria-label': 'Upload ' + tool + ' cookies' }),
-            h('button', { class: 'btn btn-sm btn-ghost btn-danger', type: 'button', disabled: !c.exists }, 'Delete'),
+            h('button', { class: 'btn btn-sm btn-ghost btn-danger', type: 'button' }, 'Delete'),
           ]),
         ])
       })

@@ -208,7 +208,6 @@
     function drawShares() {
       shareList.innerHTML = ''
       var links = A.db.shares.filter(function (s) { return s.media_id === item.id })
-      if (!links.length) shareList.appendChild(h('p', { class: 'xs muted' }, 'No share links yet.'))
       links.forEach(function (s) {
         var url = M.shareUrl(s.token)
         shareList.appendChild(h('div', { class: 'share-row' }, [
