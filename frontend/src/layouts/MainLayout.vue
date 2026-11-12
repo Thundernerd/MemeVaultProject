@@ -81,7 +81,7 @@ function isActive(href: string) {
       </nav>
     </div>
 
-    <main class="flex-1 overflow-y-auto pt-[calc(68px+var(--bw))]">
+    <main class="flex-1 overflow-y-auto pt-[calc(var(--header-h)+var(--bw))]">
       <div class="main-column">
         <RouterView />
       </div>

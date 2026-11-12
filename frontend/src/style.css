@@ -71,6 +71,8 @@
   --bw: 3px;                 /* border width */
   --bw-thin: 2px;
   --lift: 4px;               /* hard shadow offset */
+  --header-h: 68px;          /* app header, excluding its --bw bottom border */
+  --shell-max: 72rem;        /* width of the header and main column */
   --font-display: "Arial Black", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-body: "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -161,7 +163,7 @@
   .btn:hover { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--shadow); }
   .btn:active { transform: translate(var(--lift), var(--lift)); box-shadow: 0 0 0 var(--shadow); }
   .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: var(--lift) var(--lift) 0 var(--shadow); }
-  .btn:focus-visible, .chip:focus-visible {
+  .btn:focus-visible, .chip:focus-visible, .nav-link:focus-visible {
     outline: var(--bw) dashed var(--accent); outline-offset: 3px;
   }
 
@@ -256,7 +258,7 @@
     border-bottom: var(--bw) solid var(--border);
   }
   .header-inner {
-    max-width: 72rem; margin: 0 auto; height: 68px;
+    max-width: var(--shell-max); margin: 0 auto; height: var(--header-h);
     display: flex; align-items: center; gap: 20px; padding: 0 16px;
   }
   .logo {
@@ -281,7 +283,6 @@
   }
   .nav-link:hover { border-color: var(--border); color: var(--text-primary); }
   .nav-link.active { background: var(--accent); color: var(--on-accent); border-color: var(--border); box-shadow: 3px 3px 0 var(--shadow); }
-  .nav-link:focus-visible { outline: var(--bw) dashed var(--accent); outline-offset: 3px; }
 
   .header-tools { margin-left: auto; display: flex; align-items: center; gap: 10px; }
   .theme-switch { display: flex; align-items: center; gap: 8px; }
@@ -299,7 +300,7 @@
   .drawer { position: fixed; inset: 0; z-index: 40; }
   .drawer-backdrop { position: absolute; inset: 0; background: var(--overlay); }
   .drawer-panel {
-    position: absolute; top: 68px; left: 0; right: 0;
+    position: absolute; top: calc(var(--header-h) + var(--bw)); left: 0; right: 0;
     background: var(--surface-1); border-bottom: var(--bw) solid var(--border);
     display: flex; flex-direction: column;
   }
@@ -307,7 +308,7 @@
   .drawer-panel .nav-link.active { border-left: 10px solid var(--border); }
 
   /* <main> scrolls under the fixed header; this is its centred column. */
-  .main-column { max-width: 72rem; margin: 0 auto; padding: 28px 16px 96px; }
+  .main-column { max-width: var(--shell-max); margin: 0 auto; padding: 28px 16px 96px; }
 
   @media (max-width: 767px) {
     .nav, .signout { display: none; }

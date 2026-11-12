@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useTheme, type Accent, type Theme } from '@/theme'
 
 const { theme, accent, setTheme, setAccent } = useTheme()
 const accents: Accent[] = ['blue', 'purple', 'green', 'orange', 'rose']
+const toggleLabel = computed(() => (theme.value === 'dark' ? 'Light mode' : 'Dark mode'))
 
 function toggleTheme() {
   setTheme((theme.value === 'dark' ? 'light' : 'dark') as Theme)
@@ -14,8 +16,8 @@ function toggleTheme() {
     <button
       type="button"
       class="btn btn-sm btn-icon"
-      :title="theme === 'dark' ? 'Light mode' : 'Dark mode'"
-      :aria-label="theme === 'dark' ? 'Light mode' : 'Dark mode'"
+      :title="toggleLabel"
+      :aria-label="toggleLabel"
       @click="toggleTheme"
     >
       {{ theme === 'dark' ? '☀' : '☾' }}
