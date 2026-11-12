@@ -122,102 +122,92 @@ function toggleTag(name: string) {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4 pb-12">
-    <div class="flex flex-wrap items-center gap-3">
-      <h1 class="text-2xl font-bold">Vault</h1>
-      <div class="ml-auto flex flex-wrap gap-2 items-center">
+  <div class="flex flex-col gap-5 pb-12">
+    <div class="flex flex-wrap items-end gap-x-4 gap-y-3">
+      <h1>Vault</h1>
+      <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto md:ml-auto">
         <input
           v-model="search"
+          type="search"
           placeholder="Search…"
-          class="bg-surface-2 border border-border rounded-lg px-3 py-1.5 text-sm"
+          aria-label="Search"
+          class="input basis-full md:basis-auto md:w-56"
         />
         <button
           type="button"
-          class="inline-flex items-center gap-1.5 border rounded-lg px-3 py-1.5 text-sm transition-colors"
-          :class="filtersOpen
-            ? 'bg-accent-subtle border-accent text-accent'
-            : 'bg-surface-2 border-border text-text-secondary hover:border-border-strong hover:text-text-primary'"
+          class="btn"
+          :class="{ 'btn-on': filtersOpen }"
           :aria-expanded="filtersOpen"
           aria-controls="vault-filters"
           @click="filtersOpen = !filtersOpen"
         >
-          <svg
-            class="w-3.5 h-3.5 shrink-0 transition-transform"
-            :class="filtersOpen ? 'rotate-180' : ''"
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M2 4l4 4 4-4" />
-          </svg>
-          {{ filtersOpen ? 'Hide filters' : 'Show filters' }}
           <span
-            v-if="!filtersOpen && activeFilterCount"
-            class="min-w-5 h-5 px-1.5 rounded-full bg-accent text-white text-[11px] leading-5 text-center"
-          >{{ activeFilterCount }}</span>
+            class="inline-block text-[0.6rem] transition-transform"
+            :class="{ 'rotate-180': filtersOpen }"
+            aria-hidden="true"
+          >▼</span>
+          {{ filtersOpen ? 'Hide filters' : 'Show filters' }}
+          <span v-if="!filtersOpen && activeFilterCount" class="count">{{ activeFilterCount }}</span>
         </button>
-        <button
-          class="bg-accent hover:bg-accent-hover text-white px-4 py-1.5 rounded-lg text-sm font-medium"
-          @click="addOpen = true"
-        >Add</button>
+        <button type="button" class="btn btn-primary" @click="addOpen = true">Add</button>
       </div>
     </div>
 
-    <div
-      v-show="filtersOpen"
-      id="vault-filters"
-      class="flex flex-col gap-3 rounded-xl border border-border bg-surface-2/40 p-3"
-    >
-      <select v-model="filter" class="bg-surface-1 border border-border rounded-lg px-2 py-1.5 text-sm self-start">
-        <option value="all">All</option>
-        <option value="video">Video</option>
-        <option value="image">Image</option>
-      </select>
-      <div v-if="tags.length" class="flex flex-wrap gap-1.5">
+    <div v-show="filtersOpen" id="vault-filters" class="filters">
+      <div class="flex items-center gap-2.5">
+        <span class="label">Type</span>
+        <select v-model="filter" aria-label="Type" class="select w-auto min-w-36">
+          <option value="all">All</option>
+          <option value="video">Video</option>
+          <option value="image">Image</option>
+        </select>
+      </div>
+      <div v-if="tags.length" class="flex flex-wrap gap-2">
         <button
           v-for="t in tags.slice(0, 40)"
           :key="t.id"
-          class="text-xs px-2 py-1 rounded-full border transition-colors"
-          :class="selectedTags.includes(t.name)
-            ? 'border-accent bg-accent-subtle text-accent'
-            : 'border-border text-text-secondary hover:border-border-strong'"
+          type="button"
+          class="chip"
+          :class="{ on: selectedTags.includes(t.name) }"
+          :aria-pressed="selectedTags.includes(t.name)"
           @click="toggleTag(t.name)"
         >{{ t.name }}</button>
         <button
-          class="text-xs px-2 py-1 text-text-muted"
+          type="button"
+          class="chip chip-mode"
           @click="tagMode = tagMode === 'any' ? 'all' : 'any'"
         >match: {{ tagMode }}</button>
       </div>
     </div>
 
-    <p v-if="error" class="text-rose-400 text-sm">{{ error }}</p>
-    <p v-else-if="loading" class="text-text-muted text-sm">Loading…</p>
+    <div v-if="error" class="state state-error" role="alert">
+      <span class="state-tag label">error</span>
+      <p class="state-text">{{ error }}</p>
+    </div>
+    <div v-else-if="loading" class="state state-loading" role="status">
+      <span class="state-tag label">loading</span>
+      <p class="state-text">Loading…</p>
+    </div>
 
-    <div v-if="activeQueue.length" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-      <div
-        v-for="q in activeQueue"
-        :key="q.id"
-        class="aspect-square rounded-xl border border-dashed border-border-strong bg-surface-2/50 flex flex-col items-center justify-center p-3 gap-2"
-      >
-        <p class="text-xs text-text-muted truncate w-full text-center" :title="q.url">{{ q.url }}</p>
+    <h2 v-if="activeQueue.length" class="label text-text-muted">Downloading · {{ activeQueue.length }}</h2>
+    <div v-if="activeQueue.length" class="vault-grid">
+      <div v-for="q in activeQueue" :key="q.id" class="pending-card">
+        <p class="pending-url truncate" :title="q.url">{{ q.url }}</p>
         <DownloadProgress :status="q.status" :progress="q.progress" />
       </div>
     </div>
 
-    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+    <div v-if="entries.length" class="vault-grid">
       <template v-for="e in entries" :key="e.kind === 'media' ? e.item.id : e.album.id">
         <MediaCard v-if="e.kind === 'media'" :item="e.item" @click="selected = e.item" />
         <AlbumCard v-else :album="e.album" />
       </template>
     </div>
 
-    <p v-if="!loading && !entries.length" class="text-text-muted text-sm text-center py-12">
-      Vault is empty. Add a URL or upload a file.
-    </p>
+    <div v-if="!loading && !error && !entries.length" class="state state-empty" role="status">
+      <span class="state-tag label">empty</span>
+      <p class="state-text">Vault is empty. Add a URL or upload a file.</p>
+    </div>
 
     <AddUrlModal v-model:open="addOpen" @done="load" />
     <MediaModal
