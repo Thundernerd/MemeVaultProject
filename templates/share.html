@@ -5,64 +5,159 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{ title }} — MemeVault</title>
   {{ og_meta|safe }}
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem('mvp-theme') || 'dark';
+        var accent = localStorage.getItem('mvp-accent') || 'blue';
+        document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.setAttribute('data-accent', accent);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.setAttribute('data-accent', 'blue');
+      }
+    })();
+  </script>
   <style>
-    :root {
-      --surface-base: #09090b; --surface-1: #18181b; --surface-2: #27272a;
-      --border: #27272a; --text-primary: #fafafa; --text-muted: #71717a;
+    /* Brutalist tokens, same values as the app (prototypes/brutalist/styles.css). */
+    [data-theme="light"] {
+      --surface-base: #f3efe3; --surface-1: #ffffff; --surface-2: #ebe5d3; --surface-3: #d6cdb3;
+      --border: #0a0a0a; --border-strong: #000000;
+      --text-primary: #0a0a0a; --text-secondary: #2e2a22; --text-muted: #5e5848;
+      --shadow: #0a0a0a; --danger: #e0002b; --on-danger: #ffffff; --ok: #00873c; --on-ok: #ffffff;
+      --pop-1: #ffe14d; --pop-2: #ff9ad5; --pop-3: #6be4ff; --on-pop: #0a0a0a;
+      --overlay: rgb(10 10 10 / 0.6);
     }
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: system-ui, sans-serif; background: var(--surface-base); color: var(--text-primary); min-height: 100vh; display: flex; flex-direction: column; }
-    header { height: 64px; background: rgba(24,24,27,0.7); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; font-weight: 700; }
-    .player { background: #000; display: flex; align-items: center; justify-content: center; width: 100%; max-height: 70vh; }
-    .player video, .player img { max-height: 70vh; width: 100%; object-fit: contain; }
-    .meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; max-width: 48rem; margin: 0 auto; width: 100%; }
-    .meta h1 { font-size: 1rem; font-weight: 500; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .btn { background: var(--surface-2); color: var(--text-primary); text-decoration: none; padding: 6px 16px; border-radius: 8px; font-size: 0.875rem; }
-    footer { margin-top: auto; padding: 16px 20px; border-top: 1px solid var(--border); text-align: center; color: var(--text-muted); font-size: 0.75rem; }
-    .album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; padding: 16px; max-width: 64rem; margin: 0 auto; width: 100%; }
-    .album-grid img, .album-grid video { width: 100%; height: 160px; object-fit: cover; border-radius: 8px; background: #000; }
+    [data-theme="dark"] {
+      --surface-base: #111111; --surface-1: #1b1b1b; --surface-2: #262626; --surface-3: #3a3a3a;
+      --border: #f3efe3; --border-strong: #ffffff;
+      --text-primary: #f3efe3; --text-secondary: #d4cfbf; --text-muted: #a29d8c;
+      --shadow: #f3efe3; --danger: #ff4d6a; --on-danger: #0a0a0a; --ok: #3ddc84; --on-ok: #0a0a0a;
+      --pop-1: #ffe14d; --pop-2: #ff9ad5; --pop-3: #6be4ff; --on-pop: #0a0a0a;
+      --overlay: rgb(0 0 0 / 0.75);
+    }
+    [data-accent="blue"]   { --accent: #2f5bff; --accent-hover: #1a3fd9; --accent-subtle: rgb(47 91 255 / 0.18);  --on-accent: #ffffff; }
+    [data-accent="purple"] { --accent: #9b4dff; --accent-hover: #7a26f0; --accent-subtle: rgb(155 77 255 / 0.18); --on-accent: #ffffff; }
+    [data-accent="green"]  { --accent: #00d26a; --accent-hover: #00ad57; --accent-subtle: rgb(0 210 106 / 0.2);   --on-accent: #0a0a0a; }
+    [data-accent="orange"] { --accent: #ff6b00; --accent-hover: #e05500; --accent-subtle: rgb(255 107 0 / 0.2);   --on-accent: #0a0a0a; }
+    [data-accent="rose"]   { --accent: #ff2e63; --accent-hover: #e0104a; --accent-subtle: rgb(255 46 99 / 0.18);  --on-accent: #ffffff; }
+    :root {
+      --bw: 3px; --bw-thin: 2px; --lift: 4px;
+      --font-display: "Arial Black", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      --font-body: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; border-radius: 0; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+      background-color: var(--surface-base);
+      background-image: radial-gradient(color-mix(in srgb, var(--text-primary) 9%, transparent) 1px, transparent 1.5px);
+      background-size: 14px 14px;
+      color: var(--text-primary);
+      font: 15px/1.45 var(--font-body);
+      overflow-x: hidden;
+    }
+    h1 { font-family: var(--font-display); font-weight: 900; margin: 0; line-height: 1.05; letter-spacing: -0.02em; text-transform: uppercase; }
+    .label { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+
+    .header { position: sticky; top: 0; z-index: 50; background: var(--surface-1); border-bottom: var(--bw) solid var(--border); }
+    .header-inner { max-width: 72rem; margin: 0 auto; height: 68px; display: flex; align-items: center; padding: 0 16px; }
+    .logo { display: flex; align-items: stretch; border: var(--bw) solid var(--border); box-shadow: 3px 3px 0 var(--shadow); }
+    .logo-mark { background: var(--text-primary); color: var(--surface-1); font-family: var(--font-display); font-size: 1.15rem; padding: 4px 8px; letter-spacing: -0.02em; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: none;
+      min-height: 40px; padding: 6px 16px;
+      border: var(--bw) solid var(--border);
+      background: var(--surface-1); color: var(--text-primary);
+      box-shadow: var(--lift) var(--lift) 0 var(--shadow);
+      font-family: var(--font-mono); font-size: 0.8rem; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.06em; text-decoration: none;
+      cursor: pointer; white-space: nowrap;
+      transition: transform 80ms ease-out, box-shadow 80ms ease-out, background-color 80ms;
+    }
+    .btn:hover { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--shadow); }
+    .btn:active { transform: translate(var(--lift), var(--lift)); box-shadow: 0 0 0 var(--shadow); }
+    .btn:focus-visible { outline: var(--bw) dashed var(--accent); outline-offset: 3px; }
+    .btn-primary { background: var(--accent); color: var(--on-accent); }
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    .share-main { flex: 1; width: 100%; }
+    .player { background: #000; display: flex; align-items: center; justify-content: center; max-height: 70vh; border-bottom: var(--bw) solid var(--border); overflow: hidden; }
+    .player img, .player video { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; }
+    .player video { width: 100%; }
+    .share-meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 48rem; margin: 0 auto; padding: 20px 16px; }
+    .share-title { font-size: clamp(1.3rem, 5vw, 2.2rem); overflow-wrap: anywhere; min-width: 0; }
+
+    .share-album-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; max-width: 72rem; margin: 0 auto; padding: 24px 16px 0; }
+    .sticker-inline { padding: 3px 8px; background: var(--pop-2); color: var(--on-pop); border: var(--bw-thin) solid var(--border); transform: rotate(4deg); }
+    .share-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 18px; max-width: 72rem; margin: 0 auto; padding: 20px 16px 40px; }
+    .share-cell { aspect-ratio: 1; border: var(--bw) solid var(--border); background: #000; box-shadow: 5px 5px 0 var(--shadow); overflow: hidden; }
+    .share-cell img, .share-cell video { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+    .share-footer { padding: 18px 16px; text-align: center; border-top: var(--bw) solid var(--border); background: var(--surface-1); color: var(--text-muted); }
   </style>
 </head>
 <body>
-  <header>MVP</header>
-  {% if is_album %}
-  <div class="album-grid" id="album"></div>
-  <script>
-    const items = {{ album_items_json|safe }};
-    const root = document.getElementById('album');
-    const pathToken = location.pathname.split('/').pop();
-    for (const m of items) {
-      const src = m.has_thumbnail
-        ? `/api/share/${pathToken}/media/${m.id}/thumbnail`
-        : `/api/share/${pathToken}/media/${m.id}/file`;
-      if (m.type === 'video') {
-        const v = document.createElement('video');
-        v.src = `/api/share/${pathToken}/media/${m.id}/file`;
-        v.controls = true;
-        root.appendChild(v);
-      } else {
-        const img = document.createElement('img');
-        img.src = src;
-        img.alt = m.title || '';
-        root.appendChild(img);
+  <header class="header">
+    <div class="header-inner">
+      <span class="logo"><span class="logo-mark">MVP</span></span>
+    </div>
+  </header>
+  <main class="share-main">
+    {% if is_album %}
+    <div class="share-album-head">
+      <h1 class="share-title">{{ title }}</h1>
+      <span class="sticker-inline label" id="album-count"></span>
+    </div>
+    <div class="share-grid" id="album"></div>
+    <script>
+      const items = {{ album_items_json|safe }};
+      const root = document.getElementById('album');
+      const pathToken = location.pathname.split('/').pop();
+      document.getElementById('album-count').textContent =
+        items.length + (items.length === 1 ? ' item' : ' items');
+      for (const m of items) {
+        const cell = document.createElement('div');
+        cell.className = 'share-cell';
+        const thumb = `/api/share/${pathToken}/media/${m.id}/thumbnail`;
+        const file = `/api/share/${pathToken}/media/${m.id}/file`;
+        if (m.type === 'video') {
+          const v = document.createElement('video');
+          v.src = file;
+          v.controls = true;
+          v.preload = 'metadata';
+          if (m.has_thumbnail) v.poster = thumb;
+          v.setAttribute('aria-label', m.title || 'Video');
+          cell.appendChild(v);
+        } else {
+          const img = document.createElement('img');
+          img.src = m.has_thumbnail ? thumb : file;
+          img.alt = m.title || '';
+          img.loading = 'lazy';
+          cell.appendChild(img);
+        }
+        root.appendChild(cell);
       }
-    }
-  </script>
-  {% else %}
-  <div class="player">
-    {% if media_type == "video" %}
-    <video src="{{ file_src }}" controls autoplay{% if let Some(t) = thumbnail_src %} poster="{{ t }}"{% endif %}></video>
+    </script>
     {% else %}
-    <img src="{% if let Some(t) = thumbnail_src %}{{ t }}{% else %}{{ file_src }}{% endif %}" alt="{{ title }}" />
+    <div class="player">
+      {% if media_type == "video" %}
+      <video src="{{ file_src }}" controls autoplay{% if let Some(t) = thumbnail_src %} poster="{{ t }}"{% endif %}></video>
+      {% else %}
+      <img src="{% if let Some(t) = thumbnail_src %}{{ t }}{% else %}{{ file_src }}{% endif %}" alt="{{ title }}" />
+      {% endif %}
+    </div>
+    <div class="share-meta">
+      <h1 class="share-title">{{ title }}</h1>
+      {% if allow_download %}
+      <a class="btn btn-primary" href="{{ file_src }}" download>Download</a>
+      {% endif %}
+    </div>
     {% endif %}
-  </div>
-  <div class="meta">
-    <h1>{{ title }}</h1>
-    {% if allow_download %}
-    <a class="btn" href="{{ file_src }}" download>Download</a>
-    {% endif %}
-  </div>
-  {% endif %}
-  <footer>Shared via MemeVault</footer>
+  </main>
+  <footer class="share-footer label">Shared via MemeVault</footer>
 </body>
 </html>
