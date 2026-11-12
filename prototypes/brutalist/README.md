@@ -26,7 +26,7 @@ public share page, which is served without the app shell, so it has no nav.
 
 Route params that open states: `?state=empty|loading|error` (vault, queue),
 `?modal=add[&files=1&drag=1]`, `?modal=media&id=<index into MOCK.media>`,
-`?drawer=1`, `?msg=saved|error` (settings), `?reveal=1` (API key).
+`?filters=0|1&type=…&tags=…`, `?drawer=1`, `?msg=saved|error` (settings), `?reveal=1` (API key).
 
 ## Mapping back to the app
 

@@ -101,7 +101,7 @@
       h('div', { class: 'modal-head' },
         h('h2', { text: 'Add to vault' }),
         h('button', { class: 'btn btn-sm btn-icon', type: 'button', 'aria-label': 'Close', text: '✕', onclick: B.closeModal })),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: true }), 'Include in random'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox' }), 'Include in random'),
       h('form', {
         class: 'stack',
         onsubmit: function (e) {

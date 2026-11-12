@@ -74,7 +74,7 @@
       type: ['video', 'image'].indexOf(p.type) >= 0 ? p.type : 'all',
       tags: p.tags ? p.tags.split(',') : [],
       mode: p.match === 'all' ? 'all' : 'any',
-      open: p.filters === '1' || window.matchMedia('(min-width: 768px)').matches,
+      open: p.filters ? p.filters === '1' : window.matchMedia('(min-width: 768px)').matches,
     }
 
     var filterBtn = h('button', { class: 'btn', type: 'button', 'aria-controls': 'vault-filters' })
@@ -124,7 +124,7 @@
       if (state === 'error') grid.appendChild(B.stateBlock('error', M.states.vault.error))
       else if (state === 'loading') grid.appendChild(B.stateBlock('loading', M.states.vault.loading))
 
-      var active = state ? [] : M.activeQueue()
+      var active = state ? [] : B.store.queue.filter(function (q) { return q.status === 'pending' || q.status === 'downloading' })
       if (active.length) {
         grid.appendChild(h('h2', { class: 'section-title label', text: 'Downloading · ' + active.length }))
         grid.appendChild(h('div', { class: 'grid' }, active.map(function (q) {
@@ -141,9 +141,7 @@
         })))
       }
       if (state !== 'loading' && state !== 'error' && !list.length) {
-        grid.appendChild(state === 'empty' || !B.store.media.length
-          ? B.stateBlock('empty', M.states.vault.empty)
-          : B.stateBlock('empty', 'Nothing matches these filters.'))
+        grid.appendChild(B.stateBlock('empty', M.states.vault.empty))
       }
     }
 

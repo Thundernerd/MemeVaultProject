@@ -16,6 +16,7 @@
     ['2. Vault grid', [
       ['Grid, active downloads, albums', A + '#/vault'],
       ['Filter panel with tags selected', A + '#/vault?filters=1&type=video&tags=reaction,cats'],
+      ['Filters hidden, active-filter count badge', A + '#/vault?filters=0&type=video&tags=reaction,cats'],
     ]],
     ['3. Add to vault modal', [
       ['Idle', A + '#/vault?modal=add'],

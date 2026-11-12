@@ -97,6 +97,7 @@
         }
 
         var item = findMedia(share.media_id)
+        if (!item) { location.hash = '#missing'; return }
         document.title = (item.title || 'Untitled') + ' — MemeVault'
         var stage = el('div', 'player share-player')
         stage.appendChild(player(item))
