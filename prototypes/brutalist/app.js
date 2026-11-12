@@ -220,6 +220,8 @@
   window.BRUTAL = {
     h: h, clear: clear, go: go, parseHash: parseHash, hashFor: hashFor, pages: pages, modals: modals,
     closeModal: closeModal, store: store, progress: progress, stateBlock: stateBlock,
+    /** Re-render the current page after the store changed. */
+    refresh: function () { lastPage = null; render() },
   }
   window.addEventListener('hashchange', render)
   window.addEventListener('DOMContentLoaded', render)
