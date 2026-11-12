@@ -87,7 +87,7 @@ pub async fn page(
             thumbnail_src: None,
             allow_download: album_link.allow_download == 1,
             is_album: true,
-            album_items_json: serde_json::to_string(&items).unwrap_or_else(|_| "[]".into()),
+            album_items_json: script_json(&serde_json::Value::Array(items)),
             og_meta: og,
         };
         return Ok(Html(tmpl.render().map_err(|e| AppError::internal(e.to_string()))?).into_response());
@@ -181,9 +181,31 @@ pub async fn page(
     Ok(Html(tmpl.render().map_err(|e| AppError::internal(e.to_string()))?).into_response())
 }
 
+/// JSON for embedding in an inline `<script>`: escapes `<` so a value such as
+/// a media title containing `</script>` cannot close the script block.
+fn script_json(value: &serde_json::Value) -> String {
+    serde_json::to_string(value)
+        .unwrap_or_else(|_| "[]".into())
+        .replace('<', "\\u003c")
+}
+
 fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::script_json;
+
+    #[test]
+    fn script_json_cannot_close_the_script_block() {
+        let items = serde_json::json!([{ "title": "</script><script>alert(1)</script>" }]);
+        let out = script_json(&items);
+        assert!(!out.contains("</"), "unescaped `</` in {out}");
+        let back: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(back, items);
+    }
 }
