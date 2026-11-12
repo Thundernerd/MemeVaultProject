@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { useSettings } from './useSettings'
+import SaveRow from './SaveRow.vue'
 
 const { settings, save, saved, error } = useSettings()
 </script>
 
 <template>
   <form
-    class="flex flex-col gap-4 max-w-xl"
+    class="settings-form"
     @submit.prevent="save(['discord_enabled', 'discord_bot_token', 'discord_client_id', 'discord_command_name', 'discord_post_as_user'])"
   >
-    <label class="flex items-center gap-2 text-sm">
+    <label class="check">
       <input
         type="checkbox"
         :checked="settings.discord_enabled === 'true'"
@@ -17,19 +18,19 @@ const { settings, save, saved, error } = useSettings()
       />
       Enable Discord bot
     </label>
-    <label class="flex flex-col gap-1 text-sm">
-      <span>Bot token</span>
-      <input v-model="settings.discord_bot_token" type="password" class="bg-surface-2 border border-border rounded-lg px-3 py-2" />
+    <label class="field">
+      <span class="label">Bot token</span>
+      <input v-model="settings.discord_bot_token" type="password" class="input" />
     </label>
-    <label class="flex flex-col gap-1 text-sm">
-      <span>Client ID</span>
-      <input v-model="settings.discord_client_id" class="bg-surface-2 border border-border rounded-lg px-3 py-2" />
+    <label class="field">
+      <span class="label">Client ID</span>
+      <input v-model="settings.discord_client_id" class="input" />
     </label>
-    <label class="flex flex-col gap-1 text-sm">
-      <span>Command name</span>
-      <input v-model="settings.discord_command_name" placeholder="get" class="bg-surface-2 border border-border rounded-lg px-3 py-2" />
+    <label class="field">
+      <span class="label">Command name</span>
+      <input v-model="settings.discord_command_name" placeholder="get" class="input" />
     </label>
-    <label class="flex items-center gap-2 text-sm">
+    <label class="check">
       <input
         type="checkbox"
         :checked="settings.discord_post_as_user === 'true'"
@@ -37,14 +38,12 @@ const { settings, save, saved, error } = useSettings()
       />
       Post downloads as the command sender
     </label>
-    <p class="text-xs text-text-muted">
+    <p class="help">
       Downloads are posted to Discord only — they are not saved to the vault.
       They still appear in the Queue (marked Discord) so you can track progress and cancel.
       When posting as the sender, the bot needs <strong>Manage Webhooks</strong>;
       messages use that person's name and avatar but are still webhook messages (not real user messages).
     </p>
-    <button type="submit" class="self-start bg-accent text-white px-4 py-2 rounded-lg text-sm">Save</button>
-    <p v-if="saved" class="text-xs text-green-400">Saved</p>
-    <p v-if="error" class="text-xs text-rose-400">{{ error }}</p>
+    <SaveRow :saved="saved" :error="error" />
   </form>
 </template>
