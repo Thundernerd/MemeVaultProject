@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>Minimal editorial · MemeVault prototype</title>
+  <!--
+    Minimal editorial: a throwaway visual style prototype (issue #14).
+    The app never imports anything here. Open from disk or `npx serve prototypes`.
+  -->
+  <link rel="stylesheet" href="editorial.css" />
+  <script src="../shared/mock-data.js"></script>
+  <script src="app.js"></script>
+</head>
+<body>
+  <header id="site-header"></header>
+
+  <main class="wrap">
+    <div class="page-head">
+      <h1 class="page-title">Minimal editorial</h1>
+      <a class="link-btn" href="../index.html">← All styles</a>
+    </div>
+    <p class="lede">
+      Image-first, generous whitespace, a serif display face over a clean sans, near-monochrome
+      paper and ink with a single accent, hairline rules instead of boxes, and restrained motion.
+      Switch light/dark and the accent in the header (on mobile, under ☰). Every screen in
+      <a href="../SCREENS.md">SCREENS.md</a> is linked below; a dashed “Prototype” strip at the
+      foot of each page flips it between its states.
+    </p>
+
+    <ol class="contents">
+      <li><div>
+        <h2>Header and navigation</h2>
+        <p class="mirrors">layouts/MainLayout.vue, components/ThemeSwitcher.vue</p>
+        <div class="links"><a href="vault.html">Desktop header (any page)</a><span class="muted">Mobile drawer: any page below 768px, tap ☰</span></div>
+      </div></li>
+      <li><div>
+        <h2>Vault grid</h2>
+        <p class="mirrors">views/VaultView.vue, MediaCard.vue, AlbumCard.vue, DownloadProgress.vue</p>
+        <div class="links"><a href="vault.html">Vault with downloads, albums and media</a><a href="vault.html#filters">Filter panel open, with filters set</a></div>
+      </div></li>
+      <li><div>
+        <h2>Add to vault modal</h2>
+        <p class="mirrors">components/AddUrlModal.vue</p>
+        <div class="links"><a href="vault.html#add">Idle</a><a href="vault.html#add-drag">Drag-over</a></div>
+      </div></li>
+      <li><div>
+        <h2>Media detail modal</h2>
+        <p class="mirrors">components/MediaModal.vue</p>
+        <div class="links" id="media-links"></div>
+      </div></li>
+      <li><div>
+        <h2>Queue</h2>
+        <p class="mirrors">views/QueueView.vue</p>
+        <div class="links"><a href="queue.html">Every status and source</a></div>
+      </div></li>
+      <li><div>
+        <h2>Tags</h2>
+        <p class="mirrors">views/TagsView.vue</p>
+        <div class="links"><a href="tags.html">Grouped by namespace</a></div>
+      </div></li>
+      <li><div>
+        <h2>Settings</h2>
+        <p class="mirrors">views/settings/*.vue</p>
+        <div class="links">
+          <a href="settings.html#general">General</a><a href="settings.html#binaries">Binaries</a>
+          <a href="settings.html#cookies">Cookies</a><a href="settings.html#sharing">Sharing</a>
+          <a href="settings.html#api">API</a><a href="settings.html#api-new-key">API, new key reveal</a><a href="settings.html#discord">Discord</a>
+          <a href="settings.html#fluxer">Fluxer</a>
+        </div>
+      </div></li>
+      <li><div>
+        <h2>Public share page</h2>
+        <p class="mirrors">templates/share.html</p>
+        <div class="links">
+          <a href="share.html#item">Video, download allowed</a><a href="share.html#item-no-download">Video, view only</a>
+          <a href="share.html#image">Image</a><a href="share.html#album">Album</a>
+          <a href="share.html#album-untitled">Untitled album</a>
+        </div>
+      </div></li>
+      <li><div>
+        <h2>Empty, loading and error states</h2>
+        <p class="mirrors">MOCK.states</p>
+        <div class="links">
+          <a href="vault.html#empty">Vault empty</a><a href="vault.html#loading">Vault loading</a><a href="vault.html#error">Vault error</a>
+          <a href="queue.html#empty">Queue empty</a><a href="queue.html#loading">Queue loading</a><a href="queue.html#error">Queue error</a>
+        </div>
+      </div></li>
+    </ol>
+  </main>
+
+  <script>
+    (function () {
+      var M = window.MOCK, el = window.ED.el
+      var host = document.getElementById('media-links')
+      ;[[0, 'Video'], [1, 'Image'], [2, 'Untitled'], [6, 'Video without thumbnail'], [4, 'Very long title']].forEach(function (c) {
+        host.appendChild(el('a', { href: 'vault.html#media=' + M.media[c[0]].id }, c[1]))
+      })
+    })()
+  </script>
+</body>
+</html>

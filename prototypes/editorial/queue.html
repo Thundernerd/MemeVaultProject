@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>Queue · Minimal editorial</title>
+  <!-- Throwaway prototype: mirrors views/QueueView.vue and components/DownloadProgress.vue. -->
+  <link rel="stylesheet" href="editorial.css" />
+  <script src="../shared/mock-data.js"></script>
+  <script src="app.js"></script>
+</head>
+<body>
+  <header id="site-header" data-active="queue"></header>
+
+  <main class="wrap">
+    <div class="page-head">
+      <h1 class="page-title">Queue<span class="count" id="count"></span></h1>
+      <button class="btn" id="add" type="button">Add URL</button>
+    </div>
+    <div id="content"></div>
+  </main>
+
+  <script>
+    (function () {
+      var M = window.MOCK, ED = window.ED, el = ED.el
+      var items = M.queue.slice()
+      var content = document.getElementById('content')
+      var count = document.getElementById('count')
+
+      // The app colours source badges (QueueView.vue); here only the dot does.
+      var DOT = { discord: '#5865F2', fluxer: '#7c3aed', api: '#0d9488' }
+
+      function row(item, i) {
+        var active = item.status === 'pending' || item.status === 'downloading'
+        var canRetry = ['discord', 'fluxer'].indexOf(item.source) < 0 && (item.status === 'failed' || item.status === 'cancelled')
+        return el('li', { class: 'qrow is-' + item.status, style: { 'animation-delay': Math.min(i, 12) * 25 + 'ms' } },
+          el('div', { class: 'qrow-main' },
+            el('div', { class: 'qrow-url' },
+              el('p', { title: item.url }, item.url),
+              item.source_label ? el('span', { class: 'src-badge', style: { '--dot': DOT[item.source] } }, item.source_label) : null),
+            el('p', { class: 'qrow-status' }, item.downloader, ' · ', el('span', { class: 'st st-' + item.status }, item.status))),
+          el('div', { class: 'qrow-actions' },
+            active ? el('button', { class: 'link-btn', type: 'button', onclick: function () { item.status = 'cancelled'; item.error = 'cancelled' /* what queue.rs writes */; render() } }, 'Cancel') : null,
+            canRetry ? el('button', { class: 'link-btn', type: 'button', onclick: function () { item.status = 'pending'; item.progress = 0; item.error = null; render() } }, 'Retry') : null,
+            el('button', { class: 'link-btn danger', type: 'button', onclick: function () { items.splice(items.indexOf(item), 1); render() } }, 'Remove')),
+          active ? ED.progress(item.status, item.progress) : null,
+          item.error ? el('p', { class: 'qrow-error' }, item.error) : null)
+      }
+
+      function render() {
+        var st = ED.hashState()
+        ED.clear(content)
+        count.textContent = ''
+        if (st.loading) {
+          content.appendChild(el('p', { class: 'eyebrow', style: { padding: '24px 0 0' }, 'aria-live': 'polite' }, M.states.queue.loading))
+          var list = el('ul', { class: 'rows skeleton', 'aria-hidden': 'true' })
+          for (var i = 0; i < 5; i++) {
+            list.appendChild(el('li', { class: 'qrow' }, el('div', { class: 'qrow-main' }, el('div', { class: 'bar', style: { width: (80 - i * 9) + '%' } }), el('div', { class: 'bar short' }))))
+          }
+          content.appendChild(list)
+          return
+        }
+        if (st.error) {
+          // QueueView.vue shows its error above the list; the list is empty then.
+          content.appendChild(ED.stateBlock('Queue', M.states.queue.error, 'The queue could not be loaded. It refreshes every few seconds and will retry on its own.', 'is-error'))
+          return
+        }
+        var shown = st.empty ? [] : items
+        count.textContent = String(shown.length)
+        if (!shown.length) {
+          content.appendChild(ED.stateBlock('Queue', M.states.queue.empty, 'Downloads you add, and ones sent from the API, Discord or Fluxer, appear here while they run.'))
+          return
+        }
+        var active = shown.filter(function (q) { return q.status === 'pending' || q.status === 'downloading' }).length
+        content.appendChild(el('div', { class: 'section-label' },
+          el('h2', { class: 'eyebrow' }, active + ' active · ' + (shown.length - active) + ' finished')))
+        content.appendChild(el('ul', { class: 'rows' }, shown.map(row)))
+      }
+
+      document.getElementById('add').addEventListener('click', function () {
+        ED.openAddModal({ onClose: render })
+      })
+      window.addEventListener('hashchange', render)
+      ED.protoBar('Queue states', [
+        { label: 'Queue', hash: '' },
+        { label: 'Empty', hash: 'empty' },
+        { label: 'Loading', hash: 'loading' },
+        { label: 'Error', hash: 'error' },
+      ])
+      render()
+    })()
+  </script>
+</body>
+</html>
