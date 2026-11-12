@@ -86,6 +86,7 @@
     'platform:upload',
     'uploader:catsofinstagram',
     'uploader:nasa',
+    'uploader:loremaster',
     'reaction',
     'cats',
     'dogs',
@@ -118,20 +119,24 @@
   // ------------------------------------------------------------------ media
 
   // [type, title|null, url, uploader|null, w, h, duration|null, hasThumb, tagNames]
+  // hasThumb only matters for videos: the backend always gives images a
+  // thumbnail_path (the image file itself). Uploads use url "local://<file>".
+  // Tags are hand-picked to cover 0-5 per item; the real autotagger also adds
+  // type:, date: and format: tags, left out here to keep the 0-5 edge cases.
   var MEDIA_DEFS = [
     ['video', 'Cat knocks glass off table, maintains eye contact', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'catsofinstagram', 1920, 1080, 14, true, ['platform:youtube', 'cats', 'reaction', 'uploader:catsofinstagram']],
     ['image', 'Distracted boyfriend but it is three raccoons', 'https://twitter.com/memes/status/1790000000000000001', 'memes', 1200, 800, null, true, ['platform:twitter', 'reaction']],
     ['video', null, 'https://www.tiktok.com/@someone/video/7300000000000000001', null, 1080, 1920, 22, true, ['platform:tiktok']],
     ['image', 'Dog', 'https://i.redd.it/abc123def456.jpg', 'u/goodboy', 800, 800, null, true, ['platform:reddit', 'dogs', 'wholesome']],
     ['video', 'This is an extremely long title that keeps going well past where any reasonable card would ever want to truncate it, just to make sure every style handles overflow gracefully (part 2 of 7)', 'https://www.youtube.com/watch?v=longtitle0001', 'Some Channel With A Long Name', 1280, 720, 3725, true, ['platform:youtube', 'gaming', 'cursed', 'reaction', 'a-very-long-tag-name-that-should-truncate-somewhere']],
-    ['image', null, 'local://upload/IMG_4021.png', null, 1170, 2532, null, true, ['platform:upload']],
+    ['image', null, 'local://IMG_4021.png', null, 1170, 2532, null, true, ['platform:upload']],
     ['video', 'Speedrun any% world record (no commentary)', 'https://www.youtube.com/watch?v=speedrun0002', 'speedy', 1920, 1080, 612, false, ['platform:youtube', 'gaming']],
     ['image', 'Pillar of Creation, but make it a meme', 'https://twitter.com/NASA/status/1790000000000000002', 'NASA', 2048, 1365, null, true, ['platform:twitter', 'uploader:nasa']],
     ['video', 'Dog sees snow for the first time', 'https://www.reddit.com/r/aww/comments/xyz789/', 'u/snowpup', 720, 720, 31, true, ['platform:reddit', 'dogs', 'wholesome']],
     ['image', 'When the build passes on the first try', 'https://twitter.com/devhumor/status/1790000000000000003', 'devhumor', 1000, 1000, null, true, ['platform:twitter', 'reaction']],
     ['video', null, 'https://www.youtube.com/shorts/short0000003', null, 1080, 1920, 9, true, ['platform:youtube']],
-    ['image', 'cat.jpg', 'local://upload/cat.jpg', null, 640, 480, null, true, ['platform:upload', 'cats']],
-    ['video', 'Guy explains the entire lore in 4 minutes', 'https://www.youtube.com/watch?v=lore00000004', 'LoreMaster', 1920, 800, 241, true, ['platform:youtube', 'gaming', 'uploader:nasa']],
+    ['image', 'cat.jpg', 'local://cat.jpg', null, 640, 480, null, true, ['platform:upload', 'cats']],
+    ['video', 'Guy explains the entire lore in 4 minutes', 'https://www.youtube.com/watch?v=lore00000004', 'LoreMaster', 1920, 800, 241, true, ['platform:youtube', 'gaming', 'uploader:loremaster']],
     ['image', 'Panorama of the office after the deploy', 'https://i.redd.it/panorama00005.jpg', 'u/sre_life', 3000, 900, null, true, ['platform:reddit', 'cursed']],
     ['video', 'Cats being liquid compilation', 'https://twitter.com/catsofinstagram/status/1790000000000000004', 'catsofinstagram', 1280, 720, 95, true, ['platform:twitter', 'cats', 'uploader:catsofinstagram']],
     ['image', null, 'https://twitter.com/anon/status/1790000000000000005', null, 600, 900, null, true, []],
@@ -140,35 +145,52 @@
     ['video', 'Untitled stream clip', 'https://clips.twitch.tv/ClipSlug0006', 'streamer_x', 1920, 1080, 44, false, ['gaming']],
     ['image', 'Cat in a box, box in a cat', 'https://twitter.com/catsofinstagram/status/1790000000000000006', 'catsofinstagram', 1080, 1080, null, true, ['platform:twitter', 'cats', 'uploader:catsofinstagram', 'cursed', 'wholesome']],
     ['video', 'Tiny frog yells', 'https://www.tiktok.com/@frogs/video/7300000000000000003', 'frogs', 1080, 1920, 3, true, ['platform:tiktok', 'reaction']],
-    ['image', null, 'local://upload/screenshot-2026-11-01.png', null, 2560, 1440, null, true, ['platform:upload']],
+    ['image', null, 'local://screenshot-2026-11-01.png', null, 2560, 1440, null, true, ['platform:upload']],
     ['video', 'Patch notes read by a dramatic narrator', 'https://www.youtube.com/watch?v=patchnotes07', 'Dramatic Reads', 1920, 1080, 488, true, ['platform:youtube', 'gaming']],
     ['image', 'Vertical comic, scroll for punchline', 'https://i.redd.it/verticalcomic8.png', 'u/comics', 800, 3200, null, true, ['platform:reddit']],
   ]
 
-  function makeMedia(def, n, minutesAgo, albumId) {
+  function makeMedia(def, n, minutesAgo, album) {
     var type = def[0]
+    var title = def[1]
+    var url = def[2]
+    var uploader = def[3]
+    var width = def[4]
+    var height = def[5]
+    var duration = def[6]
+    var hasThumb = def[7]
+    var tagNames = def[8]
+
     var id = uuid('media', n)
-    var ext = type === 'video' ? 'mp4' : (def[2].slice(-4) === '.png' ? 'png' : 'jpg')
+    var isVideo = type === 'video'
+    var isUpload = url.indexOf('local://') === 0
+    var ext = isVideo ? 'mp4' : (url.slice(-4) === '.png' ? 'png' : 'jpg')
+    var filePath = '/data/media/' + id + '.' + ext
     return {
       id: id,
-      queue_item_id: def[2].indexOf('local://') === 0 ? null : uuid('queue', 1000 + n),
-      url: def[2],
+      // Album media share the album's queue item; uploads have none. Single
+      // downloads are linked to their queue row below, by URL.
+      queue_item_id: album ? album.queue_item_id : null,
+      url: url,
       type: type,
-      title: def[1],
-      description: def[1] ? 'Downloaded from ' + def[2].split('/')[2] : null,
-      uploader: def[3],
-      duration: def[6],
-      thumbnail_path: def[7] && type === 'video' ? '/data/thumbnails/' + id + '.jpg' : null,
-      file_path: '/data/media/' + id + '.' + ext,
-      file_size: type === 'video' ? 1048576 * (2 + (n * 7) % 90) : 1024 * (80 + (n * 37) % 900),
-      format: type === 'video' ? 'mp4' : ext,
-      width: def[4],
-      height: def[5],
+      title: title,
+      // yt-dlp keeps the video description; gallery-dl and uploads have none.
+      description: isVideo && !isUpload && title ? 'Original description for: ' + title : null,
+      uploader: uploader,
+      duration: duration,
+      thumbnail_path: isVideo
+        ? (hasThumb ? '/data/media/' + id + '_thumbnail.jpg' : null)
+        : filePath,
+      file_path: filePath,
+      file_size: isVideo ? 1048576 * (2 + (n * 7) % 90) : 1024 * (80 + (n * 37) % 900),
+      format: ext,
+      width: width,
+      height: height,
       created_at: isoMinutesAgo(minutesAgo),
       raw_metadata: null,
-      album_id: albumId || null,
+      album_id: album ? album.id : null,
       include_in_random: n % 5 === 0 ? 0 : 1,
-      tags: def[8].map(tagRef),
+      tags: tagNames.map(tagRef),
     }
   }
 
@@ -204,21 +226,20 @@
     ]],
   ]
 
-  var albumMediaN = 100
   var albums = ALBUM_DEFS.map(function (def, i) {
-    var id = uuid('album', i + 1)
-    return {
-      id: id,
+    var album = {
+      id: uuid('album', i + 1),
       queue_item_id: uuid('queue', 2000 + i),
       url: def[1],
       title: def[0],
       uploader: def[2],
       created_at: isoMinutesAgo(def[3]),
-      media: def[4].map(function (md) {
-        albumMediaN += 1
-        return makeMedia(md, albumMediaN, def[3], id)
-      }),
+      media: [],
     }
+    album.media = def[4].map(function (md, j) {
+      return makeMedia(md, 100 + i * 10 + j, def[3], album)
+    })
+    return album
   })
 
   // ------------------------------------------------------------------ queue
@@ -259,6 +280,21 @@
     }
   })
 
+  // Link downloads to the queue row they came from (matching URL). Rows that
+  // were cleared from the queue keep a stable id that matches nothing, as in
+  // a real install.
+  function queueIdFor(url, fallback) {
+    for (var i = 0; i < queue.length; i++) if (queue[i].url === url) return queue[i].id
+    return fallback
+  }
+  media.forEach(function (m, i) {
+    if (m.url.indexOf('local://') !== 0) m.queue_item_id = queueIdFor(m.url, uuid('queue', 1000 + i))
+  })
+  albums.forEach(function (a) {
+    a.queue_item_id = queueIdFor(a.url, a.queue_item_id)
+    a.media.forEach(function (m) { m.queue_item_id = a.queue_item_id })
+  })
+
   var allMedia = media.slice()
   albums.forEach(function (a) { allMedia = allMedia.concat(a.media) })
   allMedia.forEach(function (m) {
@@ -284,7 +320,7 @@
   // keys locked by environment variables (shown disabled in the UI).
   var settings = {
     download_path: '/data/media',
-    random_mode: 'all',
+    random_mode: 'flag', // or 'shared' (SharingView.vue)
     ytdlp_bin: '',
     gallerydl_bin: '',
     ffmpeg_bin: '/usr/bin/ffmpeg',
@@ -329,7 +365,7 @@
   ]
   var newApiKey = {
     id: uuid('key', 4), name: 'Just created', permission: 'read', created_at: isoMinutesAgo(0), last_used_at: null,
-    key: 'mvp_live_9f8e7d6c5b4a39281706f5e4d3c2b1a0',
+    key: '9f8e7d6c5b4a39281706f5e4d3c2b1a0', // 16 random bytes as hex, like db.rs
   }
 
   // ------------------------------------------------------------------ states
@@ -368,9 +404,12 @@
     activeQueue: function () {
       return queue.filter(function (q) { return q.status === 'pending' || q.status === 'downloading' })
     },
-    /** The share page URL the app builds for a token. */
+    /**
+     * The share URL MediaModal.vue shows: `${location.origin}/share/<token>`.
+     * A fixed origin stands in, because a page opened from disk has none.
+     */
     shareUrl: function (token) {
-      return (settings.share_base_url || location.origin) + '/share/' + token
+      return 'http://localhost:3000/share/' + token
     },
   }
 })()

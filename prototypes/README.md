@@ -58,7 +58,7 @@ prototypes/
 | `media` | `MediaItem[]` | 24 items, video and image, untitled and very long titles, 0–5 tags, aspect ratios from 1:4 to 10:3 |
 | `albums` | `Album[]` | 3 albums (5, 2 and 8 items), one untitled |
 | `queue` | `QueueItem[]` | every status (`pending`, `downloading` at 0, 12, 47 and 99%, `completed`, `failed` with `error`, `cancelled`) and every source (`web`, `api`, `discord`, `fluxer`) |
-| `tags` | `TagWithCount[]` | 15 namespaced tags, counts derived from the media, one unused |
+| `tags` | `TagWithCount[]` | 16 tags (8 namespaced like `platform:youtube`, the rest grouped as "other"), counts derived from the media, one unused |
 | `shares` | `ShareLink[]` | item links (with and without expiry and download) and an album link |
 | `settings`, `binaries`, `cookies`, `apiKeys`, `newApiKey` | Settings tab data | `settings._overridden_by_env` lists env-locked keys |
 | `states` | strings | copy for the empty, loading and error states |
@@ -69,7 +69,7 @@ Helpers:
   or `null` for a video without a thumbnail (the app shows no image then).
 - `MOCK.activeQueue()` returns the pending and downloading items that the vault
   shows as progress cards.
-- `MOCK.shareUrl(token)` returns the public share URL for a token.
+- `MOCK.shareUrl(token)` returns the share URL for a token, as the media modal shows it (with `http://localhost:3000` standing in for the origin).
 
 To check the data loads, open the browser console on any page that includes it and
 run `console.log(window.MOCK)`.
