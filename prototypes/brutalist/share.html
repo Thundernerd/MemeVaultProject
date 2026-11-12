@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-accent="blue">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shared · MemeVault · Brutalist</title>
+  <!--
+    Public share page, mirroring templates/share.html: served without the SPA to
+    people who are not logged in, so no nav. The token comes from the hash
+    (share.html#<token>), looked up in MOCK.shares.
+  -->
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="theme.js"></script>
+</head>
+<body class="share-page">
+  <header class="header">
+    <div class="header-inner">
+      <span class="logo"><span class="logo-mark">MVP</span></span>
+    </div>
+  </header>
+  <main id="share" class="share-main"></main>
+  <footer class="share-footer label">Shared via MemeVault</footer>
+
+  <script src="../shared/mock-data.js"></script>
+  <script src="screens.js"></script>
+  <script>
+    (function () {
+      'use strict'
+      var M = window.MOCK
+      var root = document.getElementById('share')
+
+      function el(tag, cls, text) {
+        var e = document.createElement(tag)
+        if (cls) e.className = cls
+        if (text != null) e.textContent = text
+        return e
+      }
+
+      function findMedia(id) {
+        var all = M.media.slice()
+        M.albums.forEach(function (a) { all = all.concat(a.media) })
+        return all.filter(function (m) { return m.id === id })[0]
+      }
+
+      function player(item, tag) {
+        var thumb = M.thumbnail(item)
+        if (item.type === 'video') {
+          if (!thumb) {
+            var empty = el('div', 'player-empty')
+            empty.appendChild(el('span', 'label', 'Video'))
+            return empty
+          }
+          var v = el('video')
+          v.controls = true
+          v.preload = 'none'
+          v.poster = thumb
+          v.setAttribute('aria-label', item.title || 'Video')
+          return v
+        }
+        var img = el('img')
+        img.src = thumb
+        img.alt = item.title || ''
+        if (tag) img.loading = 'lazy'
+        return img
+      }
+
+      function render() {
+        while (root.firstChild) root.removeChild(root.firstChild)
+        var token = location.hash.replace(/^#/, '') || M.shares[0].token
+        var share = M.shares.filter(function (s) { return s.token === token })[0]
+
+        if (!share) {
+          var gone = el('div', 'state state-error share-gone')
+          gone.appendChild(el('span', 'state-tag label', '404'))
+          gone.appendChild(el('p', 'state-text', 'This share link has expired or was revoked.'))
+          root.appendChild(gone)
+          document.title = 'Not found — MemeVault'
+          return
+        }
+
+        if (share.album_id) {
+          var album = M.albums.filter(function (a) { return a.id === share.album_id })[0]
+          document.title = (album.title || 'Album') + ' — MemeVault'
+          var head = el('div', 'share-album-head')
+          head.appendChild(el('h1', 'share-title', album.title || 'Album'))
+          head.appendChild(el('span', 'sticker-inline label', album.media.length + ' items'))
+          root.appendChild(head)
+          var grid = el('div', 'share-grid')
+          album.media.forEach(function (m) {
+            var cell = el('div', 'share-cell share-' + m.type)
+            cell.appendChild(player(m, true))
+            grid.appendChild(cell)
+          })
+          root.appendChild(grid)
+          return
+        }
+
+        var item = findMedia(share.media_id)
+        if (!item) { location.hash = '#missing'; return }
+        document.title = (item.title || 'Untitled') + ' — MemeVault'
+        var stage = el('div', 'player share-player')
+        stage.appendChild(player(item))
+        root.appendChild(stage)
+        var meta = el('div', 'share-meta')
+        meta.appendChild(el('h1', 'share-title', item.title || 'Untitled'))
+        if (share.allow_download) {
+          var dl = el('a', 'btn btn-primary', 'Download')
+          dl.href = '#' + token
+          dl.setAttribute('download', '')
+          dl.addEventListener('click', function (e) { e.preventDefault() }) // prototype: no file
+          meta.appendChild(dl)
+        }
+        root.appendChild(meta)
+      }
+
+      window.addEventListener('hashchange', render)
+      render()
+    })()
+  </script>
+</body>
+</html>
