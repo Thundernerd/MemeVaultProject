@@ -51,7 +51,7 @@ onMounted(loadBins)
     </form>
 
     <div class="cards">
-      <div v-for="(b, key) in binaries" :key="key" class="panel" :class="{ 'bin-missing': !b.exists }">
+      <div v-for="(b, key) in binaries" :key="key" class="panel" :class="{ 'panel-missing': !b.exists }">
         <div class="flex-1 min-w-0 flex flex-col gap-1">
           <h3>{{ b.name }}</h3>
           <p class="mono-sm text-text-muted truncate" :title="b.path">{{ b.path }}</p>
