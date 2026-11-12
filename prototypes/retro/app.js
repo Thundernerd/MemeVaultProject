@@ -129,14 +129,7 @@
     vault: function (r) { return vaultView(r) },
     queue: function (r) { return queueView(r) },
     tags: function (r) { return tagsView(r) },
-    settings: function (r) { return stub('Settings', r) },
-  }
-
-  function stub(title, r) {
-    return win('C:\\MemeVault\\' + title, { icon: 'folder' }, [
-      h('div', { class: 'page-head' }, [h('h1', null, px(title))]),
-      h('p', null, 'Coming up in the next slice. Route: ' + r.path.join('/')),
-    ])
+    settings: function (r) { return settingsView(r) },
   }
 
   // ---------------------------------------------------- shared widgets
@@ -450,6 +443,260 @@
         }, 'Purge unused'),
       ]),
       body,
+    ])
+  }
+
+  // ---------------------------------------------------------- settings
+
+  var TABS = [
+    ['general', 'General'], ['binaries', 'Binaries'], ['cookies', 'Cookies'], ['sharing', 'Sharing'],
+    ['api', 'API'], ['discord', 'Discord'], ['fluxer', 'Fluxer'],
+  ]
+
+  function isEnv(key) { return (S.settings._overridden_by_env || []).indexOf(key) >= 0 }
+
+  function textField(key, label, opts) {
+    opts = opts || {}
+    return h('label', { class: 'stack' + (opts.class ? ' ' + opts.class : '') }, [
+      h('span', null, [label, isEnv(key) ? h('span', { class: 'env-tag', title: 'Set by an environment variable' }, 'env') : null]),
+      h('input', {
+        class: 'field', type: opts.type || 'text', value: S.settings[key], placeholder: opts.placeholder,
+        disabled: isEnv(key), oninput: function (e) { S.settings[key] = e.target.value },
+      }),
+    ])
+  }
+
+  /** Checkbox over a string setting; on/off are the strings the backend stores. */
+  function checkField(key, label, on, off, checkedWhen) {
+    var checked = checkedWhen ? checkedWhen(S.settings[key]) : S.settings[key] === on
+    return h('label', { class: 'check' }, [
+      h('input', { type: 'checkbox', checked: checked, onchange: function (e) { S.settings[key] = e.target.checked ? on : off } }),
+      label,
+    ])
+  }
+
+  function saveMessage(r) {
+    var box = h('div', { class: 'save-msg', 'aria-live': 'polite' })
+    function show(kind) {
+      clear(box)
+      if (kind === 'saved') box.appendChild(h('p', { class: 'ok' }, [icon('info'), 'Saved']))
+      if (kind === 'error') box.appendChild(h('p', { class: 'bad' }, [icon('error'), 'Save failed']))
+    }
+    show(r.q.msg)
+    return { el: box, show: show }
+  }
+
+  function settingsForm(r, fields, extra) {
+    var msg = saveMessage(r)
+    return h('form', {
+      class: 'settings-form',
+      onsubmit: function (e) { e.preventDefault(); msg.show('saved') },
+    }, [fields, extra || null, h('div', { class: 'actions start' }, [h('button', { class: 'btn primary', type: 'submit' }, 'Save'), msg.el])])
+  }
+
+  var SETTINGS_TABS = {
+    general: function (r) {
+      return settingsForm(r, [
+        textField('download_path', 'Download path'),
+        textField('ytdlp_extra_args', 'yt-dlp extra args'),
+        textField('gallerydl_extra_args', 'gallery-dl extra args'),
+      ])
+    },
+
+    binaries: function (r) {
+      var list = h('div', { class: 'bin-list' })
+      var busy = ''
+      function paint() {
+        clear(list)
+        Object.keys(M.binaries).forEach(function (k) {
+          var b = M.binaries[k]
+          list.appendChild(h('div', { class: 'bin' }, [
+            icon(b.exists ? 'page' : 'warn'),
+            h('div', { class: 'bin-info' }, [
+              h('p', { class: 'bin-name' }, b.name),
+              h('p', { class: 'bin-path', title: b.path }, b.path),
+              h('p', { class: b.exists ? 'ok' : 'bad' }, b.exists ? (b.version || 'installed') : 'missing'),
+            ]),
+            h('button', {
+              class: 'btn small', type: 'button', disabled: busy === b.name,
+              onclick: function () {
+                busy = b.name; paint()
+                setTimeout(function () { b.exists = true; b.version = b.version || '2026.11.01'; busy = ''; paint() }, 900)
+              },
+            }, busy === b.name ? '…' : 'Download / update'),
+          ]))
+        })
+      }
+      paint()
+      var msg = saveMessage(r)
+      return h('div', { class: 'settings-form' }, [
+        h('form', {
+          class: 'settings-form', onsubmit: function (e) { e.preventDefault(); msg.show('saved') },
+        }, [
+          textField('ytdlp_bin', 'yt-dlp path', { placeholder: 'auto-managed' }),
+          textField('gallerydl_bin', 'gallery-dl path', { placeholder: 'auto-managed' }),
+          textField('ffmpeg_bin', 'ffmpeg path', { placeholder: 'auto-managed' }),
+          h('div', { class: 'actions start' }, [h('button', { class: 'btn primary', type: 'submit' }, 'Save paths'), msg.el]),
+        ]),
+        list,
+      ])
+    },
+
+    cookies: function () {
+      var wrap = h('div', { class: 'settings-form' })
+      function paint() {
+        clear(wrap)
+        ;['ytdlp', 'gallerydl'].forEach(function (tool) {
+          var c = S.cookies[tool]
+          var input = h('input', {
+            type: 'file', accept: '.txt', class: 'sr-only', id: 'cookie-' + tool,
+            onchange: function (e) {
+              var f = e.target.files && e.target.files[0]
+              if (!f) return
+              S.cookies[tool] = { exists: true, size: f.size, modifiedAt: new Date().toISOString() }
+              paint()
+            },
+          })
+          wrap.appendChild(h('fieldset', { class: 'groupbox' }, [
+            h('legend', null, tool + ' cookies'),
+            h('p', { class: c.exists ? '' : 'muted' }, c.exists ? c.size + ' bytes · ' + fmtDate(c.modifiedAt) : 'Not uploaded'),
+            h('div', { class: 'actions start' }, [
+              input,
+              h('label', { class: 'btn', for: 'cookie-' + tool }, 'Upload cookies.txt…'),
+              h('button', {
+                class: 'btn danger', type: 'button', disabled: !c.exists,
+                onclick: function () { S.cookies[tool] = { exists: false, size: null, modifiedAt: null }; paint() },
+              }, 'Delete'),
+            ]),
+          ]))
+        })
+      }
+      paint()
+      return wrap
+    },
+
+    sharing: function (r) {
+      var sel = h('select', { class: 'field', onchange: function (e) { S.settings.random_mode = e.target.value } },
+        [['flag', 'Flagged items'], ['shared', 'Items with share links']].map(function (o) {
+          var opt = h('option', { value: o[0] }, o[1])
+          if (S.settings.random_mode === o[0]) opt.selected = true
+          return opt
+        }))
+      return settingsForm(r, [
+        textField('share_default_expiry_days', 'Default expiry (days, empty = never)'),
+        checkField('share_default_allow_download', 'Allow download by default', '1', '0', function (v) { return v !== '0' }),
+        textField('share_base_url', 'Share base URL (OG embeds)', { placeholder: 'https://memes.example.com' }),
+        h('label', { class: 'stack' }, [h('span', null, 'Random mode'), sel]),
+      ])
+    },
+
+    api: function (r) {
+      var created = r.q.demo === 'newkey' ? M.newApiKey : null
+      var wrap = h('div', { class: 'settings-form' })
+      var name = h('input', { class: 'field', required: true, placeholder: 'Key name (e.g. Extra tool)', 'aria-label': 'Key name' })
+      var perm = h('select', { class: 'field perm', 'aria-label': 'Permission' }, [h('option', { value: 'read' }, 'read'), h('option', { value: 'read_write' }, 'read_write')])
+      var reveal = h('div')
+      var list = h('div', { class: 'key-list' })
+      function paint() {
+        clear(reveal)
+        if (created && created.key) {
+          reveal.appendChild(h('div', { class: 'reveal', role: 'status' }, [
+            icon('warn'),
+            h('p', null, ['New key (copy now): ', h('code', null, created.key)]),
+          ]))
+        }
+        clear(list)
+        S.apiKeys.forEach(function (k) {
+          list.appendChild(h('div', { class: 'key' }, [
+            h('div', { class: 'key-info' }, [
+              h('p', { class: 'key-name' }, k.name),
+              h('p', { class: 'muted' }, k.permission + ' · created ' + fmtDate(k.created_at) + ' · last used ' + (k.last_used_at ? fmtDate(k.last_used_at) : 'never')),
+            ]),
+            h('button', {
+              class: 'btn small danger', type: 'button',
+              onclick: function () { S.apiKeys = S.apiKeys.filter(function (x) { return x !== k }); paint() },
+            }, 'Revoke'),
+          ]))
+        })
+      }
+      paint()
+      append(wrap, [
+        h('p', { class: 'help' }, [
+          'The key name is shown as a badge on queue items submitted via ', h('code', null, 'POST /api/v1/submit'),
+          '. Pass ', h('code', null, 'includeInRandom: true'), ' to add the item to random selection when it finishes.',
+        ]),
+        h('form', {
+          class: 'key-form',
+          onsubmit: function (e) {
+            e.preventDefault()
+            created = {
+              id: 'key-' + Date.now(), name: name.value, permission: perm.value,
+              created_at: new Date().toISOString(), last_used_at: null, key: M.newApiKey.key,
+            }
+            S.apiKeys.push(created)
+            name.value = ''
+            paint()
+          },
+        }, [name, perm, h('button', { class: 'btn primary', type: 'submit' }, 'Create key')]),
+        reveal,
+        list,
+      ])
+      return wrap
+    },
+
+    discord: function (r) {
+      return settingsForm(r, [
+        checkField('discord_enabled', 'Enable Discord bot', 'true', 'false'),
+        textField('discord_bot_token', 'Bot token', { type: 'password' }),
+        textField('discord_client_id', 'Client ID'),
+        textField('discord_command_name', 'Command name', { placeholder: 'get' }),
+        checkField('discord_post_as_user', 'Post downloads as the command sender', 'true', 'false'),
+      ], h('p', { class: 'help' }, [
+        'Downloads are posted to Discord only — they are not saved to the vault. They still appear in the Queue ',
+        '(marked Discord) so you can track progress and cancel. When posting as the sender, the bot needs ',
+        h('strong', null, 'Manage Webhooks'),
+        "; messages use that person's name and avatar but are still webhook messages (not real user messages).",
+      ]))
+    },
+
+    fluxer: function (r) {
+      var cmd = (S.settings.fluxer_command_prefix || '!') + (S.settings.fluxer_command_name || 'get')
+      return settingsForm(r, [
+        checkField('fluxer_enabled', 'Enable Fluxer bot', 'true', 'false'),
+        textField('fluxer_bot_token', 'Bot token', { type: 'password', placeholder: '<application_id>.<secret>' }),
+        textField('fluxer_instance_url', 'Instance URL', { placeholder: 'https://fluxer.app' }),
+        h('div', { class: 'pair' }, [
+          textField('fluxer_command_prefix', 'Command prefix', { placeholder: '!' }),
+          textField('fluxer_command_name', 'Command name', { placeholder: 'get' }),
+        ]),
+        checkField('fluxer_post_as_user', 'Post downloads as the command sender', 'true', 'false'),
+        checkField('fluxer_delete_command_message', "Delete the sender's command message", 'true', 'false', function (v) { return v !== 'false' }),
+      ], h('p', { class: 'help' }, [
+        'Fluxer bots do not have slash commands, so users invoke the bot with a message like ',
+        h('code', null, cmd + ' <url>'), '. Add ', h('code', null, 'image'), ' for image sites (',
+        h('code', null, cmd + ' image <url>'), ') and any trailing text as a caption. ',
+        'Downloads are posted to Fluxer only — they are not saved to the vault. They still appear in the Queue ',
+        '(marked Fluxer) so you can track progress and cancel. When posting as the sender, the bot needs ',
+        h('strong', null, 'Manage Webhooks'),
+        "; messages use that person's name and avatar but are still webhook messages (not real user messages). ",
+        "Deleting the sender's command message requires the bot to hold ", h('strong', null, 'Manage Messages'),
+        '; it is skipped in DMs.',
+      ]))
+    },
+  }
+
+  function settingsView(r) {
+    var tab = SETTINGS_TABS[r.path[1]] ? r.path[1] : 'general'
+    var label = TABS.filter(function (t) { return t[0] === tab })[0][1]
+    return win('Settings', { icon: 'settings', label: 'Settings', status: [h('span', null, label), h('span', null, r.q.msg ? 'Demo message: ' + r.q.msg : 'MemeVault v' + M.version)] }, [
+      h('div', { class: 'page-head' }, [h('h1', null, px('Settings'))]),
+      h('nav', { class: 'tabs', 'aria-label': 'Settings sections' }, TABS.map(function (t) {
+        return h('a', {
+          href: '#/settings/' + t[0], class: 'tab' + (t[0] === tab ? ' active' : ''),
+          'aria-current': t[0] === tab ? 'page' : null,
+        }, t[1])
+      })),
+      h('div', { class: 'sheet' }, SETTINGS_TABS[tab](r)),
     ])
   }
 
@@ -821,6 +1068,7 @@
     { href: '#/settings/cookies', label: 'Settings › Cookies', icon: 'settings' },
     { href: '#/settings/sharing', label: 'Settings › Sharing', icon: 'settings' },
     { href: '#/settings/api', label: 'Settings › API', icon: 'settings' },
+    { href: '#/settings/api?demo=newkey', label: 'Settings › API — new key revealed', icon: 'settings' },
     { href: '#/settings/discord', label: 'Settings › Discord', icon: 'settings' },
     { href: '#/settings/fluxer', label: 'Settings › Fluxer', icon: 'settings' },
     { group: 'Dialogs' },
