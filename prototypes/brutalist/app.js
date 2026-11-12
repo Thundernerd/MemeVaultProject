@@ -137,6 +137,8 @@
 
   // -------------------------------------------------------------- router
 
+  // Params that only open something over the page; changing them keeps the page.
+  var OVERLAY_PARAMS = ['modal', 'id', 'files', 'drag', 'drawer']
   var lastPage = null
   function render() {
     var route = parseHash()
@@ -145,8 +147,9 @@
 
     // Re-render the page only when the page itself changed, so opening a
     // modal over the vault keeps its search, filters and scroll position.
-    var pageKey = route.path.join('/') + '|' + (route.params.state || '') + '|' + (route.params.msg || '') +
-      '|' + (route.params.reveal || '') + '|' + (route.params.filters ? location.hash : '')
+    var pageKey = route.path.join('/') + '?' + Object.keys(route.params).sort()
+      .filter(function (k) { return OVERLAY_PARAMS.indexOf(k) < 0 })
+      .map(function (k) { return k + '=' + route.params[k] }).join('&')
     if (pageKey !== lastPage) {
       lastPage = pageKey
       clear(view)
@@ -170,7 +173,7 @@
     var route = parseHash()
     var p = {}
     Object.keys(route.params).forEach(function (k) {
-      if (['modal', 'id', 'files', 'drag'].indexOf(k) < 0) p[k] = route.params[k]
+      if (OVERLAY_PARAMS.indexOf(k) < 0) p[k] = route.params[k]
     })
     go(route.path, p)
   }
@@ -178,7 +181,46 @@
     if (e.key === 'Escape' && parseHash().params.modal) closeModal()
   })
 
-  window.BRUTAL = { h: h, clear: clear, go: go, parseHash: parseHash, hashFor: hashFor, pages: pages, modals: modals, closeModal: closeModal }
+  // ---------------------------------------------------- shared pieces
+
+  /** In-memory copy of the mock data that actions edit. Reloading resets it. */
+  var store = {
+    media: M.media.slice(),
+    albums: M.albums.slice(),
+    queue: M.queue.map(function (q) { return Object.assign({}, q) }),
+    tags: M.tags.map(function (t) { return Object.assign({}, t) }),
+    shares: M.shares.slice(),
+  }
+
+  /** Mirrors components/DownloadProgress.vue: nothing unless pending/downloading. */
+  function progress(status, value) {
+    if (status !== 'pending' && status !== 'downloading') return null
+    var indeterminate = status === 'downloading' && value < 1
+    var label = status === 'pending' ? 'Waiting'
+      : value >= 99 ? 'Processing…'
+      : value < 1 ? 'Starting…'
+      : Math.round(value) + '%'
+    var pct = Math.max(0, Math.min(100, value))
+    return h('div', { class: 'progress' },
+      h('p', { class: 'label progress-label', text: label }),
+      h('div', {
+        class: 'progress-track' + (indeterminate ? ' indeterminate' : '') + (status === 'pending' ? ' waiting' : ''),
+        role: 'progressbar', 'aria-label': label,
+        'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': indeterminate ? null : String(Math.round(pct)),
+      }, h('div', { class: 'progress-fill', style: indeterminate ? null : 'width:' + pct + '%' })))
+  }
+
+  /** A full-width message block for empty / loading / error states. */
+  function stateBlock(kind, text) {
+    return h('div', { class: 'state state-' + kind, role: kind === 'error' ? 'alert' : 'status' },
+      h('span', { class: 'state-tag label', text: kind }),
+      h('p', { class: 'state-text', text: text }))
+  }
+
+  window.BRUTAL = {
+    h: h, clear: clear, go: go, parseHash: parseHash, hashFor: hashFor, pages: pages, modals: modals,
+    closeModal: closeModal, store: store, progress: progress, stateBlock: stateBlock,
+  }
   window.addEventListener('hashchange', render)
   window.addEventListener('DOMContentLoaded', render)
 })()
