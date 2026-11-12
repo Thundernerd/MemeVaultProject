@@ -262,6 +262,20 @@
   .tab.active { background: var(--accent); color: var(--on-accent); }
   .tab:focus-visible { outline: var(--bw) dashed var(--accent); outline-offset: -6px; }
   .tab-body { max-width: 40rem; }
+
+  .settings-form { display: flex; flex-direction: column; gap: 18px; padding: 20px; border: var(--bw) solid var(--border); background: var(--surface-1); box-shadow: 6px 6px 0 var(--shadow); }
+  .save-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+  .save-ok { padding: 4px 8px; background: var(--ok); color: var(--on-ok); border: var(--bw-thin) solid var(--border); transform: rotate(-2deg); }
+  .save-error { padding: 4px 8px; background: var(--danger); color: var(--on-danger); border: var(--bw-thin) solid var(--border); }
+  .env-badge { margin-left: 8px; padding: 1px 5px; background: var(--pop-2); color: var(--on-pop); border: var(--bw-thin) solid var(--border); }
+  .help { font-size: 0.85rem; color: var(--text-secondary); padding: 10px 12px; border-left: 6px solid var(--border); background: var(--surface-2); }
+  .help code { background: var(--surface-1); padding: 1px 4px; border: 1px solid var(--border); }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  @media (max-width: 767px) {
+    .settings-form { padding: 14px; }
+    .two-col { grid-template-columns: 1fr; }
+  }
 }
 
 @keyframes brutal-slide { from { transform: translateX(-110%); } to { transform: translateX(300%); } }
