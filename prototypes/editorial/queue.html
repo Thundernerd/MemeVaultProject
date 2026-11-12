@@ -34,25 +34,18 @@
       function row(item, i) {
         var active = item.status === 'pending' || item.status === 'downloading'
         var canRetry = ['discord', 'fluxer'].indexOf(item.source) < 0 && (item.status === 'failed' || item.status === 'cancelled')
-        return el('li', { class: 'qrow', style: { 'animation-delay': Math.min(i, 12) * 25 + 'ms' } },
+        return el('li', { class: 'qrow is-' + item.status, style: { 'animation-delay': Math.min(i, 12) * 25 + 'ms' } },
           el('div', { class: 'qrow-main' },
             el('div', { class: 'qrow-url' },
               el('p', { title: item.url }, item.url),
               item.source_label ? el('span', { class: 'src-badge', style: { '--dot': DOT[item.source] } }, item.source_label) : null),
             el('p', { class: 'qrow-status' }, item.downloader, ' · ', el('span', { class: 'st st-' + item.status }, item.status))),
           el('div', { class: 'qrow-actions' },
-            active ? el('button', { class: 'link-btn', type: 'button', onclick: function () { item.status = 'cancelled'; item.error = 'cancelled'; render() } }, 'Cancel') : null,
+            active ? el('button', { class: 'link-btn', type: 'button', onclick: function () { item.status = 'cancelled'; item.error = 'cancelled' /* what queue.rs writes */; render() } }, 'Cancel') : null,
             canRetry ? el('button', { class: 'link-btn', type: 'button', onclick: function () { item.status = 'pending'; item.progress = 0; item.error = null; render() } }, 'Retry') : null,
             el('button', { class: 'link-btn danger', type: 'button', onclick: function () { items.splice(items.indexOf(item), 1); render() } }, 'Remove')),
           active ? ED.progress(item.status, item.progress) : null,
           item.error ? el('p', { class: 'qrow-error' }, item.error) : null)
-      }
-
-      function state(title, note, cls) {
-        return el('div', { class: 'state' },
-          el('p', { class: 'eyebrow' }, 'Queue'),
-          el('h2', { class: 'state-title ' + (cls || '') }, title),
-          note ? el('p', { class: 'note' }, note) : null)
       }
 
       function render() {
@@ -70,19 +63,19 @@
         }
         if (st.error) {
           // QueueView.vue shows its error above the list; the list is empty then.
-          content.appendChild(state(M.states.queue.error, 'The queue could not be loaded. It refreshes every few seconds and will retry on its own.', 'is-error'))
+          content.appendChild(ED.stateBlock('Queue', M.states.queue.error, 'The queue could not be loaded. It refreshes every few seconds and will retry on its own.', 'is-error'))
           return
         }
-        var list2 = st.empty ? [] : items
-        count.textContent = String(list2.length)
-        if (!list2.length) {
-          content.appendChild(state(M.states.queue.empty, 'Downloads you add, and ones sent from the API, Discord or Fluxer, appear here while they run.'))
+        var shown = st.empty ? [] : items
+        count.textContent = String(shown.length)
+        if (!shown.length) {
+          content.appendChild(ED.stateBlock('Queue', M.states.queue.empty, 'Downloads you add, and ones sent from the API, Discord or Fluxer, appear here while they run.'))
           return
         }
-        var active = list2.filter(function (q) { return q.status === 'pending' || q.status === 'downloading' }).length
+        var active = shown.filter(function (q) { return q.status === 'pending' || q.status === 'downloading' }).length
         content.appendChild(el('div', { class: 'section-label' },
-          el('h2', { class: 'eyebrow' }, active + ' active · ' + (list2.length - active) + ' finished')))
-        content.appendChild(el('ul', { class: 'rows' }, list2.map(row)))
+          el('h2', { class: 'eyebrow' }, active + ' active · ' + (shown.length - active) + ' finished')))
+        content.appendChild(el('ul', { class: 'rows' }, shown.map(row)))
       }
 
       document.getElementById('add').addEventListener('click', function () {

@@ -76,9 +76,14 @@
 
       function render() {
         var id = location.hash.replace(/^#/, '')
-        if (!CASES[id]) id = 'item'
+        var st = ED.hashState()
         ED.clear(main)
-        ED.append(main, CASES[id]())
+        // "#media=<id>[&view-only]" is the link the media modal opens.
+        if (st.media && ED.findMedia(st.media)) {
+          ED.append(main, item({ media_id: st.media, allow_download: st['view-only'] ? 0 : 1, expires_at: null }))
+        } else {
+          ED.append(main, CASES[CASES[id] ? id : 'item']())
+        }
         window.scrollTo(0, 0)
       }
       window.addEventListener('hashchange', render)

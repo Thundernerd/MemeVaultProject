@@ -133,6 +133,14 @@
       el('span', { class: 'progress-label' }, label))
   }
 
+  /** Empty / error block: a small eyebrow over a serif line and a note. */
+  function stateBlock(eyebrow, title, note, cls) {
+    return el('div', { class: 'state' },
+      el('p', { class: 'eyebrow' }, eyebrow),
+      el('h2', { class: 'state-title ' + (cls || '') }, title),
+      note ? el('p', { class: 'note' }, note) : null)
+  }
+
   // -------------------------------------------------------------- header
 
   var NAV = [
@@ -356,7 +364,7 @@
     var tagMsg = el('span', { class: 'msg', 'aria-live': 'polite' })
     function renderTags() {
       clear(chips)
-      if (!tags.length) chips.appendChild(el('span', { class: 'muted', style: { 'font-size': '0.8125rem', 'font-style': 'italic' } }, 'No tags yet'))
+      if (!tags.length) chips.appendChild(el('span', { class: 'empty-note' }, 'No tags yet'))
       tags.forEach(function (name, i) {
         chips.appendChild(el('span', { class: 'chip chip-static', title: name }, el('span', null, name),
           el('button', { class: 'x', type: 'button', 'aria-label': 'Remove tag ' + name, onclick: function () { tags.splice(i, 1); tagMsg.textContent = ''; renderTags() } }, '✕')))
@@ -378,12 +386,12 @@
     var copied = null
     function renderShares() {
       clear(shareList)
-      if (!shares.length) shareList.appendChild(el('p', { class: 'muted', style: { 'font-size': '0.8125rem', 'font-style': 'italic' } }, 'No share links'))
+      if (!shares.length) shareList.appendChild(el('p', { class: 'empty-note' }, 'No share links'))
       shares.forEach(function (s, i) {
         var href = M.shareUrl(s.token)
         var meta = (s.expires_at ? 'Expires ' + fmtDate(s.expires_at) : 'Never expires') + ' · ' + (s.allow_download ? 'download allowed' : 'view only')
         shareList.appendChild(el('div', { class: 'share-row' },
-          el('a', { href: 'share.html#' + (s.allow_download ? 'item' : 'item-no-download'), title: href }, href, el('span', { class: 'share-meta' }, meta)),
+          el('a', { href: 'share.html#media=' + encodeURIComponent(item.id) + (s.allow_download ? '' : '&view-only'), title: href }, href, el('span', { class: 'share-meta' }, meta)),
           el('button', { class: 'link-btn' + (copied === s.token ? ' is-copied' : ''), type: 'button', onclick: function () {
             try {
               if (navigator.clipboard) navigator.clipboard.writeText(href).catch(function () {})
@@ -433,7 +441,7 @@
     el: el, append: append, clear: clear,
     fmtDate: fmtDate, fmtDuration: fmtDuration, fmtBytes: fmtBytes,
     hashState: hashState, findMedia: findMedia,
-    progress: progress, protoBar: protoBar,
+    progress: progress, protoBar: protoBar, stateBlock: stateBlock,
     openAddModal: openAddModal, openMediaModal: openMediaModal, closeModal: closeModal,
     setTheme: setTheme, setAccent: setAccent,
   }
