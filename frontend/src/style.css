@@ -277,7 +277,7 @@
   .panel.stack { flex-direction: column; align-items: stretch; }
   .bin-missing { border-style: dashed; }
   .mono-sm { font-family: var(--font-mono); font-size: 0.75rem; }
-  .pill { display: inline-block; padding: 1px 6px; border: var(--bw-thin) solid var(--border); margin-right: 4px; }
+  .pill { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; padding: 1px 6px; border: var(--bw-thin) solid var(--border); margin-right: 4px; }
   .pill-ok { background: var(--ok); color: var(--on-ok); }
   .pill-off { background: var(--surface-3); color: var(--text-primary); }
   .file-btn { position: relative; }

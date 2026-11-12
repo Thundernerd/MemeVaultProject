@@ -55,7 +55,9 @@ onMounted(loadBins)
         <div class="flex-1 min-w-0 flex flex-col gap-1">
           <h3>{{ b.name }}</h3>
           <p class="mono-sm text-text-muted truncate" :title="b.path">{{ b.path }}</p>
-          <p><span class="pill label" :class="b.exists ? 'pill-ok' : 'pill-off'">{{ b.exists ? (b.version || 'installed') : 'missing' }}</span></p>
+          <p class="min-w-0">
+            <span class="pill label" :class="b.exists ? 'pill-ok' : 'pill-off'" :title="b.version || undefined">{{ b.exists ? (b.version || 'installed') : 'missing' }}</span>
+          </p>
         </div>
         <button
           type="button"
