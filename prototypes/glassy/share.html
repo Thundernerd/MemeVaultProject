@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-accent="blue">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MemeVault</title>
+  <!--
+    Throwaway exploration (issue #12). Mirrors templates/share.html: the public
+    page people without a login see. Pick the link with the hash: share.html#<token>
+    for any token in MOCK.shares (item links with and without download, and an
+    album link). No hash shows the first link.
+  -->
+  <link rel="icon" href="data:," />
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="glass.css" />
+  <style>
+    body { display: flex; flex-direction: column; }
+    .share-header { position: sticky; top: 12px; z-index: 10; margin: 12px auto 0; width: calc(100% - 24px); max-width: 64rem; height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 999px; font-weight: 700; }
+    .share-main { width: 100%; max-width: 64rem; margin: 0 auto; padding: 20px 12px 32px; display: flex; flex-direction: column; gap: 16px; }
+    .stage { overflow: hidden; border-radius: 28px; padding: 0; }
+    .stage .player { border-radius: 0; max-height: 70vh; min-height: 220px; }
+    .stage .player img, .stage .player video { max-height: 70vh; }
+    .meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; }
+    .meta h1 { font-size: 1rem; font-weight: 600; }
+    .album-head { padding: 16px 20px; display: flex; flex-direction: column; gap: 2px; }
+    .album-head h1 { font-size: 1.1rem; font-weight: 650; overflow-wrap: anywhere; }
+    .album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .album-grid > * { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 18px; background: #000; display: block; border: 1px solid var(--border); box-shadow: var(--glass-shadow); }
+    @media (max-width: 420px) { .album-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .share-footer { margin-top: auto; padding: 18px 20px 28px; text-align: center; font-size: 0.75rem; color: var(--text-muted); }
+    .share-footer span { padding: 6px 14px; border-radius: 999px; }
+  </style>
+</head>
+<body>
+  <header class="share-header glass">
+    <span class="logo-mark" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="4" /><circle cx="14" cy="12" r="3.2" /><path d="M14 8.8v-1M14 16.2v-1M7 9v6" /></svg>
+    </span>
+    MVP
+  </header>
+  <main class="share-main" id="main"></main>
+  <footer class="share-footer"><span class="glass">Shared via MemeVault</span></footer>
+
+  <script src="../shared/mock-data.js"></script>
+  <script>
+    (function () {
+      'use strict'
+      var M = window.MOCK
+
+      function el(tag, attrs, kids) {
+        var e = document.createElement(tag)
+        Object.keys(attrs || {}).forEach(function (k) { if (attrs[k] != null) e.setAttribute(k, attrs[k]) })
+        ;(kids || []).forEach(function (c) { e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c) })
+        return e
+      }
+
+      function media(item, controls) {
+        var thumb = M.thumbnail(item)
+        // Offline there is no file to play, so videos show their poster.
+        if (item.type === 'video') return el('video', { controls: controls ? '' : null, preload: 'none', poster: thumb, 'aria-label': item.title || 'Video' })
+        return el('img', { src: thumb, alt: item.title || '' })
+      }
+
+      function render() {
+        var token = location.hash.slice(1)
+        var share = M.shares.filter(function (s) { return s.token === token })[0] || M.shares[0]
+        var main = document.getElementById('main')
+        main.innerHTML = ''
+
+        if (share.album_id) {
+          var album = M.albums.filter(function (a) { return a.id === share.album_id })[0]
+          document.title = (album.title || 'Album') + ' — MemeVault'
+          main.appendChild(el('section', { class: 'glass album-head' }, [
+            el('h1', null, [album.title || 'Album']),
+            el('p', { class: 'xs muted' }, [album.media.length + ' items']),
+          ]))
+          main.appendChild(el('div', { class: 'album-grid' }, album.media.map(function (m) { return media(m, true) })))
+          return
+        }
+
+        var item = M.media.filter(function (m) { return m.id === share.media_id })[0]
+        var title = item.title || 'Untitled'
+        document.title = title + ' — MemeVault'
+        var meta = el('div', { class: 'meta' }, [el('h1', { class: 'truncate', title: title }, [title])])
+        if (share.allow_download) meta.appendChild(el('a', { class: 'btn btn-primary', href: M.thumbnail(item) || '#' + share.token, download: (item.title || 'media') + '.svg' }, ['Download']))
+        main.appendChild(el('article', { class: 'glass stage' }, [el('div', { class: 'player' }, [media(item, true)]), meta]))
+      }
+
+      window.addEventListener('hashchange', render)
+      render()
+    })()
+  </script>
+</body>
+</html>
