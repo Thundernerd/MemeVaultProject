@@ -174,7 +174,7 @@
   .btn-sm:active { transform: translate(3px, 3px); }
   .btn-sm:disabled { box-shadow: 3px 3px 0 var(--shadow); }
   .btn-block { width: 100%; }
-  .btn-icon { width: 40px; padding: 0; }
+  .btn-icon { width: 40px; padding: 0; font-size: 1rem; }
 
   /* inputs */
 
@@ -199,7 +199,14 @@
   .check input[type="radio"]:checked::after { width: 8px; height: 8px; border: 0; background: var(--on-accent); transform: none; }
   .check input:focus-visible { outline: var(--bw) dashed var(--accent); outline-offset: 3px; }
 
+  /* Smaller input for inline forms (e.g. "Add tag" next to a .btn-sm). */
+  .input-sm { width: 160px; min-height: 32px; padding: 4px 8px; border-width: var(--bw-thin); }
+  @media (max-width: 767px) {
+    .input-sm { flex: 1 1 120px; width: auto; }
+  }
+
   .field { display: flex; flex-direction: column; gap: 6px; }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
   .field > .label { color: var(--text-secondary); }
 
   /* chips and badges */
@@ -230,6 +237,27 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .progress-track.indeterminate .progress-fill { animation: none; width: 100%; opacity: 0.5; }
+  }
+
+  /* modals: AddUrlModal.vue and MediaModal.vue */
+
+  .modal { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .modal-backdrop { position: absolute; inset: 0; background: var(--overlay); }
+  .modal-box {
+    position: relative; width: 100%; max-width: 30rem; max-height: calc(100dvh - 32px); overflow-y: auto;
+    display: flex; flex-direction: column; gap: 16px; padding: 20px;
+    background: var(--surface-1); border: var(--bw) solid var(--border); box-shadow: 10px 10px 0 var(--accent);
+  }
+  /* Wide variant: media sits edge to edge, content goes in .modal-body. */
+  .modal-wide { max-width: 48rem; padding: 0; gap: 0; }
+  .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .modal-head h2 { font-size: 1.6rem; }
+  .modal-body { display: flex; flex-direction: column; gap: 18px; padding: 20px; }
+  .modal-foot { display: flex; justify-content: flex-end; padding-top: 16px; border-top: var(--bw) solid var(--border); }
+  @media (max-width: 767px) {
+    .modal { padding: 8px; align-items: flex-start; }
+    .modal-box { max-height: calc(100dvh - 16px); box-shadow: 6px 6px 0 var(--accent); }
+    .modal-wide { max-width: none; }
   }
 
   /* empty / loading / error states */
