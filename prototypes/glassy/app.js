@@ -361,9 +361,10 @@
       return page
     }
 
-    var active = M.activeQueue().filter(function (q) {
-      return db.queue.some(function (d) { return d.id === q.id && (d.status === 'pending' || d.status === 'downloading') })
-    })
+    // MOCK.activeQueue() over the live copy, so Queue download, Retry and Cancel
+    // show up here. SCREENS.md asks for every active item; the real VaultView
+    // also hides Discord and Fluxer sources.
+    var active = db.queue.filter(function (q) { return q.status === 'pending' || q.status === 'downloading' })
     if (active.length) {
       var dl = h('div', { class: 'grid' })
       active.forEach(function (q) {
