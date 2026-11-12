@@ -123,7 +123,6 @@ function shareUrl(token: string) {
         </div>
 
         <section class="stack">
-          <h3 class="label">Tags</h3>
           <div v-if="tags.length" class="chips">
             <span v-for="t in tags" :key="t.id" class="chip chip-static">{{ t.name }}</span>
           </div>
