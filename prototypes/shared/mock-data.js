@@ -32,9 +32,10 @@
 
   // Deterministic hue per id so thumbnails look the same on every load.
   function hueOf(str) {
-    var h = 0
-    for (var i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 360
-    return h
+    // FNV-1a: ids differ only in their last digits, so a plain sum clusters.
+    var h = 2166136261
+    for (var i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619) >>> 0
+    return h % 360
   }
 
   /**
