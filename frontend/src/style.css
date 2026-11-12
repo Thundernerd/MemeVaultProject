@@ -251,3 +251,16 @@
 
 @keyframes brutal-slide { from { transform: translateX(-110%); } to { transform: translateX(300%); } }
 @keyframes brutal-blink { 50% { opacity: 0.2; } }
+
+/*
+ * Legacy indeterminate bar, still used by components/DownloadProgress.vue.
+ * Remove once that component moves to .progress-track.indeterminate.
+ */
+@keyframes mv-progress-indeterminate {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+.mv-progress-indeterminate {
+  animation: mv-progress-indeterminate 1.2s ease-in-out infinite;
+}
