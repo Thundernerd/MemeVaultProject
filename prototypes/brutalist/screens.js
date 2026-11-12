@@ -80,6 +80,16 @@
     head.innerHTML = '<span class="label">Prototype · every screen</span><a class="label" href="../index.html">All styles ↗</a>'
     panel.appendChild(head)
 
+    // Theme controls here too, since the share page has no header switcher.
+    var themeBtn = document.createElement('button')
+    themeBtn.type = 'button'
+    themeBtn.className = 'btn btn-sm proto-theme'
+    function label() { themeBtn.textContent = 'Theme: ' + window.BRUTAL_THEME.get().theme + ' (toggle)' }
+    themeBtn.addEventListener('click', function () { window.BRUTAL_THEME.toggleTheme() })
+    window.BRUTAL_THEME.onChange(label)
+    label()
+    panel.appendChild(themeBtn)
+
     GROUPS.forEach(function (g) {
       var h = document.createElement('p')
       h.className = 'label proto-group'
