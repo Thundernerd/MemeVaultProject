@@ -282,6 +282,9 @@
   .pill-off { background: var(--surface-3); color: var(--text-primary); }
   .file-btn { position: relative; }
   .file-btn:focus-within { outline: var(--bw) dashed var(--accent); outline-offset: 3px; }
+  .reveal { display: flex; flex-direction: column; gap: 8px; padding: 14px; background: var(--pop-1); color: var(--on-pop); border: var(--bw) solid var(--border); box-shadow: 6px 6px 0 var(--shadow); transform: rotate(-0.6deg); }
+  .reveal-key { font-size: 1rem; font-weight: 800; word-break: break-all; padding: 6px 8px; background: #fff; border: var(--bw-thin) solid #0a0a0a; }
+  .key-name { font-weight: 800; }
 
   @media (max-width: 767px) {
     .settings-form { padding: 14px; }
