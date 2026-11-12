@@ -8,6 +8,7 @@ const error = ref('')
 async function load() {
   try {
     tags.value = await api('/api/tags')
+    error.value = ''
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed'
   }
