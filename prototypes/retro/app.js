@@ -127,8 +127,8 @@
 
   var VIEWS = {
     vault: function (r) { return vaultView(r) },
-    queue: function (r) { return stub('Queue', r) },
-    tags: function (r) { return stub('Tags', r) },
+    queue: function (r) { return queueView(r) },
+    tags: function (r) { return tagsView(r) },
     settings: function (r) { return stub('Settings', r) },
   }
 
@@ -341,6 +341,115 @@
       panel,
       downloads,
       grid,
+    ])
+  }
+
+  // ------------------------------------------------------------- queue
+
+  var SOURCE_COLORS = { discord: '#5865F2', fluxer: '#7c3aed' }
+
+  function queueRow(q, repaint) {
+    var active = q.status === 'pending' || q.status === 'downloading'
+    var canRetry = (q.status === 'failed' || q.status === 'cancelled') && q.source !== 'discord' && q.source !== 'fluxer'
+    return h('li', { class: 'qrow ' + q.status }, [
+      h('div', { class: 'qhead' }, [
+        icon(q.status === 'failed' ? 'error' : q.status === 'completed' ? 'page' : q.status === 'cancelled' ? 'warn' : 'queue', active && q.status === 'downloading' ? 'spin' : null),
+        h('div', { class: 'qinfo' }, [
+          h('p', { class: 'qurl', title: q.url }, [
+            h('span', null, q.url),
+            q.source_label ? h('span', { class: 'src', style: 'background:' + (SOURCE_COLORS[q.source] || '#0d9488') }, q.source_label) : null,
+          ]),
+          h('p', { class: 'qmeta' }, q.downloader + ' · ' + q.status),
+        ]),
+        h('div', { class: 'qactions' }, [
+          active ? h('button', { class: 'btn small', type: 'button', onclick: function () { q.status = 'cancelled'; q.error = 'cancelled'; repaint() } }, 'Cancel') : null,
+          canRetry ? h('button', { class: 'btn small', type: 'button', onclick: function () { q.status = 'pending'; q.progress = 0; q.error = null; repaint() } }, 'Retry') : null,
+          h('button', { class: 'btn small danger', type: 'button', onclick: function () { S.queue = S.queue.filter(function (x) { return x !== q }); repaint() } }, 'Remove'),
+        ]),
+      ]),
+      progress(q.status, q.progress),
+      q.error ? h('p', { class: 'qerror' }, q.error) : null,
+    ])
+  }
+
+  function queueView(r) {
+    var state = r.q.state
+    var body = h('div')
+    var counts = h('span')
+    function repaint() {
+      clear(body)
+      counts.textContent = S.queue.length + ' items, ' + activeQueue().length + ' active'
+      if (state === 'loading') { body.appendChild(statePanel('loading', M.states.queue.loading)); return }
+      if (state === 'error') {
+        body.appendChild(statePanel('error', M.states.queue.error, h('a', { class: 'btn', href: '#/queue' }, 'Retry')))
+        return
+      }
+      if (state === 'empty' || !S.queue.length) { body.appendChild(statePanel('empty', M.states.queue.empty)); return }
+      body.appendChild(h('ul', { class: 'qlist' }, S.queue.map(function (q) { return queueRow(q, repaint) })))
+      renderTaskbar(route())
+    }
+    repaint()
+    return win('Download Manager', {
+      icon: 'queue', menu: ['File', 'Edit', 'View', 'Transfers', 'Help'],
+      status: [counts, h('span', null, state ? 'Demo state: ' + state : 'Live')],
+    }, [
+      h('div', { class: 'page-head' }, [
+        h('h1', null, px('Queue')),
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn primary', type: 'button', onclick: function () { go(withParams({ modal: 'add' })) } }, 'Add URL'),
+      ]),
+      body,
+    ])
+  }
+
+  // -------------------------------------------------------------- tags
+
+  function tagsView() {
+    var body = h('div', { class: 'tag-groups' })
+    var status = h('span')
+    function repaint() {
+      clear(body)
+      var map = {}
+      S.tags.forEach(function (t) {
+        var ns = t.name.indexOf(':') >= 0 ? t.name.split(':')[0] : 'other'
+        ;(map[ns] = map[ns] || []).push(t)
+      })
+      var names = Object.keys(map).sort(function (a, b) { return a.localeCompare(b) })
+      status.textContent = S.tags.length + ' tags in ' + names.length + ' folders'
+      names.forEach(function (ns) {
+        body.appendChild(h('fieldset', { class: 'groupbox tag-group' }, [
+          h('legend', null, [icon('folder'), ' ', ns]),
+          h('ul', { class: 'tag-list' }, map[ns].map(function (t) {
+            return h('li', { class: 'tag-item' + (t.usage_count ? '' : ' unused') }, [
+              icon('tags'),
+              h('span', { class: 'tag-name', title: t.name }, t.name),
+              h('span', { class: 'tag-count', title: t.usage_count + ' items' }, t.usage_count),
+              h('button', {
+                class: 'tb-btn', type: 'button', 'aria-label': 'Delete ' + t.name,
+                onclick: function () {
+                  confirmBox('Delete this tag?', 'Delete', function () { S.tags = S.tags.filter(function (x) { return x !== t }); repaint() })
+                },
+              }, '✕'),
+            ])
+          })),
+        ]))
+      })
+    }
+    repaint()
+    return win('C:\\MemeVault\\Tags', { icon: 'tags', menu: ['File', 'Edit', 'View', 'Help'], status: [status] }, [
+      h('div', { class: 'page-head' }, [
+        h('h1', null, px('Tags')),
+        h('span', { class: 'spacer' }),
+        h('button', {
+          class: 'btn', type: 'button',
+          onclick: function () {
+            confirmBox('Delete every tag that no item uses?', 'Purge unused', function () {
+              S.tags = S.tags.filter(function (t) { return t.usage_count > 0 }); repaint()
+            })
+          },
+        }, 'Purge unused'),
+      ]),
+      body,
     ])
   }
 
