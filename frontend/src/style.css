@@ -243,7 +243,7 @@
   .state-empty { border-style: dashed; box-shadow: none; background: transparent; justify-content: center; padding: 56px 20px; text-align: center; flex-direction: column; }
   .state-loading .state-tag { background: var(--pop-3); animation: brutal-blink 0.8s steps(2) infinite; }
   .state-error { background: var(--danger); color: var(--on-danger); border-color: var(--border); }
-  .state-error .state-tag { background: var(--on-danger); color: var(--danger); border-color: var(--on-danger); }
+  .state-error .state-tag { background: var(--on-danger); color: var(--danger); border-color: var(--border); }
   @media (prefers-reduced-motion: reduce) {
     .state-loading .state-tag { animation: none; }
   }
