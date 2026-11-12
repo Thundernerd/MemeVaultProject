@@ -9,7 +9,7 @@
   var M = window.MOCK
   var h = A.h
 
-  function closeAll() { A.setParams({ add: null, drag: null, files: null, media: null }) }
+  var closeAll = A.closeModals
 
   function modal(panelClass, label, children) {
     var panel = h('div', { class: 'modal-panel ' + panelClass, role: 'dialog', 'aria-modal': 'true', 'aria-label': label, tabindex: '-1' }, children)
@@ -161,7 +161,8 @@
   function mediaModal(r) {
     var id = r.params.get('media')
     var item = id && findMedia(id)
-    if (!item) return null
+    // Closing drops unsaved tag edits, as unmounting MediaModal.vue does.
+    if (!item) { mediaState.id = null; return null }
     if (mediaState.id !== id) {
       mediaState = { id: id, tags: item.tags.slice(), include: item.include_in_random === 1, tagInput: '' }
     }
@@ -264,7 +265,9 @@
         h('div', { class: 'modal-foot' }, h('button', {
           class: 'btn btn-ghost btn-danger', type: 'button',
           onclick: function () {
-            A.db.media = A.db.media.filter(function (m) { return m !== item })
+            var other = function (m) { return m !== item }
+            A.db.media = A.db.media.filter(other)
+            A.db.albums.forEach(function (a) { a.media = a.media.filter(other) })
             A.invalidate()
             closeAll()
           },

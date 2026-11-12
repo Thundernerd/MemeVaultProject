@@ -71,7 +71,7 @@
   // until the page reloads.
   var db = {
     media: M.media.slice(),
-    albums: M.albums.slice(),
+    albums: M.albums.map(function (a) { return Object.assign({}, a, { media: a.media.slice() }) }),
     queue: M.queue.map(function (q) { return Object.assign({}, q) }),
     tags: M.tags.map(function (t) { return Object.assign({}, t) }),
     shares: M.shares.slice(),
@@ -105,6 +105,9 @@
     var qs = r.params.toString().replace(/=(&|$)/g, '$1')
     location.hash = '#/' + r.path.join('/') + (qs ? '?' + qs : '')
   }
+
+  /** Drops every modal flag (?add, ?drag, ?files, ?media) from the route. */
+  function closeModals() { setParams({ add: null, drag: null, files: null, media: null }) }
 
   var VIEWS = {}
   var MODALS = []
@@ -145,7 +148,7 @@
       if (e.key !== 'Escape') return
       setDrawer(false)
       var r = parseRoute()
-      if (r.params.has('add') || r.params.has('media')) setParams({ add: null, drag: null, files: null, media: null })
+      if (r.params.has('add') || r.params.has('media')) closeModals()
     })
   }
 
@@ -415,7 +418,7 @@
   }
 
   // Exposed for the later slices of this file (modals, other views).
-  window.GlassApp = { h: h, icon: icon, ICONS: ICONS, db: db, VIEWS: VIEWS, MODALS: MODALS, setParams: setParams, parseRoute: parseRoute, progress: progress, notice: notice, pageHead: pageHead, fmtDate: fmtDate, render: render, invalidate: function () { lastView = null } }
+  window.GlassApp = { h: h, icon: icon, ICONS: ICONS, db: db, VIEWS: VIEWS, MODALS: MODALS, setParams: setParams, closeModals: closeModals, parseRoute: parseRoute, progress: progress, notice: notice, pageHead: pageHead, fmtDate: fmtDate, render: render, invalidate: function () { lastView = null } }
 
   initShell()
   window.addEventListener('hashchange', render)
