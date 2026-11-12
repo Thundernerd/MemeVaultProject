@@ -233,7 +233,7 @@ async function handleUpload() {
           class="file"
           :class="`file-${state}`"
         >
-          <span class="file-icon" :aria-label="state">{{
+          <span class="file-icon" role="img" :aria-label="state">{{
             state === 'done' ? '✓' : state === 'error' ? '✕' : ''
           }}</span>
           <span class="file-name truncate">{{ file.name }}</span>
