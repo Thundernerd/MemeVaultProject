@@ -247,6 +247,70 @@
   @media (prefers-reduced-motion: reduce) {
     .state-loading .state-tag { animation: none; }
   }
+
+  /* vault (views/VaultView.vue, MediaCard.vue, AlbumCard.vue) */
+
+  .btn-on { background: var(--accent-subtle); border-color: var(--accent); color: var(--text-primary); }
+  .count { min-width: 22px; height: 22px; padding: 0 5px; background: var(--accent); color: var(--on-accent); border: var(--bw-thin) solid var(--border); font-size: 0.7rem; line-height: 18px; text-align: center; }
+  .chip-mode { border-style: dashed; background: transparent; color: var(--text-muted); text-transform: uppercase; }
+
+  .filters {
+    display: flex; flex-direction: column; gap: 12px; padding: 14px;
+    border: var(--bw) solid var(--border); background: var(--surface-2);
+  }
+
+  .vault-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+  @media (min-width: 640px) { .vault-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (min-width: 768px) { .vault-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; } }
+
+  /* A download still in the queue: dashed placeholder with a big down arrow. */
+  .pending-card {
+    aspect-ratio: 1; min-width: 0; padding: 12px;
+    display: flex; flex-direction: column; justify-content: flex-end; gap: 10px;
+    border: var(--bw) dashed var(--border); background: var(--surface-2);
+  }
+  .pending-card::before { content: "↓"; font-family: var(--font-display); font-size: 3rem; line-height: 1; color: var(--text-muted); align-self: center; margin: auto 0; }
+  .pending-url { order: -1; font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-secondary); }
+
+  /* Media cards are stickers: tilted, thick outline, hard shadow; they snap
+     straight and press down on hover. */
+  .card {
+    position: relative; display: flex; flex-direction: column; min-width: 0; padding: 0; text-align: left;
+    border: var(--bw) solid var(--border); background: var(--surface-1); color: var(--text-primary);
+    box-shadow: 6px 6px 0 var(--shadow); cursor: pointer;
+    transform: rotate(var(--tilt, 0deg));
+    transition: transform 100ms ease-out, box-shadow 100ms ease-out;
+  }
+  .vault-grid > .card:nth-child(4n+1) { --tilt: -1.2deg; }
+  .vault-grid > .card:nth-child(4n+2) { --tilt: 0.8deg; }
+  .vault-grid > .card:nth-child(4n+3) { --tilt: -0.5deg; }
+  .vault-grid > .card:nth-child(4n)   { --tilt: 1.3deg; }
+  .card:hover { transform: rotate(0deg) translate(3px, 3px); box-shadow: 3px 3px 0 var(--shadow); }
+  .card:active { transform: translate(6px, 6px); box-shadow: 0 0 0 var(--shadow); }
+  .card:focus-visible { outline: var(--bw) dashed var(--accent); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) {
+    .card, .card:hover, .card:active { transform: none; transition: none; }
+  }
+
+  .card-thumb { display: block; aspect-ratio: 1; background: var(--surface-3); border-bottom: var(--bw) solid var(--border); overflow: hidden; }
+  .card-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .no-thumb {
+    display: grid; place-items: center; height: 100%; padding: 8px; text-align: center; color: var(--text-muted);
+    background-image: repeating-linear-gradient(45deg, transparent 0 10px, color-mix(in srgb, var(--text-primary) 10%, transparent) 10px 12px);
+  }
+  .card-caption { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; font-weight: 800; font-size: 0.85rem; min-height: 40px; justify-content: center; }
+  .card-sub { color: var(--text-muted); font-size: 0.65rem; }
+  .sticker {
+    position: absolute; top: -10px; right: -8px; padding: 3px 7px;
+    border: var(--bw-thin) solid var(--border); color: var(--on-pop); transform: rotate(6deg);
+    box-shadow: 2px 2px 0 var(--shadow);
+  }
+  .card-video .sticker { background: var(--pop-1); }
+  .card-image .sticker { background: var(--pop-3); }
+  .card-album .sticker { background: var(--pop-2); }
+  /* Albums read as a stack of posters. */
+  .card-album { box-shadow: 6px 6px 0 -1px var(--surface-1), 6px 6px 0 2px var(--border), 12px 12px 0 2px var(--shadow); }
+  .card-album:hover { box-shadow: 3px 3px 0 -1px var(--surface-1), 3px 3px 0 2px var(--border), 6px 6px 0 2px var(--shadow); }
 }
 
 @keyframes brutal-slide { from { transform: translateX(-110%); } to { transform: translateX(300%); } }
