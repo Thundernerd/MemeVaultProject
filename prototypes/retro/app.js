@@ -126,7 +126,7 @@
   function go(hash) { location.hash = hash }
 
   var VIEWS = {
-    vault: function (r) { return stub('Vault', r) },
+    vault: function (r) { return vaultView(r) },
     queue: function (r) { return stub('Queue', r) },
     tags: function (r) { return stub('Tags', r) },
     settings: function (r) { return stub('Settings', r) },
@@ -136,6 +136,211 @@
     return win('C:\\MemeVault\\' + title, { icon: 'folder' }, [
       h('div', { class: 'page-head' }, [h('h1', null, px(title))]),
       h('p', null, 'Coming up in the next slice. Route: ' + r.path.join('/')),
+    ])
+  }
+
+  // ---------------------------------------------------- shared widgets
+
+  /** DownloadProgress.vue: label plus a segmented Y2K progress bar. */
+  function progress(status, pct) {
+    var label, mode = 'value'
+    if (status === 'pending') { label = 'Waiting'; mode = 'idle' }
+    else if (status === 'downloading') {
+      if (pct >= 99) { label = 'Processing…'; mode = 'busy' }
+      else if (pct < 1) { label = 'Starting…'; mode = 'busy' }
+      else label = Math.round(pct) + '%'
+    } else return null
+    var fill = h('div', { class: 'fill' })
+    if (mode === 'value') fill.style.width = pct + '%'
+    return h('div', { class: 'progress ' + mode }, [
+      h('div', {
+        class: 'bar', role: 'progressbar', 'aria-label': label,
+        'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': mode === 'value' ? String(Math.round(pct)) : null,
+      }, fill),
+      h('span', { class: 'label' }, label),
+    ])
+  }
+
+  /** A state panel: icon, message, optional action. Used for empty/loading/error. */
+  function statePanel(kind, text, action) {
+    var ico = { empty: 'info', loading: 'queue', error: 'error' }[kind]
+    return h('div', { class: 'state ' + kind, role: kind === 'error' ? 'alert' : 'status' }, [
+      icon(ico, kind === 'loading' ? 'spin' : null),
+      h('div', { class: 'state-text' }, [
+        h('p', null, text),
+        kind === 'loading' ? h('div', { class: 'progress busy' }, h('div', { class: 'bar' }, h('div', { class: 'fill' }))) : null,
+      ]),
+      action || null,
+    ])
+  }
+
+  function thumbBox(item) {
+    var src = M.thumbnail(item)
+    if (src) return h('div', { class: 'thumb' }, h('img', { src: src, alt: '', loading: 'lazy' }))
+    return h('div', { class: 'thumb none' }, [icon('film'), h('span', null, 'No thumbnail')])
+  }
+
+  // ------------------------------------------------------------- vault
+
+  var VF = {
+    q: '', type: 'all', tags: [], mode: 'any',
+    open: window.matchMedia('(min-width: 768px)').matches,
+  }
+
+  function tagNames(list) { return (list || []).map(function (t) { return t.name }) }
+
+  function vaultEntries() {
+    var list = S.media.map(function (m) { return { kind: 'media', item: m, at: m.created_at } })
+      .concat(S.albums.map(function (a) { return { kind: 'album', album: a, at: a.created_at } }))
+    list.sort(function (a, b) { return b.at.localeCompare(a.at) })
+    if (VF.type !== 'all') {
+      list = list.filter(function (e) { return e.kind === 'album' ? VF.type === 'image' : e.item.type === VF.type })
+    }
+    var q = VF.q.trim().toLowerCase()
+    if (q) {
+      list = list.filter(function (e) {
+        if (e.kind === 'album') return (e.album.title || '').toLowerCase().indexOf(q) >= 0 || e.album.url.toLowerCase().indexOf(q) >= 0
+        return (e.item.title || '').toLowerCase().indexOf(q) >= 0 || e.item.url.toLowerCase().indexOf(q) >= 0 ||
+          tagNames(e.item.tags).some(function (n) { return n.toLowerCase().indexOf(q) >= 0 })
+      })
+    }
+    if (VF.tags.length) {
+      list = list.filter(function (e) {
+        var names = e.kind === 'album'
+          ? e.album.media.reduce(function (acc, m) { return acc.concat(tagNames(m.tags)) }, [])
+          : tagNames(e.item.tags)
+        var has = function (t) { return names.indexOf(t) >= 0 }
+        return VF.mode === 'all' ? VF.tags.every(has) : VF.tags.some(has)
+      })
+    }
+    return list
+  }
+
+  function mediaCard(m) {
+    return h('button', {
+      class: 'card', type: 'button', title: m.title || '(untitled ' + m.type + ')',
+      onclick: function () { go(withParams({ modal: 'media', id: m.id })) },
+    }, [
+      thumbBox(m),
+      h('div', { class: 'card-meta' }, [
+        h('span', { class: 'card-title' + (m.title ? '' : ' untitled') }, m.title || m.type),
+        h('span', { class: 'badge ' + m.type }, m.type),
+      ]),
+    ])
+  }
+
+  function albumCard(a) {
+    var first = a.media[0]
+    return h('div', { class: 'card album', title: a.title || 'Album' }, [
+      h('div', { class: 'stack' }, first ? thumbBox(first) : h('div', { class: 'thumb none' }, icon('folder'))),
+      h('div', { class: 'card-meta' }, [
+        h('span', { class: 'card-title' + (a.title ? '' : ' untitled') }, a.title || 'Album'),
+        h('span', { class: 'card-sub' }, a.media.length + ' items'),
+        h('span', { class: 'badge album' }, 'album'),
+      ]),
+    ])
+  }
+
+  function vaultView(r) {
+    var state = r.q.state
+    var countBadge = h('span', { class: 'count' })
+    var toggle = h('button', {
+      class: 'btn', type: 'button', 'aria-controls': 'vault-filters',
+      onclick: function () { VF.open = !VF.open; refresh() },
+    })
+    var search = h('input', {
+      class: 'field search', type: 'search', placeholder: 'Search…', 'aria-label': 'Search', value: VF.q,
+      oninput: function (e) { VF.q = e.target.value; refresh() },
+    })
+    var panel = h('fieldset', { class: 'groupbox filters', id: 'vault-filters' })
+    var downloads = h('div')
+    var grid = h('div')
+
+    function refresh() {
+      var n = VF.tags.length + (VF.type !== 'all' ? 1 : 0)
+      clear(toggle)
+      append(toggle, [h('span', { class: 'caret', 'aria-hidden': 'true' }, VF.open ? '▲' : '▼'), VF.open ? 'Hide filters' : 'Show filters'])
+      toggle.setAttribute('aria-expanded', VF.open ? 'true' : 'false')
+      if (!VF.open && n) { countBadge.textContent = n; toggle.appendChild(countBadge) }
+
+      clear(panel)
+      panel.hidden = !VF.open
+      panel.appendChild(h('legend', null, 'Filters'))
+      var typeSel = h('select', {
+        class: 'field', 'aria-label': 'Type',
+        onchange: function (e) { VF.type = e.target.value; refresh() },
+      }, [['all', 'All'], ['video', 'Video'], ['image', 'Image']].map(function (o) {
+        var opt = h('option', { value: o[0] }, o[1])
+        if (VF.type === o[0]) opt.selected = true
+        return opt
+      }))
+      panel.appendChild(h('div', { class: 'filter-row' }, [
+        h('label', { class: 'inline' }, ['Type ', typeSel]),
+        h('button', {
+          class: 'btn small', type: 'button', title: 'Toggle between any and all selected tags',
+          onclick: function () { VF.mode = VF.mode === 'any' ? 'all' : 'any'; refresh() },
+        }, 'match: ' + VF.mode),
+      ]))
+      panel.appendChild(h('div', { class: 'chips', role: 'group', 'aria-label': 'Tags' }, S.tags.filter(function (t) { return t.usage_count > 0 }).map(function (t) {
+        var on = VF.tags.indexOf(t.name) >= 0
+        return h('button', {
+          class: 'chip' + (on ? ' on' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', title: t.name,
+          onclick: function () {
+            if (on) VF.tags = VF.tags.filter(function (x) { return x !== t.name })
+            else VF.tags = VF.tags.concat(t.name)
+            refresh()
+          },
+        }, t.name)
+      })))
+
+      clear(downloads)
+      clear(grid)
+      if (state === 'loading') { grid.appendChild(statePanel('loading', M.states.vault.loading)); return }
+      if (state === 'error') {
+        grid.appendChild(statePanel('error', M.states.vault.error,
+          h('a', { class: 'btn', href: '#/vault' }, 'Retry')))
+        return
+      }
+      var active = activeQueue()
+      if (state !== 'empty' && active.length) {
+        downloads.appendChild(h('div', { class: 'grid' }, active.map(function (q) {
+          return h('div', { class: 'card pending' }, [
+            h('p', { class: 'pending-url', title: q.url }, q.url),
+            progress(q.status, q.progress),
+          ])
+        })))
+      }
+      var entries = state === 'empty' ? [] : vaultEntries()
+      if (!entries.length) {
+        grid.appendChild(statePanel('empty', M.states.vault.empty,
+          h('button', { class: 'btn primary', type: 'button', onclick: openAdd }, 'Add')))
+        return
+      }
+      grid.appendChild(h('div', { class: 'grid' }, entries.map(function (e) {
+        return e.kind === 'media' ? mediaCard(e.item) : albumCard(e.album)
+      })))
+    }
+
+    function openAdd() { go(withParams({ modal: 'add', demo: null })) }
+
+    refresh()
+    return win('C:\\MemeVault\\Vault', { icon: 'vault', menu: ['File', 'Edit', 'View', 'Favorites', 'Help'],
+      status: [
+        h('span', null, state ? 'Demo state: ' + state : S.media.length + ' items, ' + S.albums.length + ' albums'),
+        h('span', null, activeQueue().length + ' downloading'),
+      ],
+    }, [
+      h('div', { class: 'page-head' }, [
+        h('h1', null, px('Vault')),
+        h('div', { class: 'toolbar' }, [
+          search,
+          toggle,
+          h('button', { class: 'btn primary', type: 'button', onclick: openAdd }, 'Add'),
+        ]),
+      ]),
+      panel,
+      downloads,
+      grid,
     ])
   }
 
