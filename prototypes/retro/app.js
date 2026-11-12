@@ -1,0 +1,1158 @@
+/*
+ * Retro / Y2K prototype of MemeVault: a hash router over window.MOCK.
+ * Throwaway code: plain DOM, no framework, no network. Changes (adding tags,
+ * cancelling downloads, …) only live in memory until the page reloads.
+ *
+ * Routes:  #/vault  #/queue  #/tags  #/settings/<tab>
+ * Params:  state=empty|loading|error   (vault, queue)
+ *          modal=add [&demo=drag|files]  modal=media&id=<media id>
+ *          msg=saved|error              (settings)
+ */
+(function () {
+  'use strict'
+
+  var M = window.MOCK
+  var px = window.PixelFont.render
+  var icon = window.Icons.render
+  var Theme = window.RetroTheme
+
+  // ------------------------------------------------------------ helpers
+
+  var D = window.RetroDom
+  var h = D.h, append = D.append, clear = D.clear
+  function clone(o) { return JSON.parse(JSON.stringify(o)) }
+
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  function fmtDate(iso) {
+    if (!iso) return '—'
+    var d = new Date(iso)
+    var pad = function (n) { return (n < 10 ? '0' : '') + n }
+    return d.getUTCDate() + ' ' + MONTHS[d.getUTCMonth()] + ' ' + d.getUTCFullYear() + ', ' +
+      pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes())
+  }
+
+  /** A window: title bar with a bitmap title, optional close, then the body. */
+  function win(title, opts, body) {
+    opts = opts || {}
+    var controls = h('div', { class: 'controls' }, [
+      opts.onClose ? null : h('span', { class: 'tb-btn', 'aria-hidden': 'true' }, '_'),
+      opts.onClose ? null : h('span', { class: 'tb-btn', 'aria-hidden': 'true' }, '□'),
+      h(opts.onClose ? 'button' : 'span', opts.onClose
+        ? { class: 'tb-btn', type: 'button', 'aria-label': 'Close', onclick: opts.onClose }
+        : { class: 'tb-btn', 'aria-hidden': 'true' }, '×'),
+    ])
+    return h('section', { class: 'win' + (opts.class ? ' ' + opts.class : ''), 'aria-label': opts.label || title }, [
+      h('div', { class: 'titlebar' }, [
+        h('div', { class: 'title' }, [opts.icon ? icon(opts.icon) : null, px(title)]),
+        controls,
+      ]),
+      opts.menu ? h('div', { class: 'menubar', 'aria-hidden': 'true' }, opts.menu.map(function (m) {
+        return h('span', null, [h('u', null, m[0]), m.slice(1)])
+      })) : null,
+      h('div', { class: 'win-body' + (opts.bodyClass ? ' ' + opts.bodyClass : '') }, body),
+      opts.status ? h('div', { class: 'statusbar' }, opts.status) : null,
+    ])
+  }
+
+  // -------------------------------------------------------------- state
+
+  var S = {
+    media: clone(M.media),
+    albums: clone(M.albums),
+    queue: clone(M.queue),
+    tags: clone(M.tags),
+    shares: clone(M.shares),
+    settings: clone(M.settings),
+    apiKeys: clone(M.apiKeys),
+    cookies: clone(M.cookies),
+  }
+
+  // ------------------------------------------------------------- router
+
+  var NAV = [
+    { href: '#/vault', label: 'Vault', icon: 'vault' },
+    { href: '#/queue', label: 'Queue', icon: 'queue' },
+    { href: '#/tags', label: 'Tags', icon: 'tags' },
+    { href: '#/settings/general', label: 'Settings', icon: 'settings' },
+  ]
+
+  function route() {
+    var raw = location.hash.replace(/^#\/?/, '')
+    var qi = raw.indexOf('?')
+    var path = (qi >= 0 ? raw.slice(0, qi) : raw).split('/').filter(Boolean)
+    var q = {}
+    if (qi >= 0) {
+      raw.slice(qi + 1).split('&').forEach(function (kv) {
+        var p = kv.split('=')
+        if (p[0]) q[decodeURIComponent(p[0])] = decodeURIComponent(p[1] || '')
+      })
+    }
+    if (!path.length || !VIEWS[path[0]]) path = ['vault']
+    return { path: path, q: q }
+  }
+
+  /** The current route with some params changed (null removes one). */
+  function withParams(changes) {
+    var r = route()
+    Object.keys(changes).forEach(function (k) {
+      if (changes[k] == null) delete r.q[k]
+      else r.q[k] = changes[k]
+    })
+    var qs = Object.keys(r.q).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(r.q[k]) }).join('&')
+    return '#/' + r.path.join('/') + (qs ? '?' + qs : '')
+  }
+  function go(hash) { location.hash = hash }
+
+  var VIEWS = {
+    vault: function (r) { return vaultView(r) },
+    queue: function (r) { return queueView(r) },
+    tags: function (r) { return tagsView(r) },
+    settings: function (r) { return settingsView(r) },
+  }
+
+  // ---------------------------------------------------- shared widgets
+
+  /** DownloadProgress.vue: label plus a segmented Y2K progress bar. */
+  function progress(status, pct) {
+    var label, mode = 'value'
+    if (status === 'pending') { label = 'Waiting'; mode = 'idle' }
+    else if (status === 'downloading') {
+      if (pct >= 99) { label = 'Processing…'; mode = 'busy' }
+      else if (pct < 1) { label = 'Starting…'; mode = 'busy' }
+      else label = Math.round(pct) + '%'
+    } else return null
+    var fill = h('div', { class: 'fill' })
+    if (mode === 'value') fill.style.width = pct + '%'
+    return h('div', { class: 'progress ' + mode }, [
+      h('div', {
+        class: 'bar', role: 'progressbar', 'aria-label': label,
+        'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': mode === 'value' ? String(Math.round(pct)) : null,
+      }, fill),
+      h('span', { class: 'label' }, label),
+    ])
+  }
+
+  /** A state panel: icon, message, optional action. Used for empty/loading/error. */
+  function statePanel(kind, text, action) {
+    var ico = { empty: 'info', loading: 'queue', error: 'error' }[kind]
+    return h('div', { class: 'state ' + kind, role: kind === 'error' ? 'alert' : 'status' }, [
+      icon(ico, kind === 'loading' ? 'spin' : null),
+      h('div', { class: 'state-text' }, [
+        h('p', null, text),
+        kind === 'loading' ? h('div', { class: 'progress busy' }, h('div', { class: 'bar' }, h('div', { class: 'fill' }))) : null,
+      ]),
+      action || null,
+    ])
+  }
+
+  function thumbBox(item) {
+    var src = M.thumbnail(item)
+    if (src) return h('div', { class: 'thumb' }, h('img', { src: src, alt: '', loading: 'lazy' }))
+    return h('div', { class: 'thumb none' }, [icon('film'), h('span', null, 'No thumbnail')])
+  }
+
+  // ------------------------------------------------------------- vault
+
+  var VF = {
+    q: '', type: 'all', tags: [], mode: 'any',
+    open: window.matchMedia('(min-width: 768px)').matches,
+  }
+
+  function tagNames(list) { return (list || []).map(function (t) { return t.name }) }
+
+  function vaultEntries() {
+    var list = S.media.map(function (m) { return { kind: 'media', item: m, at: m.created_at } })
+      .concat(S.albums.map(function (a) { return { kind: 'album', album: a, at: a.created_at } }))
+    list.sort(function (a, b) { return b.at.localeCompare(a.at) })
+    if (VF.type !== 'all') {
+      list = list.filter(function (e) { return e.kind === 'album' ? VF.type === 'image' : e.item.type === VF.type })
+    }
+    var q = VF.q.trim().toLowerCase()
+    if (q) {
+      list = list.filter(function (e) {
+        if (e.kind === 'album') return (e.album.title || '').toLowerCase().indexOf(q) >= 0 || e.album.url.toLowerCase().indexOf(q) >= 0
+        return (e.item.title || '').toLowerCase().indexOf(q) >= 0 || e.item.url.toLowerCase().indexOf(q) >= 0 ||
+          tagNames(e.item.tags).some(function (n) { return n.toLowerCase().indexOf(q) >= 0 })
+      })
+    }
+    if (VF.tags.length) {
+      list = list.filter(function (e) {
+        var names = e.kind === 'album'
+          ? e.album.media.reduce(function (acc, m) { return acc.concat(tagNames(m.tags)) }, [])
+          : tagNames(e.item.tags)
+        var has = function (t) { return names.indexOf(t) >= 0 }
+        return VF.mode === 'all' ? VF.tags.every(has) : VF.tags.some(has)
+      })
+    }
+    return list
+  }
+
+  function mediaCard(m) {
+    return h('button', {
+      class: 'card', type: 'button', title: m.title || '(untitled ' + m.type + ')',
+      onclick: function () { go(withParams({ modal: 'media', id: m.id })) },
+    }, [
+      thumbBox(m),
+      h('div', { class: 'card-meta' }, [
+        h('span', { class: 'card-title' + (m.title ? '' : ' untitled') }, m.title || m.type),
+        h('span', { class: 'badge ' + m.type }, m.type),
+      ]),
+    ])
+  }
+
+  function albumCard(a) {
+    var first = a.media[0]
+    return h('div', { class: 'card album', title: a.title || 'Album' }, [
+      h('div', { class: 'stack' }, first ? thumbBox(first) : h('div', { class: 'thumb none' }, icon('folder'))),
+      h('div', { class: 'card-meta' }, [
+        h('span', { class: 'card-title' + (a.title ? '' : ' untitled') }, a.title || 'Album'),
+        h('span', { class: 'card-sub' }, a.media.length + ' items'),
+        h('span', { class: 'badge album' }, 'album'),
+      ]),
+    ])
+  }
+
+  function vaultView(r) {
+    var state = r.q.state
+    var countBadge = h('span', { class: 'count' })
+    var toggle = h('button', {
+      class: 'btn', type: 'button', 'aria-controls': 'vault-filters',
+      onclick: function () { VF.open = !VF.open; refresh() },
+    })
+    var search = h('input', {
+      class: 'field search', type: 'search', placeholder: 'Search…', 'aria-label': 'Search', value: VF.q,
+      oninput: function (e) { VF.q = e.target.value; refresh() },
+    })
+    var panel = h('fieldset', { class: 'groupbox filters', id: 'vault-filters' })
+    var downloads = h('div')
+    var grid = h('div')
+
+    function refresh() {
+      var n = VF.tags.length + (VF.type !== 'all' ? 1 : 0)
+      clear(toggle)
+      append(toggle, [h('span', { class: 'caret', 'aria-hidden': 'true' }, VF.open ? '▲' : '▼'), VF.open ? 'Hide filters' : 'Show filters'])
+      toggle.setAttribute('aria-expanded', VF.open ? 'true' : 'false')
+      if (!VF.open && n) { countBadge.textContent = n; toggle.appendChild(countBadge) }
+
+      clear(panel)
+      panel.hidden = !VF.open
+      panel.appendChild(h('legend', null, 'Filters'))
+      var typeSel = h('select', {
+        class: 'field', 'aria-label': 'Type',
+        onchange: function (e) { VF.type = e.target.value; refresh() },
+      }, [['all', 'All'], ['video', 'Video'], ['image', 'Image']].map(function (o) {
+        var opt = h('option', { value: o[0] }, o[1])
+        if (VF.type === o[0]) opt.selected = true
+        return opt
+      }))
+      panel.appendChild(h('div', { class: 'filter-row' }, [
+        h('label', { class: 'inline' }, ['Type ', typeSel]),
+        h('button', {
+          class: 'btn small', type: 'button', title: 'Toggle between any and all selected tags',
+          onclick: function () { VF.mode = VF.mode === 'any' ? 'all' : 'any'; refresh() },
+        }, 'match: ' + VF.mode),
+      ]))
+      panel.appendChild(h('div', { class: 'chips', role: 'group', 'aria-label': 'Tags' }, S.tags.slice(0, 40).map(function (t) {
+        var on = VF.tags.indexOf(t.name) >= 0
+        return h('button', {
+          class: 'chip' + (on ? ' on' : ''), type: 'button', 'aria-pressed': on ? 'true' : 'false', title: t.name,
+          onclick: function () {
+            if (on) VF.tags = VF.tags.filter(function (x) { return x !== t.name })
+            else VF.tags = VF.tags.concat(t.name)
+            refresh()
+          },
+        }, t.name)
+      })))
+
+      clear(downloads)
+      clear(grid)
+      if (state === 'loading') { grid.appendChild(statePanel('loading', M.states.vault.loading)); return }
+      if (state === 'error') {
+        grid.appendChild(statePanel('error', M.states.vault.error,
+          h('a', { class: 'btn', href: '#/vault' }, 'Retry')))
+        return
+      }
+      var active = activeQueue()
+      if (state !== 'empty' && active.length) {
+        downloads.appendChild(h('div', { class: 'grid' }, active.map(function (q) {
+          return h('div', { class: 'card pending' }, [
+            h('p', { class: 'pending-url', title: q.url }, q.url),
+            progress(q.status, q.progress),
+          ])
+        })))
+      }
+      var entries = state === 'empty' ? [] : vaultEntries()
+      if (!entries.length) {
+        grid.appendChild(statePanel('empty', M.states.vault.empty,
+          h('button', { class: 'btn primary', type: 'button', onclick: openAdd }, 'Add')))
+        return
+      }
+      grid.appendChild(h('div', { class: 'grid' }, entries.map(function (e) {
+        return e.kind === 'media' ? mediaCard(e.item) : albumCard(e.album)
+      })))
+    }
+
+    function openAdd() { go(withParams({ modal: 'add', demo: null })) }
+
+    refresh()
+    return win('C:\\MemeVault\\Vault', { icon: 'vault', menu: ['File', 'Edit', 'View', 'Favorites', 'Help'],
+      status: [
+        h('span', null, state ? 'Demo state: ' + state : S.media.length + ' items, ' + S.albums.length + ' albums'),
+        h('span', null, activeQueue().length + ' downloading'),
+      ],
+    }, [
+      h('div', { class: 'page-head' }, [
+        h('h1', null, px('Vault')),
+        h('div', { class: 'toolbar' }, [
+          search,
+          toggle,
+          h('button', { class: 'btn primary', type: 'button', onclick: openAdd }, 'Add'),
+        ]),
+      ]),
+      panel,
+      downloads,
+      grid,
+    ])
+  }
+
+  // ------------------------------------------------------------- queue
+
+  var SOURCE_COLORS = { discord: '#5865F2', fluxer: '#7c3aed' }
+
+  function queueRow(q, repaint) {
+    var active = q.status === 'pending' || q.status === 'downloading'
+    var canRetry = (q.status === 'failed' || q.status === 'cancelled') && q.source !== 'discord' && q.source !== 'fluxer'
+    return h('li', { class: 'qrow ' + q.status }, [
+      h('div', { class: 'qhead' }, [
+        icon(q.status === 'failed' ? 'error' : q.status === 'completed' ? 'page' : q.status === 'cancelled' ? 'warn' : 'queue', active && q.status === 'downloading' ? 'spin' : null),
+        h('div', { class: 'qinfo' }, [
+          h('p', { class: 'qurl', title: q.url }, [
+            h('span', null, q.url),
+            q.source_label ? h('span', { class: 'src', style: 'background:' + (SOURCE_COLORS[q.source] || '#0d9488') }, q.source_label) : null,
+          ]),
+          h('p', { class: 'qmeta' }, q.downloader + ' · ' + q.status),
+        ]),
+        h('div', { class: 'qactions' }, [
+          active ? h('button', { class: 'btn small', type: 'button', onclick: function () { q.status = 'cancelled'; q.error = 'cancelled'; repaint() } }, 'Cancel') : null,
+          canRetry ? h('button', { class: 'btn small', type: 'button', onclick: function () { q.status = 'pending'; q.progress = 0; q.error = null; repaint() } }, 'Retry') : null,
+          h('button', { class: 'btn small danger', type: 'button', onclick: function () { S.queue = S.queue.filter(function (x) { return x !== q }); repaint() } }, 'Remove'),
+        ]),
+      ]),
+      progress(q.status, q.progress),
+      q.error ? h('p', { class: 'qerror' }, q.error) : null,
+    ])
+  }
+
+  function queueView(r) {
+    var state = r.q.state
+    var body = h('div')
+    var counts = h('span')
+    function repaint() {
+      clear(body)
+      counts.textContent = S.queue.length + ' items, ' + activeQueue().length + ' active'
+      if (state === 'loading') { body.appendChild(statePanel('loading', M.states.queue.loading)); return }
+      if (state === 'error') {
+        body.appendChild(statePanel('error', M.states.queue.error, h('a', { class: 'btn', href: '#/queue' }, 'Retry')))
+        return
+      }
+      if (state === 'empty' || !S.queue.length) { body.appendChild(statePanel('empty', M.states.queue.empty)); return }
+      body.appendChild(h('ul', { class: 'qlist' }, S.queue.map(function (q) { return queueRow(q, repaint) })))
+      renderTaskbar(route())
+    }
+    repaint()
+    return win('Download Manager', {
+      icon: 'queue', menu: ['File', 'Edit', 'View', 'Transfers', 'Help'],
+      status: [counts, h('span', null, state ? 'Demo state: ' + state : 'Live')],
+    }, [
+      h('div', { class: 'page-head' }, [
+        h('h1', null, px('Queue')),
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn primary', type: 'button', onclick: function () { go(withParams({ modal: 'add' })) } }, 'Add URL'),
+      ]),
+      body,
+    ])
+  }
+
+  // -------------------------------------------------------------- tags
+
+  function tagsView() {
+    var body = h('div', { class: 'tag-groups' })
+    var status = h('span')
+    function repaint() {
+      clear(body)
+      var map = {}
+      S.tags.forEach(function (t) {
+        var ns = t.name.indexOf(':') >= 0 ? t.name.split(':')[0] : 'other'
+        ;(map[ns] = map[ns] || []).push(t)
+      })
+      var names = Object.keys(map).sort(function (a, b) { return a.localeCompare(b) })
+      status.textContent = S.tags.length + ' tags in ' + names.length + ' folders'
+      names.forEach(function (ns) {
+        body.appendChild(h('fieldset', { class: 'groupbox tag-group' }, [
+          h('legend', null, [icon('folder'), ' ', ns]),
+          h('ul', { class: 'tag-list' }, map[ns].map(function (t) {
+            return h('li', { class: 'tag-item' + (t.usage_count ? '' : ' unused') }, [
+              icon('tags'),
+              h('span', { class: 'tag-name', title: t.name }, t.name),
+              h('span', { class: 'tag-count', title: t.usage_count + ' items' }, t.usage_count),
+              h('button', {
+                class: 'tb-btn', type: 'button', 'aria-label': 'Delete ' + t.name,
+                onclick: function () {
+                  confirmBox('Delete this tag?', 'Delete', function () { S.tags = S.tags.filter(function (x) { return x !== t }); repaint() })
+                },
+              }, '✕'),
+            ])
+          })),
+        ]))
+      })
+    }
+    repaint()
+    return win('C:\\MemeVault\\Tags', { icon: 'tags', menu: ['File', 'Edit', 'View', 'Help'], status: [status] }, [
+      h('div', { class: 'page-head' }, [
+        h('h1', null, px('Tags')),
+        h('span', { class: 'spacer' }),
+        h('button', {
+          class: 'btn', type: 'button',
+          onclick: function () {
+            confirmBox('Delete every tag that no item uses?', 'Purge unused', function () {
+              S.tags = S.tags.filter(function (t) { return t.usage_count > 0 }); repaint()
+            })
+          },
+        }, 'Purge unused'),
+      ]),
+      body,
+    ])
+  }
+
+  // ---------------------------------------------------------- settings
+
+  var TABS = [
+    ['general', 'General'], ['binaries', 'Binaries'], ['cookies', 'Cookies'], ['sharing', 'Sharing'],
+    ['api', 'API'], ['discord', 'Discord'], ['fluxer', 'Fluxer'],
+  ]
+
+  function isEnv(key) { return (S.settings._overridden_by_env || []).indexOf(key) >= 0 }
+
+  function textField(key, label, opts) {
+    opts = opts || {}
+    return h('label', { class: 'stack' + (opts.class ? ' ' + opts.class : '') }, [
+      h('span', { title: isEnv(key) ? 'Set by an environment variable' : null }, label + (isEnv(key) ? ' (env)' : '')),
+      h('input', {
+        class: 'field', type: opts.type || 'text', value: S.settings[key], placeholder: opts.placeholder,
+        disabled: isEnv(key), oninput: function (e) { S.settings[key] = e.target.value },
+      }),
+    ])
+  }
+
+  /** Checkbox over a string setting; on/off are the strings the backend stores. */
+  function checkField(key, label, on, off, checkedWhen) {
+    var checked = checkedWhen ? checkedWhen(S.settings[key]) : S.settings[key] === on
+    return h('label', { class: 'check' }, [
+      h('input', { type: 'checkbox', checked: checked, onchange: function (e) { S.settings[key] = e.target.checked ? on : off } }),
+      label,
+    ])
+  }
+
+  function saveMessage(r) {
+    var box = h('div', { class: 'save-msg', 'aria-live': 'polite' })
+    function show(kind) {
+      clear(box)
+      if (kind === 'saved') box.appendChild(h('p', { class: 'ok' }, [icon('info'), 'Saved']))
+      if (kind === 'error') box.appendChild(h('p', { class: 'bad' }, [icon('error'), 'Save failed']))
+    }
+    show(r.q.msg)
+    return { el: box, show: show }
+  }
+
+  function settingsForm(r, fields, extra) {
+    var msg = saveMessage(r)
+    return h('form', {
+      class: 'settings-form',
+      onsubmit: function (e) { e.preventDefault(); msg.show('saved') },
+    }, [fields, extra || null, h('div', { class: 'actions start' }, [h('button', { class: 'btn primary', type: 'submit' }, 'Save'), msg.el])])
+  }
+
+  var SETTINGS_TABS = {
+    general: function (r) {
+      return settingsForm(r, [
+        textField('download_path', 'Download path'),
+        textField('ytdlp_extra_args', 'yt-dlp extra args'),
+        textField('gallerydl_extra_args', 'gallery-dl extra args'),
+      ])
+    },
+
+    binaries: function (r) {
+      var list = h('div', { class: 'bin-list' })
+      var busy = ''
+      function paint() {
+        clear(list)
+        Object.keys(M.binaries).forEach(function (k) {
+          var b = M.binaries[k]
+          list.appendChild(h('div', { class: 'bin' }, [
+            icon(b.exists ? 'page' : 'warn'),
+            h('div', { class: 'bin-info' }, [
+              h('p', { class: 'bin-name' }, b.name),
+              h('p', { class: 'bin-path', title: b.path }, b.path),
+              h('p', { class: b.exists ? 'ok' : 'bad' }, b.exists ? (b.version || 'installed') : 'missing'),
+            ]),
+            h('button', {
+              class: 'btn small', type: 'button', disabled: busy === b.name,
+              onclick: function () {
+                busy = b.name; paint()
+                setTimeout(function () { b.exists = true; b.version = b.version || '2026.11.01'; busy = ''; paint() }, 900)
+              },
+            }, busy === b.name ? '…' : 'Download / update'),
+          ]))
+        })
+      }
+      paint()
+      var msg = saveMessage(r)
+      return h('div', { class: 'settings-form' }, [
+        h('form', {
+          class: 'settings-form', onsubmit: function (e) { e.preventDefault(); msg.show('saved') },
+        }, [
+          textField('ytdlp_bin', 'yt-dlp path', { placeholder: 'auto-managed' }),
+          textField('gallerydl_bin', 'gallery-dl path', { placeholder: 'auto-managed' }),
+          textField('ffmpeg_bin', 'ffmpeg path', { placeholder: 'auto-managed' }),
+          h('div', { class: 'actions start' }, [h('button', { class: 'btn primary', type: 'submit' }, 'Save paths'), msg.el]),
+        ]),
+        list,
+      ])
+    },
+
+    cookies: function () {
+      var wrap = h('div', { class: 'settings-form' })
+      function paint() {
+        clear(wrap)
+        ;['ytdlp', 'gallerydl'].forEach(function (tool) {
+          var c = S.cookies[tool]
+          var input = h('input', {
+            type: 'file', accept: '.txt', class: 'sr-only', id: 'cookie-' + tool,
+            onchange: function (e) {
+              var f = e.target.files && e.target.files[0]
+              if (!f) return
+              S.cookies[tool] = { exists: true, size: f.size, modifiedAt: new Date().toISOString() }
+              paint()
+            },
+          })
+          wrap.appendChild(h('fieldset', { class: 'groupbox' }, [
+            h('legend', null, tool + ' cookies'),
+            h('p', { class: c.exists ? '' : 'muted' }, c.exists ? c.size + ' bytes · ' + fmtDate(c.modifiedAt) : 'Not uploaded'),
+            h('div', { class: 'actions start' }, [
+              input,
+              h('label', { class: 'btn', for: 'cookie-' + tool }, 'Upload cookies.txt…'),
+              h('button', {
+                class: 'btn danger', type: 'button', disabled: !c.exists,
+                onclick: function () { S.cookies[tool] = { exists: false, size: null, modifiedAt: null }; paint() },
+              }, 'Delete'),
+            ]),
+          ]))
+        })
+      }
+      paint()
+      return wrap
+    },
+
+    sharing: function (r) {
+      var sel = h('select', { class: 'field', onchange: function (e) { S.settings.random_mode = e.target.value } },
+        [['flag', 'Flagged items'], ['shared', 'Items with share links']].map(function (o) {
+          var opt = h('option', { value: o[0] }, o[1])
+          if (S.settings.random_mode === o[0]) opt.selected = true
+          return opt
+        }))
+      return settingsForm(r, [
+        textField('share_default_expiry_days', 'Default expiry (days, empty = never)'),
+        checkField('share_default_allow_download', 'Allow download by default', '1', '0', function (v) { return v !== '0' }),
+        textField('share_base_url', 'Share base URL (OG embeds)', { placeholder: 'https://memes.example.com' }),
+        h('label', { class: 'stack' }, [h('span', null, 'Random mode'), sel]),
+      ])
+    },
+
+    api: function (r) {
+      var created = r.q.demo === 'newkey' ? M.newApiKey : null
+      var wrap = h('div', { class: 'settings-form' })
+      var name = h('input', { class: 'field', required: true, placeholder: 'Key name (e.g. Extra tool)', 'aria-label': 'Key name' })
+      var perm = h('select', { class: 'field perm', 'aria-label': 'Permission' }, [h('option', { value: 'read' }, 'read'), h('option', { value: 'read_write' }, 'read_write')])
+      var reveal = h('div')
+      var list = h('div', { class: 'key-list' })
+      function paint() {
+        clear(reveal)
+        if (created && created.key) {
+          reveal.appendChild(h('div', { class: 'reveal', role: 'status' }, [
+            icon('warn'),
+            h('p', null, ['New key (copy now): ', h('code', null, created.key)]),
+          ]))
+        }
+        clear(list)
+        S.apiKeys.forEach(function (k) {
+          list.appendChild(h('div', { class: 'key' }, [
+            h('div', { class: 'key-info' }, [
+              h('p', { class: 'key-name' }, k.name),
+              h('p', { class: 'muted' }, k.permission + ' · created ' + fmtDate(k.created_at) + ' · last used ' + (k.last_used_at ? fmtDate(k.last_used_at) : 'never')),
+            ]),
+            h('button', {
+              class: 'btn small danger', type: 'button',
+              onclick: function () { S.apiKeys = S.apiKeys.filter(function (x) { return x !== k }); paint() },
+            }, 'Revoke'),
+          ]))
+        })
+      }
+      paint()
+      append(wrap, [
+        h('p', { class: 'help' }, [
+          'The key name is shown as a badge on queue items submitted via ', h('code', null, 'POST /api/v1/submit'),
+          '. Pass ', h('code', null, 'includeInRandom: true'), ' to add the item to random selection when it finishes.',
+        ]),
+        h('form', {
+          class: 'key-form',
+          onsubmit: function (e) {
+            e.preventDefault()
+            created = {
+              id: 'key-' + Date.now(), name: name.value, permission: perm.value,
+              created_at: new Date().toISOString(), last_used_at: null, key: M.newApiKey.key,
+            }
+            S.apiKeys.push(created)
+            name.value = ''
+            paint()
+          },
+        }, [name, perm, h('button', { class: 'btn primary', type: 'submit' }, 'Create key')]),
+        reveal,
+        list,
+      ])
+      return wrap
+    },
+
+    discord: function (r) {
+      return settingsForm(r, [
+        checkField('discord_enabled', 'Enable Discord bot', 'true', 'false'),
+        textField('discord_bot_token', 'Bot token', { type: 'password' }),
+        textField('discord_client_id', 'Client ID'),
+        textField('discord_command_name', 'Command name', { placeholder: 'get' }),
+        checkField('discord_post_as_user', 'Post downloads as the command sender', 'true', 'false'),
+      ], h('p', { class: 'help' }, [
+        'Downloads are posted to Discord only — they are not saved to the vault. They still appear in the Queue ',
+        '(marked Discord) so you can track progress and cancel. When posting as the sender, the bot needs ',
+        h('strong', null, 'Manage Webhooks'),
+        "; messages use that person's name and avatar but are still webhook messages (not real user messages).",
+      ]))
+    },
+
+    fluxer: function (r) {
+      var cmd = (S.settings.fluxer_command_prefix || '!') + (S.settings.fluxer_command_name || 'get')
+      return settingsForm(r, [
+        checkField('fluxer_enabled', 'Enable Fluxer bot', 'true', 'false'),
+        textField('fluxer_bot_token', 'Bot token', { type: 'password', placeholder: '<application_id>.<secret>' }),
+        textField('fluxer_instance_url', 'Instance URL', { placeholder: 'https://fluxer.app' }),
+        h('div', { class: 'pair' }, [
+          textField('fluxer_command_prefix', 'Command prefix', { placeholder: '!' }),
+          textField('fluxer_command_name', 'Command name', { placeholder: 'get' }),
+        ]),
+        checkField('fluxer_post_as_user', 'Post downloads as the command sender', 'true', 'false'),
+        checkField('fluxer_delete_command_message', "Delete the sender's command message", 'true', 'false', function (v) { return v !== 'false' }),
+      ], h('p', { class: 'help' }, [
+        'Fluxer bots do not have slash commands, so users invoke the bot with a message like ',
+        h('code', null, cmd + ' <url>'), '. Add ', h('code', null, 'image'), ' for image sites (',
+        h('code', null, cmd + ' image <url>'), ') and any trailing text as a caption. ',
+        'Downloads are posted to Fluxer only — they are not saved to the vault. They still appear in the Queue ',
+        '(marked Fluxer) so you can track progress and cancel. When posting as the sender, the bot needs ',
+        h('strong', null, 'Manage Webhooks'),
+        "; messages use that person's name and avatar but are still webhook messages (not real user messages). ",
+        "Deleting the sender's command message requires the bot to hold ", h('strong', null, 'Manage Messages'),
+        '; it is skipped in DMs.',
+      ]))
+    },
+  }
+
+  function settingsView(r) {
+    var tab = SETTINGS_TABS[r.path[1]] ? r.path[1] : 'general'
+    var label = TABS.filter(function (t) { return t[0] === tab })[0][1]
+    return win('Settings', { icon: 'settings', label: 'Settings', status: [h('span', null, label), h('span', null, r.q.msg ? 'Demo message: ' + r.q.msg : 'MemeVault v' + M.version)] }, [
+      h('div', { class: 'page-head' }, [h('h1', null, px('Settings'))]),
+      h('nav', { class: 'tabs', 'aria-label': 'Settings sections' }, TABS.map(function (t) {
+        return h('a', {
+          href: '#/settings/' + t[0], class: 'tab' + (t[0] === tab ? ' active' : ''),
+          'aria-current': t[0] === tab ? 'page' : null,
+        }, t[1])
+      })),
+      h('div', { class: 'sheet' }, SETTINGS_TABS[tab](r)),
+    ])
+  }
+
+  // ------------------------------------------------------------ dialogs
+
+  function closeModal() { go(withParams({ modal: null, id: null, demo: null })) }
+
+  /** An OS-style dialog over a dimmed desktop. */
+  function dialog(title, opts, body) {
+    var layer = h('div', { class: 'layer' }, [
+      h('div', { class: 'backdrop', onclick: opts.onClose }),
+      h('div', { class: 'dialog-wrap' + (opts.wide ? ' wide' : '') }, win(title, {
+        onClose: opts.onClose, icon: opts.icon, class: 'dialog', label: opts.label || title, status: opts.status,
+      }, body)),
+    ])
+    layer.setAttribute('role', 'dialog')
+    layer.setAttribute('aria-modal', 'true')
+    layer.setAttribute('aria-label', opts.label || title)
+    return layer
+  }
+
+  /** Stand-in for window.confirm(), styled as a system message box. */
+  function confirmBox(message, okLabel, onOk) {
+    var root = document.getElementById('modal-root')
+    var box
+    function close() { root.removeChild(box) }
+    box = dialog('Confirm', { onClose: close, icon: 'warn' }, [
+      h('div', { class: 'msgbox' }, [icon('warn'), h('p', null, message)]),
+      h('div', { class: 'actions' }, [
+        h('button', { class: 'btn danger', type: 'button', onclick: function () { close(); onOk() } }, okLabel),
+        h('button', { class: 'btn', type: 'button', onclick: close }, 'Cancel'),
+      ]),
+    ])
+    box.classList.add('top')
+    root.appendChild(box)
+    box.querySelector('.btn').focus()
+  }
+
+  // AddUrlModal.vue
+  var DEMO_FILES = [
+    { name: 'IMG_4021.png', state: 'pending' },
+    { name: 'reaction-final-FINAL(2).mp4', state: 'pending' },
+    { name: 'cat.jpg', state: 'done' },
+    { name: 'notes.pdf', state: 'error', error: 'Unsupported file type: application/pdf' },
+  ]
+
+  function addModal(r) {
+    var files = r.q.demo === 'files' ? clone(DEMO_FILES) : []
+    var busy = false
+    var drag = r.q.demo === 'drag'
+    var url = h('input', { class: 'field', type: 'url', required: true, placeholder: 'https://...', 'aria-label': 'URL' })
+    var downloader = 'ytdlp'
+    var zone = h('div', {
+      class: 'dropzone', role: 'button', tabindex: '0', 'aria-label': 'Drop files here or browse',
+      onclick: browse, onkeydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); browse() } },
+      ondragover: function (e) { e.preventDefault(); setDrag(true) },
+      ondragleave: function () { setDrag(false) },
+      ondrop: function (e) {
+        e.preventDefault(); setDrag(false)
+        var dropped = e.dataTransfer && e.dataTransfer.files ? Array.prototype.slice.call(e.dataTransfer.files) : []
+        addFiles(dropped.map(function (f) { return f.name }))
+      },
+    }, [
+      icon('page'),
+      h('p', null, ['Drop files here or ', h('span', { class: 'link' }, 'browse')]),
+      h('p', { class: 'hint' }, 'Videos and images'),
+    ])
+    var list = h('ul', { class: 'files' })
+    var uploadBtn = h('div')
+
+    function setDrag(on) { drag = on; zone.classList.toggle('over', on) }
+    function browse() { addFiles(['clip_0042.mp4', 'meme-template.png']) }
+    function addFiles(names) {
+      names.forEach(function (n) {
+        if (!files.some(function (f) { return f.name === n })) files.push({ name: n, state: 'pending' })
+      })
+      paint()
+    }
+    function paint() {
+      zone.classList.toggle('over', drag)
+      clear(list)
+      list.hidden = !files.length
+      files.forEach(function (f) {
+        list.appendChild(h('li', { class: 'file ' + f.state }, [
+          h('span', { class: 'file-state', 'aria-label': f.state }, f.state === 'pending' ? '○' : f.state === 'done' ? '✓' : '✕'),
+          h('span', { class: 'file-name', title: f.name }, f.name),
+          f.state === 'error' && f.error ? h('span', { class: 'file-error' }, f.error) : null,
+          f.state === 'pending' && !busy ? h('button', {
+            class: 'tb-btn', type: 'button', 'aria-label': 'Remove',
+            onclick: function () { files = files.filter(function (x) { return x !== f }); paint() },
+          }, '×') : null,
+        ]))
+      })
+      var pending = files.filter(function (f) { return f.state === 'pending' }).length
+      var allDone = files.length > 0 && files.every(function (f) { return f.state !== 'pending' })
+      clear(uploadBtn)
+      uploadBtn.appendChild(allDone
+        ? h('button', { class: 'btn primary', type: 'button', onclick: closeModal }, 'Done')
+        : h('button', {
+          class: 'btn primary', type: 'button', disabled: pending === 0 || busy,
+          onclick: function () {
+            busy = true; paint()
+            setTimeout(function () {
+              files.forEach(function (f) { if (f.state === 'pending') f.state = 'done' })
+              busy = false; paint()
+            }, 900)
+          },
+        }, busy ? 'Uploading…' : pending > 0 ? 'Upload ' + pending + ' file' + (pending !== 1 ? 's' : '') : 'Upload'))
+    }
+    paint()
+
+    var form = h('form', {
+      class: 'stack-form',
+      onsubmit: function (e) {
+        e.preventDefault()
+        S.queue.unshift({
+          id: 'local-' + Date.now(), url: url.value, downloader: downloader, status: 'pending', progress: 0,
+          error: null, created_at: new Date().toISOString(), completed_at: null, source: 'web', source_label: null, include_in_random: 1,
+        })
+        closeModal()
+      },
+    }, [
+      url,
+      h('div', { class: 'radios', role: 'radiogroup', 'aria-label': 'Downloader' }, [['ytdlp', 'yt-dlp (video)'], ['gallery-dl', 'gallery-dl']].map(function (o) {
+        return h('label', { class: 'check' }, [
+          h('input', { type: 'radio', name: 'downloader', value: o[0], checked: o[0] === downloader, onchange: function () { downloader = o[0] } }),
+          o[1],
+        ])
+      })),
+      h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'submit' }, 'Queue download')),
+    ])
+
+    return dialog('Add to vault', { onClose: closeModal, icon: 'star' }, [
+      h('label', { class: 'check' }, [h('input', { type: 'checkbox', checked: true }), 'Include in random']),
+      h('fieldset', { class: 'groupbox' }, [h('legend', null, 'Download a URL'), form]),
+      h('fieldset', { class: 'groupbox' }, [h('legend', null, 'Or upload files'), zone, list, h('div', { class: 'actions' }, uploadBtn)]),
+    ])
+  }
+
+  // MediaModal.vue
+  function mediaModal(r) {
+    var item = S.media.filter(function (m) { return m.id === r.q.id })[0]
+    if (!item) {
+      return dialog('Error', { onClose: closeModal, icon: 'error' }, [
+        h('div', { class: 'msgbox' }, [icon('error'), h('p', null, 'This item is no longer in the vault.')]),
+        h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', onclick: closeModal }, 'OK')),
+      ])
+    }
+    var tags = item.tags.slice()
+    var status = h('span', null, item.type + ' · ' + item.width + '×' + item.height)
+    var thumb = M.thumbnail(item)
+
+    var player = D.player(item, thumb)
+
+    var chipBox = h('div', { class: 'chips' })
+    function paintTags() {
+      clear(chipBox)
+      if (!tags.length) chipBox.appendChild(h('span', { class: 'muted' }, 'No tags'))
+      tags.forEach(function (t) { chipBox.appendChild(h('span', { class: 'chip static', title: t.name }, t.name)) })
+    }
+    paintTags()
+    var tagInput = h('input', { class: 'field', placeholder: 'Add tag', 'aria-label': 'Add tag' })
+
+    var shareBox = h('div', { class: 'shares' })
+    var copied = null
+    function paintShares() {
+      clear(shareBox)
+      var mine = S.shares.filter(function (s) { return s.media_id === item.id })
+      if (!mine.length) shareBox.appendChild(h('p', { class: 'muted' }, 'No share links yet.'))
+      mine.forEach(function (s) {
+        var link = M.shareUrl(s.token)
+        shareBox.appendChild(h('div', { class: 'share-row' }, [
+          h('a', { href: 'share.html?token=' + s.token, target: '_blank', class: 'share-url', title: link }, link),
+          h('div', { class: 'share-actions' }, [
+            h('button', {
+              class: 'btn small', type: 'button',
+              onclick: function () {
+                try { navigator.clipboard.writeText(link).catch(function () {}) } catch (e) { /* no clipboard on file:// */ }
+                copied = s.token; paintShares()
+                setTimeout(function () { if (copied === s.token) { copied = null; paintShares() } }, 1500)
+              },
+            }, copied === s.token ? 'Copied' : 'Copy'),
+            h('button', {
+              class: 'btn small danger', type: 'button',
+              onclick: function () { S.shares = S.shares.filter(function (x) { return x !== s }); paintShares() },
+            }, 'Revoke'),
+          ]),
+        ]))
+      })
+    }
+    paintShares()
+
+    return dialog('Media Player', {
+      onClose: closeModal, icon: item.type === 'video' ? 'film' : 'picture', wide: true,
+      label: item.title || 'Untitled', status: [status, h('span', null, fmtDate(item.created_at))],
+    }, h('div', { class: 'media-layout' }, [
+      player,
+      h('div', { class: 'media-side' }, [
+        h('div', { class: 'media-head' }, [
+          h('h2', { class: item.title ? '' : 'untitled' }, item.title || 'Untitled'),
+          h('p', { class: 'source', title: item.url }, item.url),
+        ]),
+        h('fieldset', { class: 'groupbox' }, [
+          h('legend', null, 'Tags'),
+          chipBox,
+          h('form', {
+            class: 'inline-form',
+            onsubmit: function (e) {
+              e.preventDefault()
+              var name = tagInput.value.trim()
+              if (!name) return
+              if (!tags.some(function (t) { return t.name === name })) tags.push({ id: 'new-' + name, name: name })
+              tagInput.value = ''; paintTags()
+            },
+          }, [tagInput, h('button', { class: 'btn', type: 'submit' }, 'Add')]),
+          h('div', { class: 'actions' }, h('button', {
+            class: 'btn', type: 'button',
+            onclick: function () { item.tags = tags.slice(); status.textContent = 'Tags saved'; status.className = 'ok' },
+          }, 'Save tags')),
+        ]),
+        h('label', { class: 'check' }, [
+          h('input', {
+            type: 'checkbox', checked: item.include_in_random === 1,
+            onchange: function (e) { item.include_in_random = e.target.checked ? 1 : 0 },
+          }),
+          'Include in random',
+        ]),
+        h('fieldset', { class: 'groupbox' }, [
+          h('legend', null, 'Share links'),
+          h('div', { class: 'actions start' }, h('button', {
+            class: 'btn', type: 'button',
+            onclick: function () {
+              S.shares.push({ token: Math.random().toString(36).slice(2, 14), media_id: item.id, allow_download: 1, expires_at: null, created_at: new Date().toISOString() })
+              paintShares()
+            },
+          }, 'Create')),
+          shareBox,
+        ]),
+        h('div', { class: 'actions footer' }, h('button', {
+          class: 'btn danger', type: 'button',
+          onclick: function () {
+            confirmBox('Delete this item? This removes the file from disk.', 'Delete', function () {
+              S.media = S.media.filter(function (m) { return m !== item })
+              closeModal()
+            })
+          },
+        }, 'Delete')),
+      ]),
+    ]))
+  }
+
+  function renderModal(r) {
+    var root = document.getElementById('modal-root')
+    clear(root)
+    document.body.classList.remove('modal-open')
+    var m = r.q.modal === 'add' ? addModal(r) : r.q.modal === 'media' ? mediaModal(r) : null
+    if (!m) return
+    root.appendChild(m)
+    document.body.classList.add('modal-open')
+    var f = m.querySelector('input:not([type=checkbox]), .tb-btn')
+    if (f) f.focus({ preventScroll: true })
+  }
+
+  // ------------------------------------------------------------- header
+
+  function themeSwitch() {
+    var wrap = h('div', { class: 'theme-switch' })
+    function paint() {
+      clear(wrap)
+      var dark = Theme.theme === 'dark'
+      wrap.appendChild(h('button', {
+        class: 'btn small mode', type: 'button',
+        title: dark ? 'Light mode' : 'Dark mode', 'aria-label': dark ? 'Light mode' : 'Dark mode',
+        onclick: function () { Theme.setTheme(dark ? 'light' : 'dark'); paint() },
+      }, dark ? '☀' : '☾'))
+      var colors = { blue: '#2f6bff', purple: '#9b4dff', green: '#13a85b', orange: '#ff7a00', rose: '#ff2e7e' }
+      Theme.accents.forEach(function (a) {
+        wrap.appendChild(h('button', {
+          class: 'swatch', type: 'button', title: a, 'aria-label': a + ' accent',
+          'aria-pressed': Theme.accent === a ? 'true' : 'false',
+          style: 'background:' + colors[a],
+          onclick: function () { Theme.setAccent(a); paint() },
+        }))
+      })
+    }
+    paint()
+    return wrap
+  }
+
+  function isActive(href, r) {
+    return href.split('/')[1] === r.path[0]
+  }
+
+  function navLinks(r, onClick) {
+    return NAV.map(function (l) {
+      return h('a', {
+        href: l.href, class: isActive(l.href, r) ? 'active' : null,
+        'aria-current': isActive(l.href, r) ? 'page' : null, onclick: onClick,
+      }, [icon(l.icon), l.label])
+    })
+  }
+
+  var drawerOpen = false
+
+  function renderHeader(r) {
+    var header = document.getElementById('header')
+    clear(header)
+    header.appendChild(h('div', { class: 'inner' }, [
+      h('a', { class: 'brand', href: '#/vault', 'aria-label': 'MVP home' }, [
+        icon('safe', 'logo'),
+        h('span', { class: 'words' }, [
+          h('span', { class: 'wordmark' }, px('MVP')),
+          M.version ? h('span', { class: 'ver' }, 'v' + M.version) : null,
+        ]),
+      ]),
+      h('nav', { class: 'nav', 'aria-label': 'Main' }, navLinks(r)),
+      h('div', { class: 'header-tools' }, [
+        themeSwitch(),
+        h('a', { class: 'signout', href: '#/vault', title: 'Only shown when the OIDC gate is on' }, 'Sign out'),
+        h('button', {
+          class: 'btn icon menu-btn', type: 'button', 'aria-label': 'Menu',
+          'aria-expanded': drawerOpen ? 'true' : 'false', 'aria-controls': 'drawer',
+          onclick: function () { drawerOpen = !drawerOpen; renderDrawer(route()) },
+        }, '☰'),
+      ]),
+    ]))
+  }
+
+  function renderDrawer(r) {
+    var d = document.getElementById('drawer')
+    clear(d)
+    d.className = 'drawer' + (drawerOpen ? ' open' : '')
+    var btn = document.querySelector('.menu-btn')
+    if (btn) btn.setAttribute('aria-expanded', drawerOpen ? 'true' : 'false')
+    if (!drawerOpen) return
+    var close = function () { drawerOpen = false; renderDrawer(route()) }
+    d.appendChild(h('div', { class: 'backdrop', onclick: close }))
+    d.appendChild(win('Go to…', { onClose: close, icon: 'star' }, [
+      h('nav', { 'aria-label': 'Main' }, navLinks(r, close)),
+    ]))
+  }
+
+  // ------------------------------------------------- taskbar + start menu
+
+  var START = [
+    { group: 'Screens' },
+    { href: '#/vault', label: 'Vault', icon: 'vault' },
+    { href: '#/queue', label: 'Queue', icon: 'queue' },
+    { href: '#/tags', label: 'Tags', icon: 'tags' },
+    { href: '#/settings/general', label: 'Settings › General', icon: 'settings' },
+    { href: '#/settings/binaries', label: 'Settings › Binaries', icon: 'settings' },
+    { href: '#/settings/cookies', label: 'Settings › Cookies', icon: 'settings' },
+    { href: '#/settings/sharing', label: 'Settings › Sharing', icon: 'settings' },
+    { href: '#/settings/api', label: 'Settings › API', icon: 'settings' },
+    { href: '#/settings/api?demo=newkey', label: 'Settings › API — new key revealed', icon: 'settings' },
+    { href: '#/settings/discord', label: 'Settings › Discord', icon: 'settings' },
+    { href: '#/settings/fluxer', label: 'Settings › Fluxer', icon: 'settings' },
+    { group: 'Dialogs' },
+    { href: '#/vault?modal=add', label: 'Add to vault', icon: 'star' },
+    { href: '#/vault?modal=add&demo=drag', label: 'Add to vault — dragging over', icon: 'star' },
+    { href: '#/vault?modal=add&demo=files', label: 'Add to vault — files selected', icon: 'star' },
+    { href: '#/vault?modal=media&id=' + M.media[0].id, label: 'Media — video with poster', icon: 'film' },
+    { href: '#/vault?modal=media&id=' + M.media[1].id, label: 'Media — image', icon: 'picture' },
+    { href: '#/vault?modal=media&id=' + M.media[6].id, label: 'Media — video, no thumbnail', icon: 'film' },
+    { group: 'States' },
+    { href: '#/vault?state=empty', label: 'Vault — empty', icon: 'info' },
+    { href: '#/vault?state=loading', label: 'Vault — loading', icon: 'queue' },
+    { href: '#/vault?state=error', label: 'Vault — error', icon: 'error' },
+    { href: '#/queue?state=empty', label: 'Queue — empty', icon: 'info' },
+    { href: '#/queue?state=loading', label: 'Queue — loading', icon: 'queue' },
+    { href: '#/queue?state=error', label: 'Queue — error', icon: 'error' },
+    { href: '#/settings/general?msg=saved', label: 'Settings — saved', icon: 'info' },
+    { href: '#/settings/general?msg=error', label: 'Settings — save error', icon: 'error' },
+    { group: 'Public share page' },
+    { href: 'share.html?token=k3Jd9xQ2mPz7', label: 'Share — video, download allowed', icon: 'globe' },
+    { href: 'share.html?token=Hx2cVn6pEa0S', label: 'Share — image, download allowed', icon: 'globe' },
+    { href: 'share.html?token=Wq8LrT1vYb4N', label: 'Share — no download', icon: 'globe' },
+    { href: 'share.html?token=Al5bum7Tk9Zr', label: 'Share — album', icon: 'globe' },
+    { sep: true },
+    { href: '../index.html', label: 'All style prototypes', icon: 'folder' },
+  ]
+
+  var startOpen = false
+
+  function setStart(open) {
+    startOpen = open
+    var menu = document.getElementById('start-menu')
+    menu.hidden = !open
+    var btn = document.querySelector('.start-btn')
+    if (btn) {
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false')
+      btn.setAttribute('aria-pressed', open ? 'true' : 'false')
+    }
+    if (open) {
+      var first = menu.querySelector('a')
+      if (first) first.focus()
+    }
+  }
+
+  function renderStartMenu() {
+    var menu = document.getElementById('start-menu')
+    clear(menu)
+    menu.appendChild(h('div', { class: 'rail', 'aria-hidden': 'true' }, px('MemeVault 2000')))
+    menu.appendChild(h('div', { class: 'items' }, START.map(function (s) {
+      if (s.sep) return h('hr')
+      if (s.group) return h('div', { class: 'group' }, s.group)
+      return h('a', { href: s.href, onclick: function () { setStart(false) } }, [icon(s.icon), s.label])
+    })))
+  }
+
+  function renderTaskbar(r) {
+    var bar = document.getElementById('taskbar')
+    clear(bar)
+    var current = NAV.filter(function (l) { return isActive(l.href, r) })[0]
+    bar.appendChild(h('button', {
+      class: 'btn start-btn', type: 'button', 'aria-haspopup': 'true', 'aria-controls': 'start-menu',
+      'aria-expanded': startOpen ? 'true' : 'false', 'aria-pressed': startOpen ? 'true' : 'false',
+      title: 'Every screen in this prototype',
+      onclick: function (e) { e.stopPropagation(); setStart(!startOpen) },
+    }, [icon('star'), px('Start')]))
+    if (current) {
+      bar.appendChild(h('a', { class: 'btn task', href: current.href, 'aria-pressed': 'true' }, [icon(current.icon), h('span', null, current.label)]))
+    }
+    bar.appendChild(h('div', { class: 'tray' }, [
+      h('span', { title: 'Active downloads' }, '⇩ ' + activeQueue().length),
+      h('span', { id: 'clock' }),
+    ]))
+    tick()
+  }
+
+  function tick() {
+    var c = document.getElementById('clock')
+    if (!c) return
+    var d = new Date()
+    var hh = d.getHours(), mm = d.getMinutes()
+    c.textContent = ((hh + 11) % 12 + 1) + ':' + (mm < 10 ? '0' : '') + mm + ' ' + (hh < 12 ? 'AM' : 'PM')
+  }
+  setInterval(tick, 15000)
+
+  function activeQueue() {
+    return S.queue.filter(function (q) { return q.status === 'pending' || q.status === 'downloading' })
+  }
+
+  document.addEventListener('click', function (e) {
+    if (!startOpen) return
+    var menu = document.getElementById('start-menu')
+    if (!menu.contains(e.target)) setStart(false)
+  })
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return
+    if (startOpen) { setStart(false); return }
+    if (drawerOpen) { drawerOpen = false; renderDrawer(route()); return }
+    var top = document.querySelector('#modal-root .layer.top')
+    if (top) { top.parentNode.removeChild(top); return }
+    if (route().q.modal) closeModal()
+  })
+
+  // ------------------------------------------------------------- render
+
+  function render() {
+    var r = route()
+    drawerOpen = false
+    renderHeader(r)
+    renderDrawer(r)
+    renderTaskbar(r)
+    var main = document.getElementById('main')
+    clear(main)
+    main.appendChild(VIEWS[r.path[0]](r))
+    renderModal(r)
+    // Only jump to the top on a new screen, not when a dialog opens or closes.
+    var path = r.path.join('/')
+    if (path !== lastPath) window.scrollTo(0, 0)
+    lastPath = path
+  }
+  var lastPath = null
+
+  window.addEventListener('hashchange', render)
+  renderStartMenu()
+  render()
+
+})()

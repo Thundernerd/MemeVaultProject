@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>Shared · Minimal editorial</title>
+  <!-- Throwaway prototype: mirrors templates/share.html (public, no app nav). -->
+  <link rel="stylesheet" href="editorial.css" />
+  <script src="../shared/mock-data.js"></script>
+  <script src="app.js"></script>
+</head>
+<body>
+  <div class="share-page">
+    <header class="share-top">
+      <div class="wrap">
+        <span class="brand"><span class="brand-mark">MVP<span>.</span></span></span>
+        <span class="eyebrow" id="kind"></span>
+      </div>
+    </header>
+    <main class="share-main" id="main"></main>
+    <footer class="share-foot">Shared via <em>MemeVault</em></footer>
+  </div>
+
+  <script>
+    (function () {
+      var M = window.MOCK, ED = window.ED, el = ED.el
+      var main = document.getElementById('main')
+      var kind = document.getElementById('kind')
+
+      function item(share) {
+        var m = ED.findMedia(share.media_id)
+        var thumb = M.thumbnail(m)
+        var player = m.type === 'video'
+          ? el('video', { controls: true, preload: 'none', poster: thumb || null, style: { '--ar': m.width + ' / ' + m.height } })
+          : el('img', { src: thumb, alt: m.title || '' })
+        kind.textContent = m.type
+        document.title = (m.title || 'Shared ' + m.type) + ' · MemeVault'
+        return [
+          el('div', { class: 'player' }, player),
+          el('div', { class: 'share-caption' },
+            el('h1', { class: m.title ? '' : 'is-untitled' }, m.title || 'Untitled'),
+            share.allow_download ? el('a', { class: 'btn', href: '#', download: '', onclick: function (e) { e.preventDefault() } }, 'Download') : null),
+          share.expires_at ? el('p', { class: 'muted', style: { 'font-size': '0.75rem', 'padding-top': '12px' } }, 'This link expires ' + ED.fmtDate(share.expires_at) + '.') : null,
+        ]
+      }
+
+      function album(share) {
+        var a = M.albums.filter(function (x) { return x.id === share.album_id })[0]
+        kind.textContent = 'album · ' + a.media.length + ' items'
+        document.title = (a.title || 'Album') + ' · MemeVault'
+        return [
+          el('div', { class: 'share-caption', style: { 'padding-top': 0 } },
+            // templates/share.html shows only the grid for an album (no title, no
+            // download); the heading is this style's proposal.
+            el('h1', { class: a.title ? '' : 'is-untitled' }, a.title || 'Album')),
+          el('div', { class: 'share-album-grid' }, a.media.map(function (m) {
+            var src = M.thumbnail(m)
+            return el('figure', null,
+              el('div', { class: 'frame' }, src ? el('img', { src: src, alt: m.title || '', loading: 'lazy' }) : el('span', { class: 'nothumb' }, 'no preview')),
+              el('figcaption', { class: m.title ? '' : 'is-untitled' }, m.title || m.type))
+          })),
+        ]
+      }
+
+      var albumShare = M.shares.filter(function (s) { return s.album_id })[0]
+      var CASES = {
+        item: function () { return item(M.shares[0]) },
+        'item-no-download': function () { return item(M.shares[1]) },
+        image: function () { return item(M.shares[2]) },
+        album: function () { return album(albumShare) },
+        'album-untitled': function () {
+          return album({ album_id: M.albums[1].id })
+        },
+      }
+
+      function render() {
+        var id = location.hash.replace(/^#/, '')
+        var st = ED.hashState()
+        ED.clear(main)
+        // "#media=<id>[&view-only]" is the link the media modal opens.
+        if (st.media && ED.findMedia(st.media)) {
+          ED.append(main, item({ media_id: st.media, allow_download: st['view-only'] ? 0 : 1, expires_at: null }))
+        } else {
+          ED.append(main, CASES[CASES[id] ? id : 'item']())
+        }
+        window.scrollTo(0, 0)
+      }
+      window.addEventListener('hashchange', render)
+      ED.protoBar('Share page', [
+        { label: 'Video, download allowed', hash: 'item' },
+        { label: 'Video, view only', hash: 'item-no-download' },
+        { label: 'Image', hash: 'image' },
+        { label: 'Album', hash: 'album' },
+        { label: 'Untitled album', hash: 'album-untitled' },
+      ])
+      render()
+    })()
+  </script>
+</body>
+</html>

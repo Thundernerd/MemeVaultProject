@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MemeVault style prototypes</title>
+  <link rel="icon" href="data:," />
   <!--
     Throwaway exploration: the app never imports anything in prototypes/.
     Plain HTML, no build step. Works from disk (file://) or `npx serve prototypes`.
@@ -78,10 +79,10 @@
     // The style registry. A style ticket adds its folder (prototypes/<dir>/index.html)
     // and flips `ready` to true. Rows with ready: false render as an empty state.
     var STYLES = [
-      { dir: 'brutalist', name: 'Brutalist / bold', issue: 11, ready: false },
-      { dir: 'glassy', name: 'Glassy / modern', issue: 12, ready: false },
-      { dir: 'retro', name: 'Retro / Y2K', issue: 13, ready: false },
-      { dir: 'editorial', name: 'Minimal editorial', issue: 14, ready: false },
+      { dir: 'brutalist', name: 'Brutalist / bold', issue: 11, ready: true },
+      { dir: 'glassy', name: 'Glassy / modern', issue: 12, ready: true },
+      { dir: 'retro', name: 'Retro / Y2K', issue: 13, ready: true },
+      { dir: 'editorial', name: 'Minimal editorial', issue: 14, ready: true },
     ]
 
     function el(tag, cls, text) {

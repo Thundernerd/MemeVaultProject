@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-accent="blue">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Glassy / modern · MemeVault prototypes</title>
+  <!--
+    Throwaway exploration (issue #12): the app never imports anything in prototypes/.
+    The screen list for this style: every screen in ../SCREENS.md, linked.
+  -->
+  <link rel="icon" href="data:," />
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="glass.css" />
+  <style>
+    .wrap { max-width: 56rem; margin: 0 auto; padding: 32px 16px 64px; display: flex; flex-direction: column; gap: 16px; }
+    .intro { padding: 22px; border-radius: var(--radius-lg); display: flex; flex-direction: column; gap: 10px; }
+    .intro-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+    .intro h1 { font-size: 1.6rem; letter-spacing: -0.03em; }
+    .intro p { color: var(--text-secondary); font-size: 0.9rem; }
+    .screen { padding: 18px 20px; border-radius: var(--radius-lg); display: flex; flex-direction: column; gap: 10px; }
+    .screen h2 { font-size: 1rem; display: flex; align-items: center; gap: 10px; }
+    .screen h2 .tick { color: var(--success); }
+    .screen .mirrors { font-size: 0.75rem; color: var(--text-muted); overflow-wrap: anywhere; }
+    .links { display: flex; flex-wrap: wrap; gap: 6px; }
+    .links a { text-decoration: none; }
+    .note { font-size: 0.78rem; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+  <script src="../shared/mock-data.js"></script>
+  <main class="wrap">
+    <section class="intro glass">
+      <div class="intro-top">
+        <h1>Glassy / modern</h1>
+        <div id="switcher"></div>
+      </div>
+      <p>
+        Frosted translucent panels over a soft multi-colour backdrop, large radii, inner
+        highlights and layered depth. The palette uses the app's role tokens
+        (<code>--surface-base</code>, <code>--surface-1..3</code>, <code>--border</code>, <code>--text-*</code>,
+        <code>--accent*</code>) in <code>glass.css</code>. Switch light/dark and the accent here or in the app header;
+        the choice is remembered across these pages.
+      </p>
+      <p class="note">
+        Check each screen at 375px and 1280px wide, in light and dark.
+        <a href="../index.html">← All styles</a>
+      </p>
+    </section>
+    <div id="screens" style="display:flex;flex-direction:column;gap:12px"></div>
+  </main>
+
+  <script>
+    (function () {
+      'use strict'
+      GlassTheme.mountSwitcher(document.getElementById('switcher'))
+
+      // Each entry is a [x] item of ../SCREENS.md, linked to where it lives.
+      var SCREENS = [
+        ['1. Header and navigation', 'layouts/MainLayout.vue', [
+          ['Desktop header', 'app.html#/vault'],
+          ['Mobile drawer (open)', 'app.html#/vault?drawer'],
+        ], 'The drawer replaces the nav below 768px; resize the window or use the link at phone width.'],
+        ['2. Vault grid', 'views/VaultView.vue, MediaCard.vue, AlbumCard.vue, DownloadProgress.vue', [
+          ['Vault with filters, downloads, media and albums', 'app.html#/vault'],
+        ], 'Search, type, tag chips and match any/all filter for real. Filters start open on desktop and closed on mobile.'],
+        ['3. Add to vault modal', 'components/AddUrlModal.vue', [
+          ['Idle', 'app.html#/vault?add'],
+          ['Drag-over', 'app.html#/vault?add&drag'],
+          ['Files pending / done / error', 'app.html#/vault?add&files'],
+        ], 'Dropping or browsing real files also adds them; "Queue download" adds a pending row to the queue.'],
+        ['4. Media detail modal', 'components/MediaModal.vue', 'MEDIA', 'Click any card in the vault, too.'],
+        ['5. Queue', 'views/QueueView.vue', [
+          ['Every status and source', 'app.html#/queue'],
+          ['Add URL modal from the queue', 'app.html#/queue?add'],
+        ]],
+        ['6. Tags', 'views/TagsView.vue', [['Grouped by namespace', 'app.html#/tags']]],
+        ['7. Settings', 'views/settings/*', [
+          ['General (env-locked path)', 'app.html#/settings/general'],
+          ['Binaries', 'app.html#/settings/binaries'],
+          ['Cookies', 'app.html#/settings/cookies'],
+          ['Sharing', 'app.html#/settings/sharing'],
+          ['API', 'app.html#/settings/api'],
+          ['API: new key reveal', 'app.html#/settings/api?reveal'],
+          ['Discord', 'app.html#/settings/discord'],
+          ['Fluxer', 'app.html#/settings/fluxer'],
+          ['"Saved" message', 'app.html#/settings/general?msg=saved'],
+          ['Error message', 'app.html#/settings/discord?msg=error'],
+        ], 'Every Save button shows "Saved"; add ?msg=error to any tab for the error copy.'],
+        ['8. Public share page', 'templates/share.html', [
+          ['Video, with Download', 'share.html#k3Jd9xQ2mPz7'],
+          ['Video, no Download', 'share.html#Wq8LrT1vYb4N'],
+          ['Image, with Download', 'share.html#Hx2cVn6pEa0S'],
+          ['Album', 'share.html#Al5bum7Tk9Zr'],
+        ]],
+        ['9. Empty, loading and error states', 'views/VaultView.vue, views/QueueView.vue', [
+          ['Vault empty', 'app.html#/vault?state=empty'],
+          ['Vault loading', 'app.html#/vault?state=loading'],
+          ['Vault error', 'app.html#/vault?state=error'],
+          ['Queue empty', 'app.html#/queue?state=empty'],
+          ['Queue loading', 'app.html#/queue?state=loading'],
+          ['Queue error', 'app.html#/queue?state=error'],
+        ], 'The queue has no loading copy in the app yet; this style proposes skeleton rows.'],
+      ]
+
+      function mediaLinks() {
+        var M = window.MOCK
+        var pick = function (label, item) { return [label, 'app.html#/vault?media=' + item.id] }
+        return [
+          pick('Video with poster and two share links', M.media[0]),
+          pick('Image', M.media[1]),
+          pick('Video without thumbnail', M.media[6]),
+          pick('Untitled, tall', M.media[2]),
+          pick('Very long title, not in random', M.media[4]),
+          pick('Untitled image, no tags', M.media[15]),
+        ]
+      }
+
+      var root = document.getElementById('screens')
+      SCREENS.forEach(function (s) {
+        var sec = document.createElement('section')
+        sec.className = 'screen glass'
+        var h2 = document.createElement('h2')
+        var tick = document.createElement('span')
+        tick.className = 'tick'
+        tick.textContent = '✓'
+        tick.setAttribute('aria-label', 'covered')
+        h2.appendChild(tick)
+        h2.appendChild(document.createTextNode(s[0]))
+        sec.appendChild(h2)
+        var mirrors = document.createElement('p')
+        mirrors.className = 'mirrors'
+        mirrors.textContent = 'Mirrors ' + s[1]
+        sec.appendChild(mirrors)
+        var links = document.createElement('div')
+        links.className = 'links'
+        ;(s[2] === 'MEDIA' ? mediaLinks() : s[2]).forEach(function (l) {
+          var a = document.createElement('a')
+          a.className = 'btn btn-sm'
+          a.href = l[1]
+          a.textContent = l[0]
+          links.appendChild(a)
+        })
+        sec.appendChild(links)
+        if (s[3]) {
+          var n = document.createElement('p')
+          n.className = 'note'
+          n.textContent = s[3]
+          sec.appendChild(n)
+        }
+        root.appendChild(sec)
+      })
+    })()
+  </script>
+</body>
+</html>
