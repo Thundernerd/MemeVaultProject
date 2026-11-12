@@ -20,6 +20,11 @@ async function load() {
   }
 }
 
+/** Brand colour per source; anything else gets the API teal, as before. */
+function badgeClass(source: string) {
+  return source === 'discord' || source === 'fluxer' ? `badge-${source}` : 'badge-api'
+}
+
 async function cancel(id: string) {
   await api(`/api/queue/${id}`, { method: 'PATCH', body: JSON.stringify({ action: 'cancel' }) })
   await load()
@@ -77,7 +82,7 @@ onUnmounted(() => clearInterval(timer))
                 <span
                   v-if="item.source_label"
                   class="badge label"
-                  :class="`badge-${item.source}`"
+                  :class="badgeClass(item.source)"
                 >{{ item.source_label }}</span>
               </div>
               <p class="q-meta label">{{ item.downloader }} · {{ item.status }}</p>
