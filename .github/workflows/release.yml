@@ -77,11 +77,18 @@ jobs:
       - name: Set lowercase image name
         run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_ENV"
 
-      - name: Bump Cargo.toml version
+      - name: Bump Cargo.toml and Cargo.lock version
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          CRATE=$(sed -n 's/^name = "\([^"]*\)"/\1/p' Cargo.toml | head -n1)
           # Only rewrite the package version (first version = line in the file)
           sed -i '0,/^version = "/s/^version = ".*"/version = "'"$VERSION"'"/' Cargo.toml
+          # Keep the crate's own Cargo.lock entry in step (the version line after its name line)
+          sed -i '/^name = "'"$CRATE"'"$/{n;s/^version = ".*"/version = "'"$VERSION"'"/;}' Cargo.lock
+          grep -qxF "version = \"$VERSION\"" Cargo.toml \
+            || { echo "::error::Cargo.toml package version was not updated to $VERSION"; exit 1; }
+          grep -A1 -xF "name = \"$CRATE\"" Cargo.lock | grep -qxF "version = \"$VERSION\"" \
+            || { echo "::error::Cargo.lock $CRATE entry was not updated to $VERSION"; exit 1; }
 
       - name: Update CHANGELOG
         if: steps.version.outputs.is_prerelease == 'false'
@@ -97,7 +104,7 @@ jobs:
       - name: Commit and tag
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          git add Cargo.toml
+          git add Cargo.toml Cargo.lock
           if [ "${{ steps.version.outputs.is_prerelease }}" = "false" ]; then
             git add CHANGELOG.md
           fi
