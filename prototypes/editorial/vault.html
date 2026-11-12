@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:," />
+  <title>Vault · Minimal editorial</title>
+  <!-- Throwaway prototype: mirrors views/VaultView.vue, MediaCard.vue, AlbumCard.vue, DownloadProgress.vue. -->
+  <link rel="stylesheet" href="editorial.css" />
+  <script src="../shared/mock-data.js"></script>
+  <script src="app.js"></script>
+</head>
+<body>
+  <header id="site-header" data-active="vault"></header>
+
+  <main class="wrap">
+    <div class="page-head">
+      <h1 class="page-title">Vault<span class="count" id="count"></span></h1>
+    </div>
+
+    <div class="toolbar">
+      <label class="search">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="5"/><path d="M11 11l3.5 3.5"/></svg>
+        <span class="sr-only">Search</span>
+        <input class="input" id="search" type="search" placeholder="Search…" />
+      </label>
+      <div class="toolbar-actions">
+        <button class="link-btn filter-toggle" id="filter-toggle" type="button" aria-expanded="false" aria-controls="filters">
+          <span id="filter-label">Show filters</span><span class="badge-count" id="filter-count" hidden></span>
+        </button>
+        <button class="btn" id="add" type="button">Add</button>
+      </div>
+    </div>
+
+    <div class="filters" id="filters">
+      <div>
+        <div class="filters-inner">
+          <div class="filters-head">
+            <label class="field">
+              <span class="label">Type</span>
+              <select class="select" id="type">
+                <option value="">All</option>
+                <option value="video">Video</option>
+                <option value="image">Image</option>
+              </select>
+            </label>
+            <div class="field" style="flex-direction:row;align-items:center;gap:12px">
+              <span class="label">Tags</span>
+              <div class="match" role="group" aria-label="Tag match mode">
+                <button type="button" data-match="any" aria-pressed="true">match: any</button>
+                <button type="button" data-match="all" aria-pressed="false">match: all</button>
+              </div>
+            </div>
+          </div>
+          <div class="chips" id="tag-chips"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="content"></div>
+  </main>
+
+  <script>
+    (function () {
+      var M = window.MOCK, ED = window.ED, el = ED.el
+      var media = M.media.slice()
+      var filter = { q: '', type: '', tags: [], match: 'any', open: false }
+
+      var content = document.getElementById('content')
+      var count = document.getElementById('count')
+
+      // ------------------------------------------------------------ filters
+      var toggle = document.getElementById('filter-toggle')
+      var panel = document.getElementById('filters')
+      var badge = document.getElementById('filter-count')
+      var chipHost = document.getElementById('tag-chips')
+
+      function activeFilters() { return (filter.type ? 1 : 0) + filter.tags.length }
+      function renderFilterChrome() {
+        panel.classList.toggle('is-open', filter.open)
+        panel.querySelector('.filters-inner').inert = !filter.open
+        toggle.setAttribute('aria-expanded', String(filter.open))
+        document.getElementById('filter-label').textContent = filter.open ? 'Hide filters' : 'Show filters'
+        var n = activeFilters()
+        badge.hidden = !n
+        badge.textContent = n
+        ED.clear(chipHost)
+        M.tags.forEach(function (t) {
+          var on = filter.tags.indexOf(t.name) >= 0
+          chipHost.appendChild(el('button', { class: 'chip', type: 'button', 'aria-pressed': String(on), title: t.name, onclick: function () {
+            if (on) filter.tags.splice(filter.tags.indexOf(t.name), 1); else filter.tags.push(t.name)
+            render()
+          } }, el('span', null, t.name)))
+        })
+        panel.querySelectorAll('[data-match]').forEach(function (b) {
+          b.setAttribute('aria-pressed', String(b.getAttribute('data-match') === filter.match))
+        })
+      }
+      toggle.addEventListener('click', function () { filter.open = !filter.open; renderFilterChrome() })
+      document.getElementById('type').addEventListener('change', function (e) { filter.type = e.target.value; render() })
+      document.getElementById('search').addEventListener('input', function (e) { filter.q = e.target.value.trim().toLowerCase(); render() })
+      panel.querySelectorAll('[data-match]').forEach(function (b) {
+        b.addEventListener('click', function () { filter.match = b.getAttribute('data-match'); render() })
+      })
+
+      function visibleMedia() {
+        return media.filter(function (m) {
+          if (filter.type && m.type !== filter.type) return false
+          if (filter.q && (m.title || '').toLowerCase().indexOf(filter.q) < 0) return false
+          if (filter.tags.length) {
+            var names = m.tags.map(function (t) { return t.name })
+            var hit = filter.tags.filter(function (t) { return names.indexOf(t) >= 0 }).length
+            if (filter.match === 'all' ? hit < filter.tags.length : hit === 0) return false
+          }
+          return true
+        })
+      }
+
+      // -------------------------------------------------------------- cards
+      function figure(item) {
+        var src = M.thumbnail(item)
+        return el('div', { class: 'card-figure' },
+          src ? el('img', { src: src, alt: '', loading: 'lazy' }) : el('span', { class: 'nothumb' }, 'no preview'))
+      }
+
+      function mediaCard(item, i) {
+        var duration = ED.fmtDuration(item.duration)
+        return el('button', { class: 'card', type: 'button', style: { 'animation-delay': Math.min(i, 12) * 30 + 'ms' },
+          'aria-label': (item.title || 'Untitled ' + item.type) + ', ' + item.type,
+          onclick: function () { location.hash = 'media=' + item.id } },
+          figure(item),
+          el('div', { class: 'card-caption' },
+            el('p', { class: 'card-title' + (item.title ? '' : ' is-untitled'), title: item.title || null }, item.title || item.type),
+            el('div', { class: 'card-meta' },
+              el('span', { class: 'badge' }, item.type),
+              duration ? el('span', { class: 'badge' }, duration) : null)))
+      }
+
+      function albumCard(album, i) {
+        return el('div', { class: 'card card-album', style: { 'animation-delay': i * 30 + 'ms', cursor: 'default' } },
+          figure(album.media[0]),
+          el('div', { class: 'card-caption' },
+            el('p', { class: 'card-title' + (album.title ? '' : ' is-untitled'), title: album.title || null }, album.title || 'Album'),
+            el('div', { class: 'card-meta' },
+              el('span', { class: 'badge badge-album' }, 'album'),
+              el('span', { class: 'badge' }, album.media.length + ' items'))))
+      }
+
+      function pendingCard(q) {
+        return el('div', { class: 'card card-pending' },
+          el('div', { class: 'card-figure' },
+            el('p', { class: 'pending-url', title: q.url }, q.url),
+            ED.progress(q.status, q.progress)),
+          el('div', { class: 'card-caption' },
+            el('div', { class: 'card-meta' }, el('span', { class: 'badge' }, q.downloader))))
+      }
+
+      // ------------------------------------------------------------- states
+      function stateBlock(title, note, cls) {
+        return el('div', { class: 'state' },
+          el('p', { class: 'eyebrow' }, 'Vault'),
+          el('h2', { class: 'state-title ' + (cls || '') }, title),
+          note ? el('p', { class: 'note' }, note) : null)
+      }
+
+      function render() {
+        renderFilterChrome()
+        var st = ED.hashState()
+        ED.clear(content)
+
+        if (st.loading) {
+          count.textContent = ''
+          content.appendChild(el('p', { class: 'eyebrow', style: { padding: '32px 0 14px' }, 'aria-live': 'polite' }, M.states.vault.loading))
+          var g = el('div', { class: 'grid skeleton', 'aria-hidden': 'true' })
+          for (var i = 0; i < 10; i++) {
+            g.appendChild(el('div', { class: 'card', style: { cursor: 'default' } }, el('div', { class: 'card-figure' }),
+              el('div', { class: 'card-caption' }, el('div', { class: 'bar' }), el('div', { class: 'bar short' }))))
+          }
+          content.appendChild(g)
+          return
+        }
+        if (st.error) {
+          count.textContent = ''
+          content.appendChild(stateBlock(M.states.vault.error, 'The vault could not be reached. Check that the server is running, then try again.', 'is-error'))
+          content.lastChild.appendChild(el('button', { class: 'btn btn-ghost', type: 'button', onclick: function () { location.hash = '' } }, 'Try again'))
+          return
+        }
+        if (st.empty) {
+          count.textContent = '0'
+          content.appendChild(stateBlock(M.states.vault.empty))
+          content.lastChild.appendChild(el('button', { class: 'btn', type: 'button', onclick: function () { location.hash = 'add' } }, 'Add'))
+          return
+        }
+
+        var list = visibleMedia()
+        var filtering = !!(filter.q || activeFilters())
+        count.textContent = String(list.length + (filtering ? 0 : M.albums.length))
+
+        var active = filtering ? [] : M.activeQueue()
+        content.appendChild(el('div', { class: 'section-label' },
+          el('h2', { class: 'eyebrow' }, filtering ? list.length + ' results' : 'Latest' + (active.length ? ' · ' + active.length + ' downloading' : '')),
+          active.length ? el('a', { class: 'link-btn', href: 'queue.html' }, 'Open queue') : null))
+        if (!list.length) {
+          content.appendChild(el('p', { class: 'state-title', style: { padding: '24px 0 48px' } }, 'Nothing matches these filters.'))
+          return
+        }
+        var cards = active.map(pendingCard).concat(filtering ? [] : M.albums.map(albumCard)).concat(list.map(function (m, i) { return mediaCard(m, i + M.albums.length) }))
+        content.appendChild(el('div', { class: 'grid' }, cards))
+      }
+
+      // ------------------------------------------------------------- modals
+      function syncModal() {
+        var st = ED.hashState()
+        if (st.add || st['add-drag']) {
+          ED.openAddModal({ dragOver: !!st['add-drag'], onClose: function () { history.replaceState(null, '', location.pathname); render() } })
+        } else if (st.media) {
+          var item = ED.findMedia(st.media)
+          if (!item) return
+          ED.openMediaModal(item, {
+            onClose: function () { history.replaceState(null, '', location.pathname) },
+            onDelete: function (it) {
+              media = media.filter(function (m) { return m !== it })
+              history.replaceState(null, '', location.pathname)
+              render()
+            },
+          })
+        } else {
+          ED.closeModal(true)
+        }
+      }
+
+      document.getElementById('add').addEventListener('click', function () { location.hash = 'add' })
+      window.addEventListener('hashchange', function () { render(); syncModal() })
+
+      ED.protoBar('Vault states', [
+        { label: 'Vault', hash: '' },
+        { label: 'Empty', hash: 'empty' },
+        { label: 'Loading', hash: 'loading' },
+        { label: 'Filters open', hash: 'filters' },
+        { label: 'Error', hash: 'error' },
+        { label: 'Add modal', hash: 'add' },
+        { label: 'Add modal, drag-over', hash: 'add-drag' },
+        { label: 'Media modal (video)', hash: 'media=' + M.media[0].id },
+        { label: 'Media modal (image)', hash: 'media=' + M.media[1].id },
+        { label: 'Media modal (untitled)', hash: 'media=' + M.media[2].id },
+        { label: 'Media modal (no thumbnail)', hash: 'media=' + M.media[6].id },
+      ])
+
+      // "#filters" opens the panel with a type and two tags picked, for review.
+      function applyFilterHash() {
+        if (!ED.hashState().filters) return
+        filter.open = true
+        filter.type = 'video'
+        filter.tags = ['reaction', 'cats']
+        document.getElementById('type').value = 'video'
+      }
+      window.addEventListener('hashchange', function () { if (ED.hashState().filters) { applyFilterHash(); render() } })
+      applyFilterHash()
+      render()
+      syncModal()
+    })()
+  </script>
+</body>
+</html>
