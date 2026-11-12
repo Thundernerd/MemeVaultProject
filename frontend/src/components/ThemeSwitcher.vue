@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { useTheme, type Accent, type Theme } from '@/theme'
+import { ACCENTS, useTheme, type Theme } from '@/theme'
 
 const { theme, accent, setTheme, setAccent } = useTheme()
-const accents: Accent[] = ['blue', 'purple', 'green', 'orange', 'rose']
 
 function toggleTheme() {
   setTheme((theme.value === 'dark' ? 'light' : 'dark') as Theme)
@@ -19,7 +18,7 @@ function toggleTheme() {
       {{ theme === 'dark' ? '☀' : '☾' }}
     </button>
     <button
-      v-for="a in accents"
+      v-for="a in ACCENTS"
       :key="a"
       class="w-4 h-4 rounded-full bg-accent"
       :data-accent="a"
