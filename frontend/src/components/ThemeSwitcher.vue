@@ -4,11 +4,11 @@ import { useTheme, type Accent, type Theme } from '@/theme'
 const { theme, accent, setTheme, setAccent } = useTheme()
 const accents: Accent[] = ['blue', 'purple', 'green', 'orange', 'rose']
 const colors: Record<Accent, string> = {
-  blue: '#3b82f6',
-  purple: '#a855f7',
-  green: '#22c55e',
-  orange: '#f97316',
-  rose: '#f43f5e',
+  blue: '#2f5bff',
+  purple: '#9b4dff',
+  green: '#00d26a',
+  orange: '#ff6b00',
+  rose: '#ff2e63',
 }
 
 function toggleTheme() {
