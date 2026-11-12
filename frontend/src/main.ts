@@ -1,11 +1,10 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
+import { storedAccent, storedTheme } from './theme'
 import './style.css'
 
-const theme = localStorage.getItem('mvp-theme') || 'dark'
-const accent = localStorage.getItem('mvp-accent') || 'blue'
-document.documentElement.setAttribute('data-theme', theme)
-document.documentElement.setAttribute('data-accent', accent)
+document.documentElement.setAttribute('data-theme', storedTheme())
+document.documentElement.setAttribute('data-accent', storedAccent())
 
 createApp(App).use(router).mount('#app')
