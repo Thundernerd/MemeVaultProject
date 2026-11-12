@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MemeVault · Retro / Y2K</title>
+  <!--
+    Throwaway exploration (issue #13): the app never imports anything in prototypes/.
+    One page with a hash router. Every screen in ../SCREENS.md is listed in the
+    Start menu (bottom left) and in SCREENS.md next to this file.
+  -->
+  <script src="theme.js"></script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 12 12%22%3E%3Crect width=%2212%22 height=%2212%22 fill=%22%232f6bff%22/%3E%3Crect x=%223%22 y=%223%22 width=%226%22 height=%226%22 fill=%22%23ffd24a%22/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="retro.css" />
+</head>
+<body>
+  <header class="app-header" id="header"></header>
+  <div class="drawer" id="drawer"></div>
+  <main class="app-main" id="main"></main>
+  <div id="modal-root"></div>
+  <nav class="start-menu win" id="start-menu" hidden aria-label="Every screen"></nav>
+  <footer class="taskbar" id="taskbar"></footer>
+
+  <script src="../shared/mock-data.js"></script>
+  <script src="pixel-font.js"></script>
+  <script src="icons.js"></script>
+  <script src="dom.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
