@@ -85,7 +85,9 @@ jobs:
           sed -i '0,/^version = "/s/^version = ".*"/version = "'"$VERSION"'"/' Cargo.toml
           # Keep the crate's own Cargo.lock entry in step (the version line after its name line)
           sed -i '/^name = "'"$CRATE"'"$/{n;s/^version = ".*"/version = "'"$VERSION"'"/;}' Cargo.lock
-          grep -A1 "^name = \"$CRATE\"$" Cargo.lock | grep -qx "version = \"$VERSION\"" \
+          grep -qxF "version = \"$VERSION\"" Cargo.toml \
+            || { echo "::error::Cargo.toml package version was not updated to $VERSION"; exit 1; }
+          grep -A1 -xF "name = \"$CRATE\"" Cargo.lock | grep -qxF "version = \"$VERSION\"" \
             || { echo "::error::Cargo.lock $CRATE entry was not updated to $VERSION"; exit 1; }
 
       - name: Update CHANGELOG
