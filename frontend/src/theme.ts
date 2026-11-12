@@ -1,7 +1,22 @@
 import { computed, inject, provide, ref, type InjectionKey, type Ref } from 'vue'
 
-export type Theme = 'dark' | 'light'
-export type Accent = 'blue' | 'purple' | 'green' | 'orange' | 'rose'
+export const THEMES = ['dark', 'light'] as const
+export const ACCENTS = ['blue', 'purple', 'green', 'orange', 'rose'] as const
+
+export type Theme = (typeof THEMES)[number]
+export type Accent = (typeof ACCENTS)[number]
+
+/** The saved theme, or 'dark' when it is missing or not a known theme. */
+export function storedTheme(): Theme {
+  const saved = localStorage.getItem('mvp-theme')
+  return (THEMES as readonly string[]).includes(saved ?? '') ? (saved as Theme) : 'dark'
+}
+
+/** The saved accent, or 'blue' when it is missing or not a known accent. */
+export function storedAccent(): Accent {
+  const saved = localStorage.getItem('mvp-accent')
+  return (ACCENTS as readonly string[]).includes(saved ?? '') ? (saved as Accent) : 'blue'
+}
 
 interface ThemeCtx {
   theme: Ref<Theme>
@@ -13,8 +28,8 @@ interface ThemeCtx {
 const KEY: InjectionKey<ThemeCtx> = Symbol('theme')
 
 export function provideTheme() {
-  const theme = ref<Theme>((localStorage.getItem('mvp-theme') as Theme) || 'dark')
-  const accent = ref<Accent>((localStorage.getItem('mvp-accent') as Accent) || 'blue')
+  const theme = ref<Theme>(storedTheme())
+  const accent = ref<Accent>(storedAccent())
 
   function apply() {
     document.documentElement.setAttribute('data-theme', theme.value)
