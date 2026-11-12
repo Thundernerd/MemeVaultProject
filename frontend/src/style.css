@@ -249,6 +249,21 @@
   }
 }
 
+/* ------------------------------------------------------------- settings */
+
+@layer components {
+  .tabs { display: flex; overflow-x: auto; border: var(--bw) solid var(--border); background: var(--surface-1); scrollbar-width: thin; }
+  .tab {
+    flex: none; padding: 10px 16px; text-decoration: none; border-right: var(--bw) solid var(--border);
+    font-family: var(--font-mono); font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary);
+  }
+  .tab:last-child { border-right: 0; }
+  .tab:hover { background: var(--surface-2); color: var(--text-primary); }
+  .tab.active { background: var(--accent); color: var(--on-accent); }
+  .tab:focus-visible { outline: var(--bw) dashed var(--accent); outline-offset: -6px; }
+  .tab-body { max-width: 40rem; }
+}
+
 @keyframes brutal-slide { from { transform: translateX(-110%); } to { transform: translateX(300%); } }
 @keyframes brutal-blink { 50% { opacity: 0.2; } }
 
