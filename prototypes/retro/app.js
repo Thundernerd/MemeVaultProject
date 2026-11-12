@@ -272,7 +272,7 @@
           h('a', { class: 'btn', href: '#/vault' }, 'Retry')))
         return
       }
-      var active = activeQueue()
+      var active = M.activeQueue(S.queue)
       if (state !== 'empty' && active.length) {
         downloads.appendChild(h('div', { class: 'grid' }, active.map(function (q) {
           return h('div', { class: 'card pending' }, [
@@ -298,7 +298,7 @@
     return win('C:\\MemeVault\\Vault', { icon: 'vault', menu: ['File', 'Edit', 'View', 'Favorites', 'Help'],
       status: [
         h('span', null, state ? 'Demo state: ' + state : S.media.length + ' items, ' + S.albums.length + ' albums'),
-        h('span', null, activeQueue().length + ' downloading'),
+        h('span', null, M.activeQueue(S.queue).length + ' downloading'),
       ],
     }, [
       h('div', { class: 'page-head' }, [
@@ -1114,6 +1114,8 @@
   }
   setInterval(tick, 15000)
 
+  // Every active row, chat sources included, for the Queue window and the
+  // tray. The vault's progress cards use M.activeQueue(S.queue) instead.
   function activeQueue() {
     return S.queue.filter(function (q) { return q.status === 'pending' || q.status === 'downloading' })
   }
