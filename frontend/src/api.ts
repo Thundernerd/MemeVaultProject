@@ -40,13 +40,13 @@ export interface Album {
   media: MediaItem[]
 }
 
-/** Queue item lifecycle, as written by the backend (`src/queue.rs`). */
+/** Queue item lifecycle. Mirrors the `queue_items.status` strings the backend writes (`src/db.rs`, `src/queue.rs`, `src/routes/queue.rs`, `src/discord.rs`, `src/fluxer.rs`). */
 export type QueueStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled'
 
 /** Sources that are chat bots rather than a person in the web UI or an API client. */
 export type ChatSource = 'discord' | 'fluxer'
 
-/** Where a queue item was submitted from. */
+/** Where a queue item was submitted from. Mirrors the `source` passed to `insert_queue_item` in the backend. */
 export type QueueSource = 'web' | 'api' | ChatSource
 
 /** Still in the queue: waiting or downloading, so it can be cancelled. */
