@@ -315,6 +315,14 @@ pub enum QueueStatus {
 }
 
 impl QueueStatus {
+    const ALL: [Self; 5] = [
+        Self::Pending,
+        Self::Downloading,
+        Self::Completed,
+        Self::Failed,
+        Self::Cancelled,
+    ];
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Pending => "pending",
@@ -335,14 +343,10 @@ impl std::str::FromStr for QueueStatus {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "pending" => Ok(Self::Pending),
-            "downloading" => Ok(Self::Downloading),
-            "completed" => Ok(Self::Completed),
-            "failed" => Ok(Self::Failed),
-            "cancelled" => Ok(Self::Cancelled),
-            other => Err(format!("unknown queue status {other:?}")),
-        }
+        Self::ALL
+            .into_iter()
+            .find(|status| status.as_str() == s)
+            .ok_or_else(|| format!("unknown queue status {s:?}"))
     }
 }
 
@@ -366,7 +370,7 @@ pub struct QueueItem {
     pub id: String,
     pub url: String,
     pub downloader: String,
-    pub status: String,
+    pub status: QueueStatus,
     pub progress: f64,
     pub error: Option<String>,
     pub created_at: String,
@@ -569,7 +573,7 @@ pub fn insert_queue_item(
         id: Uuid::new_v4().to_string(),
         url: url.to_string(),
         downloader: downloader.to_string(),
-        status: "pending".into(),
+        status: QueueStatus::Pending,
         progress: 0.0,
         error: None,
         created_at: now_iso(),
@@ -616,9 +620,9 @@ pub fn list_queue_items(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<Que
 
 pub fn get_next_pending_item(conn: &rusqlite::Connection) -> rusqlite::Result<Option<QueueItem>> {
     conn.query_row(
-        "SELECT * FROM queue_items WHERE status = 'pending' AND source NOT IN ('discord', 'fluxer')
+        "SELECT * FROM queue_items WHERE status = ? AND source NOT IN ('discord', 'fluxer')
          ORDER BY created_at ASC LIMIT 1",
-        [],
+        [QueueStatus::Pending],
         map_queue,
     )
     .optional()
@@ -626,8 +630,8 @@ pub fn get_next_pending_item(conn: &rusqlite::Connection) -> rusqlite::Result<Op
 
 pub fn count_active_downloads(conn: &rusqlite::Connection) -> rusqlite::Result<i64> {
     conn.query_row(
-        "SELECT COUNT(*) FROM queue_items WHERE status = 'downloading' AND source NOT IN ('discord', 'fluxer')",
-        [],
+        "SELECT COUNT(*) FROM queue_items WHERE status = ? AND source NOT IN ('discord', 'fluxer')",
+        [QueueStatus::Downloading],
         |r| r.get(0),
     )
 }
@@ -635,14 +639,14 @@ pub fn count_active_downloads(conn: &rusqlite::Connection) -> rusqlite::Result<i
 /// Reset interrupted vault downloads to pending; fail chat-bot jobs that cannot be resumed.
 pub fn reset_stale_downloads(conn: &rusqlite::Connection) -> rusqlite::Result<usize> {
     let web = conn.execute(
-        "UPDATE queue_items SET status = 'pending', progress = 0
-         WHERE status = 'downloading' AND source NOT IN ('discord', 'fluxer')",
-        [],
+        "UPDATE queue_items SET status = ?1, progress = 0
+         WHERE status = ?2 AND source NOT IN ('discord', 'fluxer')",
+        params![QueueStatus::Pending, QueueStatus::Downloading],
     )?;
     let bot = conn.execute(
-        "UPDATE queue_items SET status = 'failed', error = 'interrupted', completed_at = ?
-         WHERE status = 'downloading' AND source IN ('discord', 'fluxer')",
-        params![now_iso()],
+        "UPDATE queue_items SET status = ?1, error = 'interrupted', completed_at = ?2
+         WHERE status = ?3 AND source IN ('discord', 'fluxer')",
+        params![QueueStatus::Failed, now_iso(), QueueStatus::Downloading],
     )?;
     Ok(web + bot)
 }
@@ -650,7 +654,7 @@ pub fn reset_stale_downloads(conn: &rusqlite::Connection) -> rusqlite::Result<us
 pub fn update_queue_item(
     conn: &rusqlite::Connection,
     id: &str,
-    status: Option<&str>,
+    status: Option<QueueStatus>,
     progress: Option<f64>,
     error: Option<Option<&str>>,
     completed_at: Option<Option<&str>>,
@@ -1410,8 +1414,14 @@ mod tests {
     fn queue_status_round_trips_through_json_and_sqlite() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         for (status, wire) in STATUS_WIRE {
-            assert_eq!(serde_json::to_string(&status).unwrap(), format!("\"{wire}\""));
-            assert_eq!(serde_json::from_str::<QueueStatus>(&format!("\"{wire}\"")).unwrap(), status);
+            assert_eq!(
+                serde_json::to_string(&status).unwrap(),
+                format!("\"{wire}\"")
+            );
+            assert_eq!(
+                serde_json::from_str::<QueueStatus>(&format!("\"{wire}\"")).unwrap(),
+                status
+            );
 
             let stored: String = conn.query_row("SELECT ?", [status], |r| r.get(0)).unwrap();
             assert_eq!(stored, wire);
@@ -1456,7 +1466,7 @@ mod tests {
         db.with_conn(|c| {
             let item =
                 insert_queue_item(c, "https://example.com/v", "ytdlp", "web", None, false).unwrap();
-            assert_eq!(item.status, "pending");
+            assert_eq!(item.status, QueueStatus::Pending);
             assert_eq!(item.source, "web");
             assert_eq!(item.source_label, None);
             assert_eq!(item.include_in_random, 0);
@@ -1615,7 +1625,7 @@ mod tests {
             update_queue_item(
                 c,
                 &discord_dl.id,
-                Some("downloading"),
+                Some(QueueStatus::Downloading),
                 Some(10.0),
                 None,
                 None,
@@ -1633,7 +1643,7 @@ mod tests {
             update_queue_item(
                 c,
                 &fluxer_dl.id,
-                Some("downloading"),
+                Some(QueueStatus::Downloading),
                 Some(10.0),
                 None,
                 None,
@@ -1661,20 +1671,28 @@ mod tests {
             let next_api = get_next_pending_item(c).unwrap().unwrap();
             assert_eq!(next_api.id, web.id); // still oldest pending non-discord
 
-            update_queue_item(c, &web.id, Some("downloading"), Some(5.0), None, None).unwrap();
+            update_queue_item(
+                c,
+                &web.id,
+                Some(QueueStatus::Downloading),
+                Some(5.0),
+                None,
+                None,
+            )
+            .unwrap();
             assert_eq!(count_active_downloads(c).unwrap(), 1);
             let _ = api;
 
             let n = reset_stale_downloads(c).unwrap();
             assert!(n >= 2);
             let discord_after = get_queue_item(c, &discord_dl.id).unwrap().unwrap();
-            assert_eq!(discord_after.status, "failed");
+            assert_eq!(discord_after.status, QueueStatus::Failed);
             assert_eq!(discord_after.error.as_deref(), Some("interrupted"));
             let fluxer_after = get_queue_item(c, &fluxer_dl.id).unwrap().unwrap();
-            assert_eq!(fluxer_after.status, "failed");
+            assert_eq!(fluxer_after.status, QueueStatus::Failed);
             assert_eq!(fluxer_after.error.as_deref(), Some("interrupted"));
             let web_after = get_queue_item(c, &web.id).unwrap().unwrap();
-            assert_eq!(web_after.status, "pending");
+            assert_eq!(web_after.status, QueueStatus::Pending);
 
             Ok(())
         })

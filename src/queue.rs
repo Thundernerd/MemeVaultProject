@@ -2,7 +2,7 @@
 
 use crate::autotag;
 use crate::config::Config;
-use crate::db::{self, Db, NewMedia};
+use crate::db::{self, Db, NewMedia, QueueStatus};
 use crate::ffprobe;
 use crate::gallerydl;
 use crate::ytdlp;
@@ -114,7 +114,14 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
     spawn_progress_persister(db.clone(), item.id.clone(), progress_rx);
 
     let _ = db.with_conn(|c| {
-        db::update_queue_item(c, &item.id, Some("downloading"), Some(0.0), None, None)?;
+        db::update_queue_item(
+            c,
+            &item.id,
+            Some(QueueStatus::Downloading),
+            Some(0.0),
+            None,
+            None,
+        )?;
         Ok(())
     });
 
@@ -132,7 +139,7 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
                 db::update_queue_item(
                     c,
                     &item.id,
-                    Some("completed"),
+                    Some(QueueStatus::Completed),
                     Some(100.0),
                     Some(None),
                     Some(Some(&chrono::Utc::now().to_rfc3339())),
@@ -149,7 +156,11 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
         Err(e) => {
             let msg = e.to_string();
             let cancelled = msg.contains("cancelled");
-            let status = if cancelled { "cancelled" } else { "failed" };
+            let status = if cancelled {
+                QueueStatus::Cancelled
+            } else {
+                QueueStatus::Failed
+            };
             let _ = db.with_conn(|c| {
                 db::update_queue_item(
                     c,
