@@ -517,6 +517,7 @@ mod tests {
             format: ArchiveFormat::TarXz,
         };
         assert_eq!(ffmpeg_archive("linux", "x86_64"), linux64);
+        assert_eq!(ffmpeg_archive("linux", "x86"), linux64);
         assert_eq!(
             ffmpeg_archive("linux", "aarch64"),
             FfmpegArchive {
