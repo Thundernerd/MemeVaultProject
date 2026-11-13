@@ -372,10 +372,13 @@ fn ffmpeg_archive(os: &str, arch: &str) -> FfmpegArchive {
 fn evermeet_zip_url(info: &str) -> anyhow::Result<String> {
     let info: serde_json::Value = serde_json::from_str(info)
         .map_err(|e| anyhow::anyhow!("evermeet.cx ffmpeg info is not valid JSON: {e}"))?;
-    info["download"]["zip"]["url"]
+    let url = info["download"]["zip"]["url"]
         .as_str()
-        .map(str::to_string)
-        .ok_or_else(|| anyhow::anyhow!("evermeet.cx ffmpeg info is missing download.zip.url"))
+        .ok_or_else(|| anyhow::anyhow!("evermeet.cx ffmpeg info is missing download.zip.url"))?;
+    if !url.starts_with("https://") {
+        anyhow::bail!("evermeet.cx ffmpeg info gave a download.zip.url that is not https: {url}");
+    }
+    Ok(url.to_string())
 }
 
 fn extract_ffmpeg_xz(archive: &Path, bin_dir: &Path) -> anyhow::Result<()> {
@@ -610,6 +613,16 @@ mod tests {
         let info = r#"{"name":"ffmpeg","download":{"7z":{"url":"https://evermeet.cx/ffmpeg/ffmpeg-9.0.2.7z"}}}"#;
         let err = evermeet_zip_url(info).unwrap_err().to_string();
         assert!(err.contains("download.zip.url"), "{err}");
+    }
+
+    #[test]
+    fn evermeet_zip_url_rejects_a_url_that_is_not_https() {
+        let info = r#"{"download":{"zip":{"url":"http://evermeet.cx/ffmpeg/ffmpeg-9.0.2.zip"}}}"#;
+        let err = evermeet_zip_url(info).unwrap_err().to_string();
+        assert!(
+            err.contains("http://evermeet.cx/ffmpeg/ffmpeg-9.0.2.zip"),
+            "{err}"
+        );
     }
 
     #[test]
