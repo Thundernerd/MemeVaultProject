@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api, errorMessage, isActive, isChatSource, type QueueItem, type QueueSource } from '@/api'
 import AddUrlModal from '@/components/AddUrlModal.vue'
 import DownloadProgress from '@/components/DownloadProgress.vue'
 
 const items = ref<QueueItem[]>([])
-const error = ref('')
+const loadError = ref('')
+/** A failed cancel, remove or retry. Kept apart from `loadError` so the next successful poll doesn't clear it; cleared when the next action starts. */
+const actionError = ref('')
+const error = computed(() => actionError.value || loadError.value)
 const loaded = ref(false)
 const addOpen = ref(false)
 let timer: number | undefined
@@ -14,9 +17,9 @@ async function load() {
   try {
     items.value = await api('/api/queue')
     loaded.value = true
-    error.value = ''
+    loadError.value = ''
   } catch (e) {
-    error.value = errorMessage(e)
+    loadError.value = errorMessage(e)
   }
 }
 
@@ -25,22 +28,32 @@ function badgeClass(source: QueueSource) {
   return isChatSource(source) ? `badge-${source}` : 'badge-api'
 }
 
-async function cancel(id: string) {
-  await api(`/api/queue/${id}`, { method: 'PATCH', body: JSON.stringify({ action: 'cancel' }) })
+/** Runs a row action, putting a failure in `actionError`, then reloads. */
+async function runAction(request: () => Promise<unknown>) {
+  actionError.value = ''
+  try {
+    await request()
+  } catch (e) {
+    actionError.value = errorMessage(e)
+  }
   await load()
 }
 
-async function remove(id: string) {
-  await api(`/api/queue/${id}`, { method: 'DELETE' })
-  await load()
+function cancel(id: string) {
+  return runAction(() => api(`/api/queue/${id}`, { method: 'PATCH', body: JSON.stringify({ action: 'cancel' }) }))
 }
 
-async function retry(item: QueueItem) {
-  await api('/api/downloads', {
-    method: 'POST',
-    body: JSON.stringify({ url: item.url, downloader: item.downloader }),
-  })
-  await load()
+function remove(id: string) {
+  return runAction(() => api(`/api/queue/${id}`, { method: 'DELETE' }))
+}
+
+function retry(item: QueueItem) {
+  return runAction(() =>
+    api('/api/downloads', {
+      method: 'POST',
+      body: JSON.stringify({ url: item.url, downloader: item.downloader }),
+    }),
+  )
 }
 
 onMounted(() => {
