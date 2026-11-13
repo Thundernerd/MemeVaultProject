@@ -8,10 +8,10 @@
 //! A descendant that leaves the group on purpose (`setsid` or `setpgid` on
 //! Unix, breakaway on Windows) is out of reach.
 
-use std::process::{Output, Stdio};
+use std::process::{ExitStatus, Output, Stdio};
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
-use tokio::process::{Child, Command};
+use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 
 /// Runs `cmd` and collects its output, like [`Command::output`], but gives
 /// up after `timeout`. Once the child exits, anything it started that is
@@ -19,18 +19,14 @@ use tokio::process::{Child, Command};
 /// dropped, the child is killed too. `None` if `cmd` cannot be
 /// spawned, its output cannot be read, or it does not finish in time.
 pub async fn output_within(cmd: &mut Command, timeout: Duration) -> Option<Output> {
-    cmd.stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        // `ProcessTree` kills the group; this kills the child itself if the
-        // group could not be set up.
-        .kill_on_drop(true);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut tree = ProcessTree::spawn(cmd).ok()?;
     tokio::time::timeout(timeout, tree.output()).await.ok()?
 }
 
 /// A child and everything it starts. Dropping it kills whatever of them is
 /// still running.
-struct ProcessTree {
+pub struct ProcessTree {
     child: Child,
     /// The child's process group, while it is safe to signal: `None` once
     /// the group has been killed, or once the child may have been reaped and
@@ -43,7 +39,11 @@ struct ProcessTree {
 }
 
 impl ProcessTree {
-    fn spawn(cmd: &mut Command) -> std::io::Result<ProcessTree> {
+    /// Spawns `cmd` in a group of its own. Set up its pipes on `cmd` first.
+    pub fn spawn(cmd: &mut Command) -> std::io::Result<ProcessTree> {
+        // `ProcessTree` kills the group; this kills the child itself if the
+        // group could not be set up.
+        cmd.kill_on_drop(true);
         #[cfg(unix)]
         {
             // The child leads a new process group whose id is its pid, and
@@ -62,11 +62,21 @@ impl ProcessTree {
         }
     }
 
+    /// The child's stdout, if it was piped and not taken yet.
+    pub fn take_stdout(&mut self) -> Option<ChildStdout> {
+        self.child.stdout.take()
+    }
+
+    /// The child's stderr, if it was piped and not taken yet.
+    pub fn take_stderr(&mut self) -> Option<ChildStderr> {
+        self.child.stderr.take()
+    }
+
     /// Reads the child's stdout and stderr to the end, waits for the child,
     /// then kills anything it left running.
     async fn output(&mut self) -> Option<Output> {
-        let mut stdout_pipe = self.child.stdout.take()?;
-        let mut stderr_pipe = self.child.stderr.take()?;
+        let mut stdout_pipe = self.take_stdout()?;
+        let mut stderr_pipe = self.take_stderr()?;
         let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
         let (stdout_read, stderr_read) = tokio::join!(
             stdout_pipe.read_to_end(&mut stdout),
@@ -74,33 +84,48 @@ impl ProcessTree {
         );
         stdout_read.ok()?;
         stderr_read.ok()?;
-        // Kill the group once the child has exited, but before it is reaped:
-        // until then its pid, and so the group id, cannot be reused.
-        #[cfg(unix)]
-        {
-            if let Some(pid) = self.pgid {
-                let exited = tokio::task::spawn_blocking(move || wait_unreaped(pid)).await;
-                if !matches!(exited, Ok(Ok(()))) {
-                    // `waitid` fails (ECHILD) if something else has reaped
-                    // the child, and then the group id may already be reused:
-                    // stop `Drop` from signalling it.
-                    self.pgid = None;
-                    return None;
-                }
-            }
-            self.kill_remaining();
-        }
-        let status = self.child.wait().await.ok()?;
-        // A job is held by its handle, not an id, so it can be closed after
-        // the child is reaped. Closing it earlier could kill a child that has
-        // closed its pipes but not yet exited.
-        #[cfg(windows)]
-        self.kill_remaining();
+        let status = self.wait().await.ok()?;
         Some(Output {
             status,
             stdout,
             stderr,
         })
+    }
+
+    /// Waits for the child to exit, then kills anything it left running, so
+    /// nothing it started keeps the child's pipes open. Safe to cancel and
+    /// call again, e.g. after [`ProcessTree::kill`].
+    pub async fn wait(&mut self) -> std::io::Result<ExitStatus> {
+        // Kill the group once the child has exited, but before it is reaped:
+        // until then its pid, and so the group id, cannot be reused.
+        #[cfg(unix)]
+        if let Some(pid) = self.pgid {
+            let exited = tokio::task::spawn_blocking(move || wait_unreaped(pid)).await;
+            let exited = exited.unwrap_or_else(|e| Err(std::io::Error::other(e)));
+            if let Err(e) = exited {
+                // `waitid` fails (ECHILD) if something else has reaped the
+                // child, and then the group id may already be reused: stop
+                // `kill` and `Drop` from signalling it.
+                self.pgid = None;
+                return Err(e);
+            }
+            self.kill_remaining();
+        }
+        let status = self.child.wait().await?;
+        // A job is held by its handle, not an id, so it can be closed after
+        // the child is reaped. Closing it earlier could kill a child that has
+        // closed its pipes but not yet exited.
+        #[cfg(windows)]
+        self.kill_remaining();
+        Ok(status)
+    }
+
+    /// Kills the child and everything it started. [`ProcessTree::wait`]
+    /// then reaps the child.
+    pub fn kill(&mut self) {
+        self.kill_remaining();
+        // Reaches the child even if its group could not be set up.
+        let _ = self.child.start_kill();
     }
 
     /// Kills everything left in the group. Only the first call does anything.
