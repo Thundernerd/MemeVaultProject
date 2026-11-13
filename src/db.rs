@@ -302,146 +302,116 @@ pub fn get_env_overridden_keys() -> Vec<String> {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-/// Lifecycle state of a queue item. Stored in `queue_items.status` and sent
-/// over the API as the lowercase variant name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum QueueStatus {
-    Pending,
-    Downloading,
-    Completed,
-    Failed,
-    Cancelled,
+/// Declares a fieldless enum whose values are stored in SQLite and sent over
+/// the API as fixed strings. Each `Variant => "wire"` pair is the single source
+/// of that variant's string: the macro generates the enum (with its serde
+/// derives), `ALL`, `as_str`, `FromStr`, a `$err` error type whose message is
+/// `unknown <noun> "<value>"`, and the rusqlite `ToSql`/`FromSql` impls.
+/// Behaviour methods go in a separate, hand-written `impl` block. Do not pass
+/// `#[serde(...)]` attributes: the wire strings come only from the pairs.
+macro_rules! sql_string_enum {
+    (@one $variant:ident) => {
+        1
+    };
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $name:ident / $err:ident ($noun:literal) {
+            $($variant:ident => $wire:literal),+ $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, ::serde::Serialize, ::serde::Deserialize)]
+        $vis enum $name {
+            $(#[serde(rename = $wire)] $variant,)+
+        }
+
+        impl $name {
+            const ALL: [Self; 0 $(+ sql_string_enum!(@one $variant))+] = [$(Self::$variant),+];
+
+            pub fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $wire,)+
+                }
+            }
+        }
+
+        impl ::std::str::FromStr for $name {
+            type Err = $err;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                Self::ALL
+                    .into_iter()
+                    .find(|value| value.as_str() == s)
+                    .ok_or_else(|| $err(s.to_string()))
+            }
+        }
+
+        #[doc = concat!("A string that is not one of [`", stringify!($name), "`]'s values.")]
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        $vis struct $err(pub String);
+
+        impl ::std::fmt::Display for $err {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                write!(f, concat!("unknown ", $noun, " {:?}"), self.0)
+            }
+        }
+
+        impl ::std::error::Error for $err {}
+
+        impl ::rusqlite::types::ToSql for $name {
+            fn to_sql(&self) -> ::rusqlite::Result<::rusqlite::types::ToSqlOutput<'_>> {
+                Ok(self.as_str().into())
+            }
+        }
+
+        impl ::rusqlite::types::FromSql for $name {
+            fn column_result(
+                value: ::rusqlite::types::ValueRef<'_>,
+            ) -> ::rusqlite::types::FromSqlResult<Self> {
+                value
+                    .as_str()?
+                    .parse::<Self>()
+                    .map_err(|e| ::rusqlite::types::FromSqlError::Other(Box::new(e)))
+            }
+        }
+    };
+}
+
+sql_string_enum! {
+    /// Lifecycle state of a queue item. Stored in `queue_items.status` and sent
+    /// over the API as each variant's paired string.
+    pub enum QueueStatus / UnknownQueueStatus ("queue status") {
+        Pending => "pending",
+        Downloading => "downloading",
+        Completed => "completed",
+        Failed => "failed",
+        Cancelled => "cancelled",
+    }
 }
 
 impl QueueStatus {
-    const ALL: [Self; 5] = [
-        Self::Pending,
-        Self::Downloading,
-        Self::Completed,
-        Self::Failed,
-        Self::Cancelled,
-    ];
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Pending => "pending",
-            Self::Downloading => "downloading",
-            Self::Completed => "completed",
-            Self::Failed => "failed",
-            Self::Cancelled => "cancelled",
-        }
-    }
-
     /// Whether a user can still cancel the item (it has not finished yet).
     pub fn is_cancellable(self) -> bool {
         matches!(self, Self::Pending | Self::Downloading)
     }
 }
 
-impl std::str::FromStr for QueueStatus {
-    type Err = UnknownQueueStatus;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::ALL
-            .into_iter()
-            .find(|status| status.as_str() == s)
-            .ok_or_else(|| UnknownQueueStatus(s.to_string()))
+sql_string_enum! {
+    /// Where a queue item was submitted from. Stored in `queue_items.source` and
+    /// sent over the API as each variant's paired string. Mirrors the frontend's
+    /// `QueueSource` type (`frontend/src/api.ts`).
+    pub enum QueueSource / UnknownQueueSource ("queue source") {
+        Web => "web",
+        Api => "api",
+        Discord => "discord",
+        Fluxer => "fluxer",
     }
-}
-
-/// A string that is not one of [`QueueStatus`]'s values.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnknownQueueStatus(pub String);
-
-impl std::fmt::Display for UnknownQueueStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "unknown queue status {:?}", self.0)
-    }
-}
-
-impl std::error::Error for UnknownQueueStatus {}
-
-impl rusqlite::types::ToSql for QueueStatus {
-    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
-        Ok(self.as_str().into())
-    }
-}
-
-impl rusqlite::types::FromSql for QueueStatus {
-    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
-        value
-            .as_str()?
-            .parse::<Self>()
-            .map_err(|e| rusqlite::types::FromSqlError::Other(Box::new(e)))
-    }
-}
-
-/// Where a queue item was submitted from. Stored in `queue_items.source` and
-/// sent over the API as the lowercase variant name. Mirrors the frontend's
-/// `QueueSource` type (`frontend/src/api.ts`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum QueueSource {
-    Web,
-    Api,
-    Discord,
-    Fluxer,
 }
 
 impl QueueSource {
-    const ALL: [Self; 4] = [Self::Web, Self::Api, Self::Discord, Self::Fluxer];
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Web => "web",
-            Self::Api => "api",
-            Self::Discord => "discord",
-            Self::Fluxer => "fluxer",
-        }
-    }
-
     /// Whether a chat bot downloads the item itself, outside the vault worker.
     pub fn is_chat_bot(self) -> bool {
         matches!(self, Self::Discord | Self::Fluxer)
-    }
-}
-
-impl std::str::FromStr for QueueSource {
-    type Err = UnknownQueueSource;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::ALL
-            .into_iter()
-            .find(|source| source.as_str() == s)
-            .ok_or_else(|| UnknownQueueSource(s.to_string()))
-    }
-}
-
-/// A string that is not one of [`QueueSource`]'s values.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnknownQueueSource(pub String);
-
-impl std::fmt::Display for UnknownQueueSource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "unknown queue source {:?}", self.0)
-    }
-}
-
-impl std::error::Error for UnknownQueueSource {}
-
-impl rusqlite::types::ToSql for QueueSource {
-    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
-        Ok(self.as_str().into())
-    }
-}
-
-impl rusqlite::types::FromSql for QueueSource {
-    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
-        value
-            .as_str()?
-            .parse::<Self>()
-            .map_err(|e| rusqlite::types::FromSqlError::Other(Box::new(e)))
     }
 }
 
@@ -1628,6 +1598,14 @@ mod tests {
         let read: rusqlite::Result<QueueSource> =
             conn.query_row("SELECT 'slack'", [], |r| r.get(0));
         assert!(read.is_err());
+    }
+
+    #[test]
+    fn unknown_queue_strings_name_the_kind_and_value() {
+        let status = "x".parse::<QueueStatus>().unwrap_err();
+        assert_eq!(status.to_string(), r#"unknown queue status "x""#);
+        let source = "x".parse::<QueueSource>().unwrap_err();
+        assert_eq!(source.to_string(), r#"unknown queue source "x""#);
     }
 
     #[test]
