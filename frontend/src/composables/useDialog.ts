@@ -12,28 +12,32 @@ interface OpenDialog {
 const stack: OpenDialog[] = []
 
 // The app scrolls in `<main>`, not the page (see style.css). It is locked while the
-// stack is non-empty; this holds its own inline overflow from before the first dialog.
-let scroller: HTMLElement | null = null
-let scrollerOverflow = ''
+// stack is non-empty; `overflow` is its own inline value from before the first dialog.
+let scrollLock: { scroller: HTMLElement; overflow: string } | null = null
 
 function onKeydown(e: KeyboardEvent) {
   // Leave Escape alone while an IME is composing or another handler already used it.
   if (e.key === 'Escape' && !e.isComposing && !e.defaultPrevented) stack.at(-1)?.close()
 }
 
-function push(dialog: OpenDialog) {
+/** Put a dialog on the stack, taking the Escape listener and scroll lock if it is the first. */
+function openDialog(dialog: OpenDialog) {
   if (stack.length === 0) {
     document.addEventListener('keydown', onKeydown)
-    scroller = document.querySelector('main')
+    const scroller = document.querySelector('main')
     if (scroller) {
-      scrollerOverflow = scroller.style.overflow
+      scrollLock = { scroller, overflow: scroller.style.overflow }
       scroller.style.overflow = 'hidden'
     }
   }
   stack.push(dialog)
 }
 
-function remove(dialog: OpenDialog) {
+/**
+ * Take a dialog off the stack and restore focus to its opener. Releases the Escape
+ * listener and scroll lock if it was the last one.
+ */
+function closeDialog(dialog: OpenDialog) {
   const i = stack.indexOf(dialog)
   if (i === -1) return
   stack.splice(i, 1)
@@ -50,8 +54,8 @@ function remove(dialog: OpenDialog) {
   dialog.opener = null
   if (stack.length === 0) {
     document.removeEventListener('keydown', onKeydown)
-    if (scroller) scroller.style.overflow = scrollerOverflow
-    scroller = null
+    if (scrollLock) scrollLock.scroller.style.overflow = scrollLock.overflow
+    scrollLock = null
   }
 }
 
@@ -71,14 +75,14 @@ export function useDialog(
   close: () => void,
   box: Readonly<Ref<HTMLElement | null>>,
 ) {
-  const self: OpenDialog = { close, box, opener: null }
+  const entry: OpenDialog = { close, box, opener: null }
   let active = false
 
   async function activate() {
     if (active) return
     active = true
-    self.opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    push(self)
+    entry.opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    openDialog(entry)
     await nextTick()
     // The dialog may have closed again before it rendered.
     if (!active) return
@@ -88,7 +92,7 @@ export function useDialog(
   function deactivate() {
     if (!active) return
     active = false
-    remove(self)
+    closeDialog(entry)
   }
 
   watch(
