@@ -23,6 +23,12 @@ use tokio::io::AsyncReadExt;
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 use tokio::sync::watch;
 
+/// The error a download or conversion stops with when its cancel signal
+/// fires. It displays as `cancelled`, the text stored on the queue row.
+#[derive(Debug, thiserror::Error)]
+#[error("cancelled")]
+pub struct Cancelled;
+
 /// Runs `cmd` and collects its output, like [`Command::output`], but gives
 /// up after `timeout`. Once the child exits, anything it started that is
 /// still running is killed; on timeout, or when the returned future is
