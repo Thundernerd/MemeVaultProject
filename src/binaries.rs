@@ -156,10 +156,9 @@ fn ffprobe_filename() -> &'static str {
     }
 }
 
+/// Runs `path args…` and returns the first line it prints. `path` may be a
+/// bare name, which is looked up on PATH. `None` if it cannot run.
 async fn version_of(path: &str, args: &[&str]) -> Option<String> {
-    if !Path::new(path).exists() {
-        return None;
-    }
     let out = tokio::process::Command::new(path)
         .args(args)
         .stdout(Stdio::piped())
@@ -193,18 +192,14 @@ fn binary_path(db: &Db, config: &Config, name: &str) -> String {
 
 pub async fn check_binary(db: &Db, config: &Config, name: &str) -> BinaryStatus {
     let path = binary_path(db, config, name);
-    let version = if Path::new(&path).exists() {
-        match name {
-            "ytdlp" => version_of(&path, &["--version"]).await,
-            "gallery-dl" => version_of(&path, &["--version"]).await,
-            "ffmpeg" => version_of(&path, &["-version"]).await,
-            _ => None,
-        }
-    } else {
-        None
+    let version = match name {
+        "ytdlp" => version_of(&path, &["--version"]).await,
+        "gallery-dl" => version_of(&path, &["--version"]).await,
+        "ffmpeg" => version_of(&path, &["-version"]).await,
+        _ => None,
     };
-    // A file that cannot run is as good as missing: the Binaries tab then
-    // shows "missing", and startup re-downloads it where a build exists.
+    // A binary that cannot run is as good as missing, so the Binaries tab
+    // shows "missing" rather than "installed".
     let exists = version.is_some();
     BinaryStatus {
         name: name.to_string(),
@@ -459,6 +454,15 @@ mod tests {
             "echo 'broken: cannot execute binary file' >&2\nexit 126",
         );
         assert_eq!(version_of(&bin, &["--version"]).await, None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn version_of_resolves_a_bare_name_on_path() {
+        assert_eq!(
+            version_of("sh", &["-c", "echo 1.2.3"]).await,
+            Some("1.2.3".to_string())
+        );
     }
 
     #[test]
