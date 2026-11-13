@@ -321,21 +321,7 @@ pub async fn ensure_h264_mp4(
         tail
     };
 
-    let wait_task = async {
-        let cancelled = async {
-            match cancel.clone() {
-                Some(mut cancel) => cancel.wait_for(|cancelled| *cancelled).await.map(drop),
-                None => std::future::pending().await,
-            }
-        };
-        tokio::select! {
-            status = tree.wait() => status,
-            Ok(()) = cancelled => {
-                tree.kill();
-                tree.wait().await
-            }
-        }
-    };
+    let wait_task = tree.wait_or_cancel(cancel.clone());
 
     let (_, stderr_tail, status) = tokio::join!(progress_task, stderr_task, wait_task);
     let status = status?;

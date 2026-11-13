@@ -155,16 +155,7 @@ pub async fn run_ytdlp(
     };
 
     let cancel_for_convert = cancel.clone();
-    let wait_task = async {
-        let mut cancel = cancel;
-        tokio::select! {
-            status = tree.wait() => status,
-            Ok(()) = async { cancel.wait_for(|cancelled| *cancelled).await.map(drop) } => {
-                tree.kill();
-                tree.wait().await
-            }
-        }
-    };
+    let wait_task = tree.wait_or_cancel(Some(cancel));
 
     let (_, stderr_tail, status) = tokio::join!(read_task, stderr_task, wait_task);
     let status = status?;

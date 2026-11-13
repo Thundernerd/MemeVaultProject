@@ -14,6 +14,7 @@ use std::process::{ExitStatus, Output, Stdio};
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
+use tokio::sync::watch;
 
 /// Runs `cmd` and collects its output, like [`Command::output`], but gives
 /// up after `timeout`. Once the child exits, anything it started that is
@@ -128,6 +129,30 @@ impl ProcessTree {
         self.kill_remaining();
         // Reaches the child even if its group could not be set up.
         let _ = self.child.start_kill();
+    }
+
+    /// Like [`ProcessTree::wait`], but if `cancel` turns `true` first, kills
+    /// the tree and then waits for it. A `None` or closed `cancel` never
+    /// cancels.
+    pub async fn wait_or_cancel(
+        &mut self,
+        cancel: Option<watch::Receiver<bool>>,
+    ) -> std::io::Result<ExitStatus> {
+        let cancelled = async {
+            match cancel {
+                // `map(drop)` releases the borrow `wait_for` returns, which
+                // must not be held across an await.
+                Some(mut cancel) => cancel.wait_for(|cancelled| *cancelled).await.map(drop),
+                None => std::future::pending().await,
+            }
+        };
+        tokio::select! {
+            status = self.wait() => status,
+            Ok(()) = cancelled => {
+                self.kill();
+                self.wait().await
+            }
+        }
     }
 
     /// Kills everything left in the group. Only the first call does anything.
