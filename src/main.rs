@@ -11,6 +11,7 @@ mod files;
 mod fluxer;
 mod gallerydl;
 mod oidc;
+mod process_tree;
 mod queue;
 mod routes;
 mod state;

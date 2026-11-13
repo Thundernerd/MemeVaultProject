@@ -1734,6 +1734,7 @@ dependencies = [
  "http 1.5.0",
  "http-range-header",
  "jsonwebtoken",
+ "libc",
  "mime_guess",
  "once_cell",
  "openidconnect",
@@ -1764,6 +1765,7 @@ dependencies = [
  "uuid",
  "walkdir",
  "which",
+ "windows-sys 0.61.2",
  "xz2",
  "zip",
 ]
