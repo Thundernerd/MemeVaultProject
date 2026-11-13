@@ -20,29 +20,30 @@ async function load() {
   }
 }
 
-async function remove(id: string) {
-  if (!confirm('Delete this tag?')) return
+/** Runs an action, putting a failure in `actionError` as "<prefix>: <message>", then reloads. */
+async function runAction(prefix: string, request: () => Promise<unknown>) {
   actionError.value = ''
   try {
-    await api('/api/tags', { method: 'DELETE', body: JSON.stringify({ id }) })
+    await request()
   } catch (e) {
-    actionError.value = errorMessage(e)
+    actionError.value = `${prefix}: ${errorMessage(e)}`
   }
   await load()
 }
 
+const deleteTag = (id: string) => api('/api/tags', { method: 'DELETE', body: JSON.stringify({ id }) })
+
+async function remove(id: string) {
+  if (!confirm('Delete this tag?')) return
+  await runAction('Delete failed', () => deleteTag(id))
+}
+
 /** Deletes unused tags one by one, stopping at the first failure; the reload then shows which ones went. */
-async function purgeOrphans() {
+function purgeOrphans() {
   const orphans = tags.value.filter((t) => t.usage_count === 0)
-  actionError.value = ''
-  try {
-    for (const t of orphans) {
-      await api('/api/tags', { method: 'DELETE', body: JSON.stringify({ id: t.id }) })
-    }
-  } catch (e) {
-    actionError.value = errorMessage(e)
-  }
-  await load()
+  return runAction('Purge failed', async () => {
+    for (const t of orphans) await deleteTag(t.id)
+  })
 }
 
 const grouped = computed(() => {

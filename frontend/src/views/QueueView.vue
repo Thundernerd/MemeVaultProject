@@ -29,27 +29,27 @@ function badgeClass(source: QueueSource) {
   return isChatSource(source) ? `badge-${source}` : 'badge-api'
 }
 
-/** Runs a row action, putting a failure in `actionError`, then reloads. */
-async function runAction(request: () => Promise<unknown>) {
+/** Runs a row action, putting a failure in `actionError` as "<prefix>: <message>", then reloads. */
+async function runAction(prefix: string, request: () => Promise<unknown>) {
   actionError.value = ''
   try {
     await request()
   } catch (e) {
-    actionError.value = errorMessage(e)
+    actionError.value = `${prefix}: ${errorMessage(e)}`
   }
   await load()
 }
 
 function cancel(id: string) {
-  return runAction(() => api(`/api/queue/${id}`, { method: 'PATCH', body: JSON.stringify({ action: 'cancel' }) }))
+  return runAction('Cancel failed', () => api(`/api/queue/${id}`, { method: 'PATCH', body: JSON.stringify({ action: 'cancel' }) }))
 }
 
 function remove(id: string) {
-  return runAction(() => api(`/api/queue/${id}`, { method: 'DELETE' }))
+  return runAction('Remove failed', () => api(`/api/queue/${id}`, { method: 'DELETE' }))
 }
 
 function retry(item: QueueItem) {
-  return runAction(() =>
+  return runAction('Retry failed', () =>
     api('/api/downloads', {
       method: 'POST',
       body: JSON.stringify({ url: item.url, downloader: item.downloader }),
