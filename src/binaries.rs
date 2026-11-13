@@ -657,6 +657,31 @@ mod tests {
         );
     }
 
+    // cmd.exe passes every inheritable handle to what it starts, the
+    // check's pipes included, even when the grandchild's own output is
+    // redirected to nul.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn version_of_returns_the_version_while_a_grandchild_holds_its_pipes() {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("grandchild.pid");
+        let bin = cmd_script(
+            dir.path(),
+            "holds_pipes",
+            &format!("{}\necho 1.2.3", start_grandchild(&pidfile)),
+        );
+        // Long enough for PowerShell to start on a cold CI runner.
+        assert_eq!(
+            version_of_within(&bin, &["--version"], Duration::from_secs(15)).await,
+            Some("1.2.3".to_string())
+        );
+        let pid = read_pid(&pidfile);
+        assert!(
+            gone_within(pid, Duration::from_secs(2)).await,
+            "grandchild {pid} is still running after a successful check"
+        );
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn version_of_resolves_a_bare_name_on_path() {
