@@ -156,16 +156,34 @@ fn ffprobe_filename() -> &'static str {
     }
 }
 
+/// How long a binary gets to print its version. PyInstaller onefile builds
+/// (yt-dlp, gallery-dl) unpack themselves on first run, which takes seconds.
+const VERSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// Runs `path args…` and returns the first line it prints. `path` may be a
-/// bare name, which is looked up on PATH. `None` if it cannot run.
+/// bare name, which is looked up on PATH. `None` if it cannot run or does not
+/// finish within [`VERSION_TIMEOUT`].
 async fn version_of(path: &str, args: &[&str]) -> Option<String> {
-    let out = tokio::process::Command::new(path)
+    version_of_within(path, args, VERSION_TIMEOUT).await
+}
+
+async fn version_of_within(
+    path: &str,
+    args: &[&str],
+    timeout: std::time::Duration,
+) -> Option<String> {
+    let output = tokio::process::Command::new(path)
         .args(args)
+        // A wrapper that reads stdin would otherwise wait for input forever.
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
-        .await
-        .ok()?;
+        // Dropping the timed-out future kills the child instead of leaking it.
+        .kill_on_drop(true)
+        .output();
+    // A binary that hangs (cannot unpack, network-mounted path) has no
+    // version, the same as one that exits non-zero.
+    let out = tokio::time::timeout(timeout, output).await.ok()?.ok()?;
     // A binary that cannot run (wrong architecture, missing interpreter)
     // prints its error to stderr and exits non-zero; that is not a version.
     if !out.status.success() {
@@ -454,6 +472,17 @@ mod tests {
             "echo 'broken: cannot execute binary file' >&2\nexit 126",
         );
         assert_eq!(version_of(&bin, &["--version"]).await, None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn version_of_is_none_when_binary_never_exits() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = script(dir.path(), "hangs", "sleep 30\necho 1.2.3");
+        let timeout = std::time::Duration::from_millis(200);
+        let started = std::time::Instant::now();
+        assert_eq!(version_of_within(&bin, &["--version"], timeout).await, None);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
     }
 
     #[cfg(unix)]
