@@ -6,9 +6,12 @@ use axum::Json;
 use serde_json::{json, Value};
 
 pub async fn list(State(state): State<AppState>) -> AppResult<Json<Value>> {
-    let ytdlp = binaries::check_binary(&state.db, &state.config, "ytdlp").await;
-    let gallery = binaries::check_binary(&state.db, &state.config, "gallery-dl").await;
-    let ffmpeg = binaries::check_binary(&state.db, &state.config, "ffmpeg").await;
+    // Concurrently, so binaries that hang cost one version timeout, not three.
+    let (ytdlp, gallery, ffmpeg) = tokio::join!(
+        binaries::check_binary(&state.db, &state.config, "ytdlp"),
+        binaries::check_binary(&state.db, &state.config, "gallery-dl"),
+        binaries::check_binary(&state.db, &state.config, "ffmpeg"),
+    );
     Ok(Json(json!({
         "ytdlp": ytdlp,
         "gallery-dl": gallery,
