@@ -177,8 +177,7 @@ pub async fn check_binary(db: &Db, config: &Config, name: &str) -> BinaryStatus 
         "ffmpeg" => get_ffmpeg_path(db, config),
         _ => String::new(),
     };
-    let exists = Path::new(&path).exists();
-    let version = if exists {
+    let version = if Path::new(&path).exists() {
         match name {
             "ytdlp" => version_of(&path, &["--version"]).await,
             "gallery-dl" => version_of(&path, &["--version"]).await,
@@ -188,6 +187,9 @@ pub async fn check_binary(db: &Db, config: &Config, name: &str) -> BinaryStatus 
     } else {
         None
     };
+    // A file that cannot run is as good as missing: the Binaries tab then
+    // shows "missing", and startup re-downloads it where a build exists.
+    let exists = version.is_some();
     BinaryStatus {
         name: name.to_string(),
         path,
