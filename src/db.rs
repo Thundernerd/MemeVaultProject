@@ -1640,6 +1640,17 @@ mod tests {
     }
 
     #[test]
+    fn every_chat_bot_has_a_label_and_nothing_else_does() {
+        for source in QueueSource::ALL {
+            assert_eq!(
+                source.chat_bot_label().is_some(),
+                source.is_chat_bot(),
+                "{source:?}"
+            );
+        }
+    }
+
+    #[test]
     fn queue_source_rejects_unknown_strings() {
         assert!(serde_json::from_str::<QueueSource>("\"slack\"").is_err());
         let conn = rusqlite::Connection::open_in_memory().unwrap();
