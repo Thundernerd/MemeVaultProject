@@ -42,8 +42,8 @@ pub async fn run_ytdlp(
     });
     std::fs::create_dir_all(&job_dir)?;
 
-    let ytdlp = binaries::get_ytdlp_path(db, config);
-    let ffmpeg = binaries::get_ffmpeg_path(db, config);
+    let ytdlp = binaries::Binary::YtDlp.path(db, config);
+    let ffmpeg = binaries::Binary::Ffmpeg.path(db, config);
     let extra = db
         .with_conn(|c| Ok(db::get_setting(c, "ytdlp_extra_args")))?
         .unwrap_or_default();

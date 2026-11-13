@@ -54,9 +54,9 @@ impl Binary {
     /// Where the binary is when the user has not overridden its path.
     fn default_path(self, config: &Config) -> String {
         let file = match self {
-            Binary::YtDlp => ytdlp_filename(),
+            Binary::YtDlp => ytdlp_filename().to_string(),
             Binary::GalleryDl => match host_gallerydl_asset() {
-                Some(asset) => asset,
+                Some(asset) => asset.to_string(),
                 // No upstream build for this host: use the user's own install.
                 None => {
                     return which::which("gallery-dl")
@@ -113,20 +113,8 @@ pub struct BinaryStatus {
     pub version: Option<String>,
 }
 
-pub fn get_ytdlp_path(db: &Db, config: &Config) -> String {
-    Binary::YtDlp.path(db, config)
-}
-
-pub fn get_gallerydl_path(db: &Db, config: &Config) -> String {
-    Binary::GalleryDl.path(db, config)
-}
-
-pub fn get_ffmpeg_path(db: &Db, config: &Config) -> String {
-    Binary::Ffmpeg.path(db, config)
-}
-
 pub fn get_ffprobe_path(db: &Db, config: &Config) -> String {
-    let ffmpeg = get_ffmpeg_path(db, config);
+    let ffmpeg = Binary::Ffmpeg.path(db, config);
     let p = Path::new(&ffmpeg);
     if let Some(parent) = p.parent() {
         let probe = parent.join(ffprobe_filename());
@@ -176,26 +164,12 @@ fn host_gallerydl_asset() -> Option<&'static str> {
     gallerydl_asset(std::env::consts::OS, std::env::consts::ARCH)
 }
 
-fn ffmpeg_filename() -> &'static str {
-    #[cfg(target_os = "windows")]
-    {
-        "ffmpeg.exe"
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        "ffmpeg"
-    }
+fn ffmpeg_filename() -> String {
+    format!("ffmpeg{}", std::env::consts::EXE_SUFFIX)
 }
 
-fn ffprobe_filename() -> &'static str {
-    #[cfg(target_os = "windows")]
-    {
-        "ffprobe.exe"
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        "ffprobe"
-    }
+fn ffprobe_filename() -> String {
+    format!("ffprobe{}", std::env::consts::EXE_SUFFIX)
 }
 
 /// Runs `path args…` and returns the first line it prints. `path` may be a
