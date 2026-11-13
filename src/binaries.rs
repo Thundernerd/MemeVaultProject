@@ -123,6 +123,17 @@ fn host_gallerydl_asset() -> Option<&'static str> {
     gallerydl_asset(std::env::consts::OS, std::env::consts::ARCH)
 }
 
+/// Why `name` cannot be auto-downloaded on this host, or `None` if it can.
+pub fn auto_download_unsupported(name: &str) -> Option<String> {
+    (name == "gallery-dl" && host_gallerydl_asset().is_none()).then(|| {
+        format!(
+            "gallery-dl publishes no build for {}/{}; install gallery-dl on PATH or set its path in Settings",
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        )
+    })
+}
+
 fn ffmpeg_filename() -> &'static str {
     #[cfg(target_os = "windows")]
     {
@@ -235,11 +246,7 @@ async fn download_ytdlp(config: &Config) -> anyhow::Result<()> {
 
 async fn download_gallerydl(config: &Config) -> anyhow::Result<()> {
     let asset = host_gallerydl_asset().ok_or_else(|| {
-        anyhow::anyhow!(
-            "gallery-dl publishes no build for {}/{}; install gallery-dl on PATH or set its path in Settings",
-            std::env::consts::OS,
-            std::env::consts::ARCH
-        )
+        anyhow::anyhow!(auto_download_unsupported("gallery-dl").unwrap_or_default())
     })?;
     // Codeberg/Forgejo has no GitHub-style /releases/latest/download/{asset}
     // shortcut — resolve the latest tag via the API, then download by tag.
@@ -409,11 +416,9 @@ pub async fn ensure_binaries(db: &Db, config: &Config) {
                 .is_some(),
             _ => false,
         };
-        if name == "gallery-dl" && host_gallerydl_asset().is_none() {
+        if let Some(why) = auto_download_unsupported(name) {
             if !file_present && !has_override {
-                tracing::info!(
-                    "gallery-dl has no upstream build for this platform; install it on PATH or set its path in Settings"
-                );
+                tracing::info!("{why}");
             }
             continue;
         }
