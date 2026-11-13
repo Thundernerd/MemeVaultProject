@@ -5,6 +5,7 @@ use crate::config::Config;
 use crate::db::{self, Db, NewMedia, QueueStatus};
 use crate::ffprobe;
 use crate::gallerydl;
+use crate::process_tree::Cancelled;
 use crate::ytdlp;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -78,14 +79,8 @@ impl DownloadOutcome {
         match result {
             Ok(0) => Self::Empty,
             Ok(file_count) => Self::Completed(file_count),
-            Err(e) => {
-                let message = e.to_string();
-                if message.contains("cancelled") {
-                    Self::Cancelled
-                } else {
-                    Self::Failed(message)
-                }
-            }
+            Err(e) if e.chain().any(|cause| cause.is::<Cancelled>()) => Self::Cancelled,
+            Err(e) => Self::Failed(e.to_string()),
         }
     }
 
@@ -513,10 +508,28 @@ mod tests {
 
     #[test]
     fn a_download_stopped_by_the_cancel_signal_is_cancelled() {
-        let error = anyhow::anyhow!("cancelled");
+        let error = anyhow::Error::from(Cancelled);
         assert_eq!(
             DownloadOutcome::from_result(Err(&error)),
             DownloadOutcome::Cancelled
+        );
+    }
+
+    #[test]
+    fn a_cancel_wrapped_in_context_is_still_cancelled() {
+        let error = anyhow::Error::from(Cancelled).context("converting to mp4");
+        assert_eq!(
+            DownloadOutcome::from_result(Err(&error)),
+            DownloadOutcome::Cancelled
+        );
+    }
+
+    #[test]
+    fn an_error_that_only_mentions_cancelled_is_a_failure() {
+        let error = anyhow::anyhow!("upstream request cancelled by server");
+        assert_eq!(
+            DownloadOutcome::from_result(Err(&error)),
+            DownloadOutcome::Failed("upstream request cancelled by server".to_string())
         );
     }
 

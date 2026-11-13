@@ -3,7 +3,7 @@
 use crate::binaries;
 use crate::config::Config;
 use crate::db::Db;
-use crate::process_tree::ProcessTree;
+use crate::process_tree::{Cancelled, ProcessTree};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -328,7 +328,7 @@ pub async fn ensure_h264_mp4(
 
     if cancel.as_ref().map(|c| *c.borrow()).unwrap_or(false) {
         let _ = std::fs::remove_file(&tmp_path);
-        anyhow::bail!("cancelled");
+        return Err(Cancelled.into());
     }
 
     if !status.success() {
