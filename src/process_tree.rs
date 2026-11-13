@@ -32,9 +32,9 @@ pub async fn output_within(cmd: &mut Command, timeout: Duration) -> Option<Outpu
 /// still running.
 struct ProcessTree {
     child: Child,
-    /// The child's process group, until the group has been killed. The
-    /// child is reaped only after that: once it is, the id may belong to an
-    /// unrelated process.
+    /// The child's process group, while it is safe to signal: `None` once
+    /// the group has been killed, or once the child may have been reaped and
+    /// the id may belong to an unrelated process.
     #[cfg(unix)]
     pgid: Option<libc::pid_t>,
     /// `None` if the job could not be set up; then only the child is killed.
@@ -79,10 +79,14 @@ impl ProcessTree {
         #[cfg(unix)]
         {
             if let Some(pid) = self.pgid {
-                tokio::task::spawn_blocking(move || wait_unreaped(pid))
-                    .await
-                    .ok()?
-                    .ok()?;
+                let exited = tokio::task::spawn_blocking(move || wait_unreaped(pid)).await;
+                if !matches!(exited, Ok(Ok(()))) {
+                    // `waitid` fails (ECHILD) if something else has reaped
+                    // the child, and then the group id may already be reused:
+                    // stop `Drop` from signalling it.
+                    self.pgid = None;
+                    return None;
+                }
             }
             self.kill();
         }
