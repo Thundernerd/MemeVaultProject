@@ -103,3 +103,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (ct.includes('application/json')) return res.json()
   return undefined as T
 }
+
+/** The text to show for a caught error: the `Error`'s message (as thrown by `api()`), else `fallback`. */
+export function errorMessage(e: unknown, fallback = 'Failed'): string {
+  return e instanceof Error ? e.message : fallback
+}

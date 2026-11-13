@@ -5,6 +5,7 @@ use crate::db::{self, Db};
 use serde::Serialize;
 use std::path::Path;
 use std::process::Stdio;
+use std::time::Duration;
 
 /// A binary MemeVault manages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -172,16 +173,31 @@ fn ffprobe_filename() -> String {
     format!("ffprobe{}", std::env::consts::EXE_SUFFIX)
 }
 
+/// How long a binary gets to print its version. PyInstaller onefile builds
+/// (yt-dlp, gallery-dl) unpack themselves on first run, which takes seconds.
+const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Runs `path args…` and returns the first line it prints. `path` may be a
-/// bare name, which is looked up on PATH. `None` if it cannot run.
+/// bare name, which is looked up on PATH. `None` if it cannot run or does not
+/// finish within [`VERSION_TIMEOUT`].
 async fn version_of(path: &str, args: &[&str]) -> Option<String> {
-    let out = tokio::process::Command::new(path)
+    version_of_within(path, args, VERSION_TIMEOUT).await
+}
+
+/// [`version_of`] with a caller-chosen timeout, so tests need not wait 10 s.
+async fn version_of_within(path: &str, args: &[&str], timeout: Duration) -> Option<String> {
+    let output = tokio::process::Command::new(path)
         .args(args)
+        // A wrapper that reads stdin would otherwise wait for input forever.
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
-        .await
-        .ok()?;
+        // Dropping the timed-out future kills the child instead of leaking it.
+        .kill_on_drop(true)
+        .output();
+    // A binary that hangs (cannot unpack, network-mounted path) has no
+    // version, the same as one that exits non-zero.
+    let out = tokio::time::timeout(timeout, output).await.ok()?.ok()?;
     // A binary that cannot run (wrong architecture, missing interpreter)
     // prints its error to stderr and exits non-zero; that is not a version.
     if !out.status.success() {
@@ -448,6 +464,19 @@ mod tests {
             "echo 'broken: cannot execute binary file' >&2\nexit 126",
         );
         assert_eq!(version_of(&bin, &["--version"]).await, None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn version_of_is_none_when_binary_never_exits() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = script(dir.path(), "hangs", "sleep 30\necho 1.2.3");
+        let started = std::time::Instant::now();
+        assert_eq!(
+            version_of_within(&bin, &["--version"], Duration::from_millis(200)).await,
+            None
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 
     #[cfg(unix)]

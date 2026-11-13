@@ -6,11 +6,16 @@ use axum::Json;
 use serde_json::{json, Map, Value};
 
 pub async fn list(State(state): State<AppState>) -> AppResult<Json<Value>> {
-    let mut out = Map::new();
-    for binary in Binary::ALL {
-        let status = binaries::check_binary(&state.db, &state.config, binary).await;
-        out.insert(binary.name().to_string(), json!(status));
-    }
+    // Concurrently, so binaries that hang cost one version timeout, not three.
+    let statuses = futures::future::join_all(
+        Binary::ALL.map(|binary| binaries::check_binary(&state.db, &state.config, binary)),
+    )
+    .await;
+    let out: Map<String, Value> = Binary::ALL
+        .into_iter()
+        .zip(statuses)
+        .map(|(binary, status)| (binary.name().to_string(), json!(status)))
+        .collect();
     Ok(Json(Value::Object(out)))
 }
 
