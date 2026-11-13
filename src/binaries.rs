@@ -301,16 +301,10 @@ async fn download_gallerydl(config: &Config) -> anyhow::Result<()> {
 
 async fn download_ffmpeg(config: &Config) -> anyhow::Result<()> {
     let archive = ffmpeg_archive(std::env::consts::OS, std::env::consts::ARCH);
-    let ext = match archive.format {
-        ArchiveFormat::TarXz => "tar.xz",
-        ArchiveFormat::Zip => "zip",
-    };
+    let ext = archive.format.extension();
     let tmp = config.bin_dir().join(format!("ffmpeg-tmp.{ext}"));
     download_file(archive.url, &tmp).await?;
-    match archive.format {
-        ArchiveFormat::TarXz => extract_ffmpeg_xz(&tmp, &config.bin_dir())?,
-        ArchiveFormat::Zip => extract_ffmpeg_zip(&tmp, &config.bin_dir())?,
-    }
+    archive.format.extract_ffmpeg(&tmp, &config.bin_dir())?;
     let _ = std::fs::remove_file(&tmp);
     Ok(())
 }
@@ -319,6 +313,23 @@ async fn download_ffmpeg(config: &Config) -> anyhow::Result<()> {
 enum ArchiveFormat {
     TarXz,
     Zip,
+}
+
+impl ArchiveFormat {
+    fn extension(self) -> &'static str {
+        match self {
+            ArchiveFormat::TarXz => "tar.xz",
+            ArchiveFormat::Zip => "zip",
+        }
+    }
+
+    /// Unpacks ffmpeg and ffprobe from `archive` into `bin_dir`.
+    fn extract_ffmpeg(self, archive: &Path, bin_dir: &Path) -> anyhow::Result<()> {
+        match self {
+            ArchiveFormat::TarXz => extract_ffmpeg_xz(archive, bin_dir),
+            ArchiveFormat::Zip => extract_ffmpeg_zip(archive, bin_dir),
+        }
+    }
 }
 
 /// Where the ffmpeg + ffprobe build for a target is downloaded from.
