@@ -5,7 +5,7 @@ use crate::config::Config;
 use crate::cookies;
 use crate::db::{self, Db};
 use crate::ffprobe;
-use crate::process_tree::ProcessTree;
+use crate::process_tree::{Cancelled, ProcessTree};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::Value;
@@ -161,7 +161,7 @@ pub async fn run_ytdlp(
     let status = status?;
     if !status.success() {
         if *cancel_for_convert.borrow() {
-            anyhow::bail!("cancelled");
+            return Err(Cancelled.into());
         }
         let stderr_tail = truncate_stderr_tail(&stderr_tail);
         tracing::error!(
@@ -642,6 +642,7 @@ mod tests {
     #[cfg(unix)]
     mod cancellation {
         use crate::binaries::Binary;
+        use crate::process_tree::Cancelled;
         use crate::test_support::{gone_within, wait_for_pid, TestVault};
         use crate::ytdlp::run_ytdlp;
         use std::time::Duration;
@@ -666,7 +667,10 @@ mod tests {
                 .await
                 .expect("download still running 5 s after cancel")
                 .unwrap();
-            assert_eq!(result.unwrap_err().to_string(), "cancelled");
+            assert!(
+                result.unwrap_err().is::<Cancelled>(),
+                "a cancelled download should stop with a Cancelled error"
+            );
             assert!(
                 gone_within(pid, Duration::from_secs(2)).await,
                 "grandchild {pid} is still running after cancel"
