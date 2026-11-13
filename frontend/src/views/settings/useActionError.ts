@@ -14,15 +14,18 @@ export function useActionError(reload: () => Promise<void>) {
       await action()
       error.value = ''
     } catch (e) {
-      error.value = `${prefix}: ${errorMessage(e, String(e))}`
+      error.value = `${prefix}: ${messageOf(e)}`
     }
     try {
       await reload()
     } catch (e) {
       // Keep the action's own error if there is one; otherwise say the refresh failed.
-      error.value ||= `Reload failed: ${errorMessage(e, String(e))}`
+      error.value ||= `Reload failed: ${messageOf(e)}`
     }
   }
 
   return { error, attempt }
 }
+
+/** Falls back to the thrown value itself, so a non-`Error` rejection still says something. */
+const messageOf = (e: unknown) => errorMessage(e, String(e))
