@@ -4,10 +4,12 @@ import { api, type TagWithCount } from '@/api'
 
 const tags = ref<TagWithCount[]>([])
 const error = ref('')
+const loaded = ref(false)
 
 async function load() {
   try {
     tags.value = await api('/api/tags')
+    loaded.value = true
     error.value = ''
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed'
@@ -49,8 +51,20 @@ onMounted(load)
         <button class="btn" type="button" @click="purgeOrphans">Purge unused</button>
       </div>
     </div>
-    <p v-if="error" class="error">{{ error }}</p>
     <div class="tag-groups">
+      <div v-if="error" class="state state-error" role="alert">
+        <span class="state-tag label">error</span>
+        <p class="state-text">{{ error }}</p>
+      </div>
+      <!-- Tags from the last successful load stay listed under the error until a reload succeeds. -->
+      <div v-else-if="!loaded" class="state state-loading" role="status">
+        <span class="state-tag label">loading</span>
+        <p class="state-text">Loading…</p>
+      </div>
+      <div v-else-if="!tags.length" class="state state-empty" role="status">
+        <span class="state-tag label">empty</span>
+        <p class="state-text">No tags yet</p>
+      </div>
       <section v-for="[ns, list] in grouped" :key="ns" class="tag-group">
         <h2 class="tag-ns">
           <span>{{ ns }}</span>
@@ -69,8 +83,7 @@ onMounted(load)
 </template>
 
 <style scoped>
-/* Ported from prototypes/brutalist/styles.css (tags). */
-.error { font-family: var(--font-mono); font-size: 0.85rem; font-weight: 700; color: var(--danger); }
+/* Brutalist tags styles (#29). */
 .tag-groups { display: flex; flex-direction: column; gap: 28px; }
 .tag-group { display: flex; flex-direction: column; gap: 12px; }
 .tag-ns { display: flex; align-items: baseline; gap: 10px; padding-bottom: 6px; border-bottom: var(--bw) solid var(--border); }

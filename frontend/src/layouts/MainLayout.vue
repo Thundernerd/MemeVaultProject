@@ -1,14 +1,46 @@
 <script setup lang="ts">
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { provideTheme } from '@/theme'
+import { MD_UP } from '@/breakpoints'
 import ThemeSwitcher from '@/components/ThemeSwitcher.vue'
 
 provideTheme()
 const route = useRoute()
 const oidcEnabled = ref(false)
 const drawer = ref(false)
+const menuBtn = ref<HTMLButtonElement | null>(null)
 const version = ref('')
+
+function onEscapeKey(e: KeyboardEvent) {
+  if (e.key !== 'Escape' || !drawer.value) return
+  drawer.value = false
+  menuBtn.value?.focus()
+}
+
+// Any navigation (back/forward, router.push) closes the drawer. Link clicks
+// still close it directly too, since re-selecting the current route
+// doesn't change fullPath.
+watch(() => route.fullPath, () => {
+  drawer.value = false
+})
+
+// The drawer is mobile-only (style.css hides it from md up), so reaching
+// that width closes it rather than leaving it hidden but open.
+let mdUpQuery: MediaQueryList | undefined
+function onMdUpChange(e: MediaQueryListEvent) {
+  if (e.matches) drawer.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', onEscapeKey)
+  mdUpQuery = window.matchMedia(MD_UP)
+  mdUpQuery.addEventListener('change', onMdUpChange)
+})
+onUnmounted(() => {
+  document.removeEventListener('keydown', onEscapeKey)
+  mdUpQuery?.removeEventListener('change', onMdUpChange)
+})
 
 onMounted(async () => {
   try {
@@ -55,6 +87,7 @@ function isActive(href: string) {
           <ThemeSwitcher />
           <a v-if="oidcEnabled" href="/api/auth/logout" class="signout">Sign out</a>
           <button
+            ref="menuBtn"
             type="button"
             class="btn btn-sm btn-icon menu-btn"
             aria-label="Menu"

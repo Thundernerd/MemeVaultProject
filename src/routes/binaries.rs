@@ -23,6 +23,9 @@ pub async fn download(
     if name != "ytdlp" && name != "gallery-dl" && name != "ffmpeg" {
         return Err(AppError::bad_request("invalid binary name"));
     }
+    if let Some(why) = binaries::auto_download_unsupported(&name) {
+        return Err(AppError::bad_request(why));
+    }
     match binaries::download_binary(&state.db, &state.config, &name).await {
         Ok(status) => Ok(Json(json!({ "ok": true, "name": status.name, "path": status.path, "exists": status.exists, "version": status.version }))),
         Err(e) => Err(AppError::internal(e.to_string())),
