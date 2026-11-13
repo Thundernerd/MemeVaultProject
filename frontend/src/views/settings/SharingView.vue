@@ -1,19 +1,20 @@
 <script setup lang="ts">
 import { useSettings } from './useSettings'
+import SaveRow from './SaveRow.vue'
 
 const { settings, save, saved, error } = useSettings()
 </script>
 
 <template>
   <form
-    class="flex flex-col gap-4 max-w-xl"
+    class="settings-form"
     @submit.prevent="save(['share_default_expiry_days', 'share_default_allow_download', 'share_base_url', 'random_mode'])"
   >
-    <label class="flex flex-col gap-1 text-sm">
-      <span class="text-text-secondary">Default expiry (days, empty = never)</span>
-      <input v-model="settings.share_default_expiry_days" class="bg-surface-2 border border-border rounded-lg px-3 py-2" />
+    <label class="field">
+      <span class="label">Default expiry (days, empty = never)</span>
+      <input v-model="settings.share_default_expiry_days" class="input" />
     </label>
-    <label class="flex items-center gap-2 text-sm">
+    <label class="check">
       <input
         type="checkbox"
         :checked="settings.share_default_allow_download !== '0'"
@@ -21,19 +22,17 @@ const { settings, save, saved, error } = useSettings()
       />
       Allow download by default
     </label>
-    <label class="flex flex-col gap-1 text-sm">
-      <span class="text-text-secondary">Share base URL (OG embeds)</span>
-      <input v-model="settings.share_base_url" placeholder="https://memes.example.com" class="bg-surface-2 border border-border rounded-lg px-3 py-2" />
+    <label class="field">
+      <span class="label">Share base URL (OG embeds)</span>
+      <input v-model="settings.share_base_url" placeholder="https://memes.example.com" class="input" />
     </label>
-    <label class="flex flex-col gap-1 text-sm">
-      <span class="text-text-secondary">Random mode</span>
-      <select v-model="settings.random_mode" class="bg-surface-2 border border-border rounded-lg px-3 py-2">
+    <label class="field">
+      <span class="label">Random mode</span>
+      <select v-model="settings.random_mode" class="select">
         <option value="flag">Flagged items</option>
         <option value="shared">Items with share links</option>
       </select>
     </label>
-    <button type="submit" class="self-start bg-accent text-white px-4 py-2 rounded-lg text-sm">Save</button>
-    <p v-if="saved" class="text-xs text-green-400">Saved</p>
-    <p v-if="error" class="text-xs text-rose-400">{{ error }}</p>
+    <SaveRow :saved="saved" :error="error" />
   </form>
 </template>

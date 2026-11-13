@@ -96,70 +96,94 @@ function shareUrl(token: string) {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-[60] flex items-center justify-center p-4" @keydown.esc="emit('close')">
-    <div class="absolute inset-0 bg-black/70" @click="emit('close')" />
-    <div class="relative bg-surface-1 border border-border rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-xl">
-      <div class="bg-black flex items-center justify-center max-h-[50vh]">
+  <div class="modal" @keydown.esc="emit('close')">
+    <div class="modal-backdrop" @click="emit('close')" />
+    <div
+      class="modal-box modal-wide"
+      role="dialog"
+      aria-modal="true"
+      :aria-label="item.title || 'Untitled'"
+    >
+      <div class="player">
         <video
           v-if="item.type === 'video'"
           :src="`/api/media/${item.id}/file`"
           controls
-          class="max-h-[50vh] w-full"
           :poster="item.thumbnail_path ? `/api/media/${item.id}/thumbnail` : undefined"
         />
-        <img
-          v-else
-          :src="`/api/media/${item.id}/file`"
-          :alt="item.title || ''"
-          class="max-h-[50vh] object-contain"
-        />
+        <img v-else :src="`/api/media/${item.id}/file`" :alt="item.title || ''" />
       </div>
-      <div class="p-5 flex flex-col gap-4">
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <h2 class="text-lg font-semibold text-text-primary">{{ item.title || 'Untitled' }}</h2>
-            <p class="text-xs text-text-muted truncate">{{ item.url }}</p>
+      <div class="modal-body">
+        <div class="modal-head">
+          <div class="min-w-0 flex-1">
+            <h2 class="media-title">{{ item.title || 'Untitled' }}</h2>
+            <p class="media-url truncate" :title="item.url">{{ item.url }}</p>
           </div>
-          <button class="text-text-muted hover:text-text-primary" @click="emit('close')">✕</button>
+          <button type="button" class="btn btn-sm btn-icon" aria-label="Close" @click="emit('close')">✕</button>
         </div>
 
-        <div class="flex flex-wrap gap-2 items-center">
-          <span
-            v-for="t in tags"
-            :key="t.id"
-            class="text-xs px-2 py-1 rounded-full bg-surface-2 text-text-secondary"
-          >{{ t.name }}</span>
-          <form class="flex gap-1" @submit.prevent="addTag">
-            <input v-model="tagInput" class="bg-surface-2 border border-border rounded-lg px-2 py-1 text-xs" placeholder="Add tag" />
-            <button class="text-xs px-2 py-1 rounded-lg bg-accent text-white">Add</button>
+        <section class="stack">
+          <div v-if="tags.length" class="chips">
+            <span v-for="t in tags" :key="t.id" class="chip chip-static">{{ t.name }}</span>
+          </div>
+          <form class="inline-form" @submit.prevent="addTag">
+            <input v-model="tagInput" class="input input-sm" placeholder="Add tag" aria-label="Add tag" />
+            <button type="submit" class="btn btn-sm btn-primary">Add</button>
+            <button type="button" class="btn btn-sm" @click="saveTags">Save tags</button>
           </form>
-          <button class="text-xs text-text-muted underline" @click="saveTags">Save tags</button>
-        </div>
+        </section>
 
-        <label class="flex items-center gap-2 text-sm text-text-secondary">
+        <label class="check">
           <input type="checkbox" :checked="includeRandom" @change="toggleRandom" />
           Include in random
         </label>
 
-        <div class="flex flex-col gap-2">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-medium">Share links</h3>
-            <button class="text-xs px-3 py-1 rounded-lg bg-surface-2 hover:bg-surface-3" @click="createShare">Create</button>
+        <section class="stack">
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="label">Share links</h3>
+            <button type="button" class="btn btn-sm btn-pop" @click="createShare">Create</button>
           </div>
-          <div v-for="s in shares" :key="s.token" class="flex items-center gap-2 text-xs">
-            <a :href="shareUrl(s.token)" class="text-accent truncate flex-1" target="_blank">{{ shareUrl(s.token) }}</a>
-            <button
-              class="text-text-muted hover:text-text-primary shrink-0"
-              @click="copyShareUrl(s.token)"
-            >{{ copiedToken === s.token ? 'Copied' : 'Copy' }}</button>
-            <button class="text-text-muted hover:text-rose-400" @click="revokeShare(s.token)">Revoke</button>
+          <div v-if="shares.length" class="stack">
+            <div v-for="s in shares" :key="s.token" class="share">
+              <a :href="shareUrl(s.token)" class="share-url truncate" target="_blank">{{ shareUrl(s.token) }}</a>
+              <button type="button" class="btn btn-sm" @click="copyShareUrl(s.token)">{{
+                copiedToken === s.token ? 'Copied' : 'Copy'
+              }}</button>
+              <button type="button" class="btn btn-sm btn-danger" @click="revokeShare(s.token)">Revoke</button>
+            </div>
           </div>
-        </div>
+        </section>
 
-        <div class="flex justify-end gap-2 pt-2 border-t border-border">
-          <button class="px-3 py-1.5 text-sm rounded-lg text-rose-400 hover:bg-surface-2" :disabled="busy" @click="remove">Delete</button>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-danger" :disabled="busy" @click="remove">Delete</button>
         </div>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.player {
+  background: #000; display: flex; align-items: center; justify-content: center;
+  max-height: 50vh; border-bottom: var(--bw) solid var(--border); overflow: hidden;
+}
+.player img, .player video { display: block; max-width: 100%; max-height: 50vh; object-fit: contain; }
+.player video { width: 100%; }
+
+.media-title { font-size: clamp(1.2rem, 4vw, 1.7rem); text-transform: none; overflow-wrap: anywhere; }
+.media-url { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-static { cursor: default; }
+.chip-static:hover { box-shadow: none; }
+.inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.share {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; min-width: 0;
+  border: var(--bw-thin) solid var(--border); background: var(--surface-2);
+}
+.share-url {
+  flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 0.75rem; font-weight: 700; color: var(--text-primary);
+  text-decoration-color: var(--accent); text-decoration-thickness: 2px;
+}
+</style>
