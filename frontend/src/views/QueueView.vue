@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
-import { api, type QueueItem } from '@/api'
+import { api, isActive, isChatSource, type QueueItem, type QueueSource } from '@/api'
 import AddUrlModal from '@/components/AddUrlModal.vue'
 import DownloadProgress from '@/components/DownloadProgress.vue'
 
@@ -21,8 +21,8 @@ async function load() {
 }
 
 /** Brand colour per source; anything else gets the API teal, as before. */
-function badgeClass(source: string) {
-  return source === 'discord' || source === 'fluxer' ? `badge-${source}` : 'badge-api'
+function badgeClass(source: QueueSource) {
+  return isChatSource(source) ? `badge-${source}` : 'badge-api'
 }
 
 async function cancel(id: string) {
@@ -89,13 +89,13 @@ onUnmounted(() => clearInterval(timer))
             </div>
             <div class="q-actions">
               <button
-                v-if="item.status === 'pending' || item.status === 'downloading'"
+                v-if="isActive(item.status)"
                 class="btn btn-sm"
                 type="button"
                 @click="cancel(item.id)"
               >Cancel</button>
               <button
-                v-if="!['discord', 'fluxer'].includes(item.source) && (item.status === 'failed' || item.status === 'cancelled')"
+                v-if="!isChatSource(item.source) && (item.status === 'failed' || item.status === 'cancelled')"
                 class="btn btn-sm"
                 type="button"
                 @click="retry(item)"
@@ -113,7 +113,7 @@ onUnmounted(() => clearInterval(timer))
 </template>
 
 <style scoped>
-/* Ported from prototypes/brutalist/styles.css (queue). */
+/* Brutalist queue styles (#29). */
 .queue { display: flex; flex-direction: column; gap: 16px; }
 .q-row {
   display: flex; min-width: 0;

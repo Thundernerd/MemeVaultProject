@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * Brutalist / bold design system (#11, ported in #25 from prototypes/brutalist/).
+ * Brutalist / bold design system (#11, ported in #25).
  *
  * Role tokens keep the names the app already uses; the style-only tokens after
  * them are extra to this look. Attribute names ([data-theme], [data-accent])

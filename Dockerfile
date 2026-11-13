@@ -6,7 +6,7 @@ WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build
+RUN npm run typecheck && npm run build
 
 # ── Backend ───────────────────────────────────────────────────────────────────
 FROM rust:1-bookworm AS backend
