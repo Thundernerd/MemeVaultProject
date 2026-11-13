@@ -324,6 +324,11 @@ impl QueueStatus {
             Self::Cancelled => "cancelled",
         }
     }
+
+    /// Whether a user can still cancel the item (it has not finished yet).
+    pub fn is_cancellable(self) -> bool {
+        matches!(self, Self::Pending | Self::Downloading)
+    }
 }
 
 impl std::str::FromStr for QueueStatus {
@@ -1413,6 +1418,15 @@ mod tests {
             let read: QueueStatus = conn.query_row("SELECT ?", [wire], |r| r.get(0)).unwrap();
             assert_eq!(read, status);
         }
+    }
+
+    #[test]
+    fn only_pending_and_downloading_are_cancellable() {
+        assert!(QueueStatus::Pending.is_cancellable());
+        assert!(QueueStatus::Downloading.is_cancellable());
+        assert!(!QueueStatus::Completed.is_cancellable());
+        assert!(!QueueStatus::Failed.is_cancellable());
+        assert!(!QueueStatus::Cancelled.is_cancellable());
     }
 
     #[test]
