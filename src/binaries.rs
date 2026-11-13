@@ -286,7 +286,29 @@ async fn download_ffmpeg(config: &Config) -> anyhow::Result<()> {
     download_file(&url, &tmp).await?;
     archive.format.extract_ffmpeg(&tmp, &config.bin_dir())?;
     let _ = std::fs::remove_file(&tmp);
+    for source in archive.extra_sources {
+        download_extra_ffmpeg_archive(config, *source, archive.format)
+            .await
+            .map_err(|e| anyhow::anyhow!("downloading ffprobe failed: {e:#}"))?;
+    }
     Ok(())
+}
+
+/// Downloads one of [`FfmpegArchive::extra_sources`] and unpacks the binaries
+/// it holds into the bin dir.
+async fn download_extra_ffmpeg_archive(
+    config: &Config,
+    source: FfmpegSource,
+    format: ArchiveFormat,
+) -> anyhow::Result<()> {
+    let url = source.resolve().await?;
+    let tmp = config
+        .bin_dir()
+        .join(format!("ffmpeg-extra-tmp.{}", format.extension()));
+    download_file(&url, &tmp).await?;
+    let result = format.extract_ffmpeg(&tmp, &config.bin_dir());
+    let _ = std::fs::remove_file(&tmp);
+    result
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -317,6 +339,9 @@ impl ArchiveFormat {
 struct FfmpegArchive {
     source: FfmpegSource,
     format: ArchiveFormat,
+    /// Archives in the same format that hold binaries the main one lacks,
+    /// downloaded after it.
+    extra_sources: &'static [FfmpegSource],
 }
 
 /// How the archive's download URL is found.
@@ -335,7 +360,7 @@ impl FfmpegSource {
             FfmpegSource::Direct(url) => Ok(url.to_string()),
             FfmpegSource::EvermeetInfo(info_url) => {
                 let info = fetch_text(info_url).await.map_err(|e| {
-                    anyhow::anyhow!("fetching evermeet.cx ffmpeg info failed: {e:#}")
+                    anyhow::anyhow!("fetching evermeet.cx info {info_url} failed: {e:#}")
                 })?;
                 evermeet_zip_url(&info)
             }
@@ -346,15 +371,22 @@ impl FfmpegSource {
 /// The ffmpeg archive for a target. Targets with no build of their own get
 /// the Linux x86-64 one.
 fn ffmpeg_archive(os: &str, arch: &str) -> FfmpegArchive {
+    let mut extra_sources: &'static [FfmpegSource] = &[];
     let (source, format) = match (os, arch) {
         ("linux", "aarch64") => (
             FfmpegSource::Direct("https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-gpl.tar.xz"),
             ArchiveFormat::TarXz,
         ),
-        ("macos", _) => (
-            FfmpegSource::EvermeetInfo("https://evermeet.cx/ffmpeg/info/ffmpeg/release"),
-            ArchiveFormat::Zip,
-        ),
+        ("macos", _) => {
+            // evermeet.cx's ffmpeg zip holds only ffmpeg; ffprobe is its own zip.
+            extra_sources = &[FfmpegSource::EvermeetInfo(
+                "https://evermeet.cx/ffmpeg/info/ffprobe/release",
+            )];
+            (
+                FfmpegSource::EvermeetInfo("https://evermeet.cx/ffmpeg/info/ffmpeg/release"),
+                ArchiveFormat::Zip,
+            )
+        }
         ("windows", _) => (
             FfmpegSource::Direct("https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"),
             ArchiveFormat::Zip,
@@ -364,20 +396,24 @@ fn ffmpeg_archive(os: &str, arch: &str) -> FfmpegArchive {
             ArchiveFormat::TarXz,
         ),
     };
-    FfmpegArchive { source, format }
+    FfmpegArchive {
+        source,
+        format,
+        extra_sources,
+    }
 }
 
-/// The versioned zip URL from evermeet.cx's ffmpeg info JSON
-/// (`https://evermeet.cx/ffmpeg/info/ffmpeg/release`), read from
+/// The versioned zip URL from an evermeet.cx info JSON
+/// (`https://evermeet.cx/ffmpeg/info/{ffmpeg,ffprobe}/release`), read from
 /// `download.zip.url`.
 fn evermeet_zip_url(info: &str) -> anyhow::Result<String> {
     let info: serde_json::Value = serde_json::from_str(info)
-        .map_err(|e| anyhow::anyhow!("evermeet.cx ffmpeg info is not valid JSON: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("evermeet.cx info is not valid JSON: {e}"))?;
     let url = info["download"]["zip"]["url"]
         .as_str()
-        .ok_or_else(|| anyhow::anyhow!("evermeet.cx ffmpeg info is missing download.zip.url"))?;
+        .ok_or_else(|| anyhow::anyhow!("evermeet.cx info is missing download.zip.url"))?;
     if !url.starts_with("https://") {
-        anyhow::bail!("evermeet.cx ffmpeg info gave a download.zip.url that is not https: {url}");
+        anyhow::bail!("evermeet.cx info gave a download.zip.url that is not https: {url}");
     }
     Ok(url.to_string())
 }
@@ -659,6 +695,7 @@ mod tests {
         let linux64 = FfmpegArchive {
             source: FfmpegSource::Direct("https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz"),
             format: ArchiveFormat::TarXz,
+            extra_sources: &[],
         };
         assert_eq!(ffmpeg_archive("linux", "x86_64"), linux64);
         assert_eq!(ffmpeg_archive("linux", "x86"), linux64);
@@ -667,6 +704,7 @@ mod tests {
             FfmpegArchive {
                 source: FfmpegSource::Direct("https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-gpl.tar.xz"),
                 format: ArchiveFormat::TarXz,
+                extra_sources: &[],
             }
         );
         // evermeet.cx retired its "latest zip" redirect (410 Gone); the
@@ -674,6 +712,9 @@ mod tests {
         let evermeet = FfmpegArchive {
             source: FfmpegSource::EvermeetInfo("https://evermeet.cx/ffmpeg/info/ffmpeg/release"),
             format: ArchiveFormat::Zip,
+            extra_sources: &[FfmpegSource::EvermeetInfo(
+                "https://evermeet.cx/ffmpeg/info/ffprobe/release",
+            )],
         };
         assert_eq!(ffmpeg_archive("macos", "aarch64"), evermeet);
         assert_eq!(ffmpeg_archive("macos", "x86_64"), evermeet);
@@ -682,9 +723,25 @@ mod tests {
             FfmpegArchive {
                 source: FfmpegSource::Direct("https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"),
                 format: ArchiveFormat::Zip,
+                extra_sources: &[],
             }
         );
         // Unknown targets fall back to the Linux x86-64 build.
         assert_eq!(ffmpeg_archive("freebsd", "x86_64"), linux64);
+    }
+
+    #[test]
+    fn ffmpeg_archive_adds_evermeets_ffprobe_zip_only_on_macos() {
+        // evermeet.cx's ffmpeg zip holds only ffmpeg; ffprobe is its own zip.
+        let ffprobe = [FfmpegSource::EvermeetInfo(
+            "https://evermeet.cx/ffmpeg/info/ffprobe/release",
+        )];
+        assert_eq!(ffmpeg_archive("macos", "aarch64").extra_sources, ffprobe);
+        assert_eq!(ffmpeg_archive("macos", "x86_64").extra_sources, ffprobe);
+        // The other archives already ship ffprobe.
+        assert!(ffmpeg_archive("linux", "x86_64").extra_sources.is_empty());
+        assert!(ffmpeg_archive("linux", "aarch64").extra_sources.is_empty());
+        assert!(ffmpeg_archive("windows", "x86_64").extra_sources.is_empty());
+        assert!(ffmpeg_archive("freebsd", "x86_64").extra_sources.is_empty());
     }
 }
