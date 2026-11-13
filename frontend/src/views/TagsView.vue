@@ -6,7 +6,8 @@ const tags = ref<TagWithCount[]>([])
 const loadError = ref('')
 /** A failed delete or purge. Kept apart from `loadError` so the reload that follows doesn't clear it; cleared when the next action starts. */
 const actionError = ref('')
-const error = computed(() => actionError.value || loadError.value)
+/** A failing load wins: it means the list is stale, which matters more than an earlier action's failure. */
+const error = computed(() => loadError.value || actionError.value)
 const loaded = ref(false)
 
 async function load() {
