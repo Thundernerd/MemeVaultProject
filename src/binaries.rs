@@ -595,6 +595,74 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn version_of_kills_the_whole_process_tree_when_it_times_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("grandchild.pid");
+        let bin = dir.path().join("wrapper.cmd");
+        // The grandchild records its own pid; `start /b` gives the wrapper no
+        // way to learn it. The wrapper waits for the pidfile, then hangs.
+        std::fs::write(
+            &bin,
+            format!(
+                "@echo off\r\n\
+                 start /b powershell -NoProfile -NonInteractive -Command \
+                 \"Set-Content -Path '{pid}' -Value $PID; Start-Sleep 30\"\r\n\
+                 :wait\r\n\
+                 if not exist \"{pid}\" (ping -n 2 127.0.0.1 >nul & goto wait)\r\n\
+                 ping -n 30 127.0.0.1 >nul\r\n",
+                pid = pidfile.display()
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            version_of_within(
+                &bin.to_string_lossy(),
+                &["--version"],
+                Duration::from_secs(8)
+            )
+            .await,
+            None
+        );
+        let pid: u32 = std::fs::read_to_string(&pidfile)
+            .expect("the grandchild did not start before the timeout")
+            .trim()
+            .parse()
+            .unwrap();
+        assert!(
+            exited_within(pid, Duration::from_secs(2)),
+            "grandchild {pid} is still running after the timeout"
+        );
+    }
+
+    /// Whether process `pid` has exited, or is gone, within `grace`. Kills it
+    /// if it is still running, so a failing test leaves nothing behind.
+    #[cfg(windows)]
+    fn exited_within(pid: u32, grace: Duration) -> bool {
+        use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+            PROCESS_TERMINATE,
+        };
+        // SAFETY: OpenProcess takes no pointers; a null result means the
+        // process is gone (or its pid was reused by one we may not open).
+        let process = unsafe { OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_TERMINATE, 0, pid) };
+        if process.is_null() {
+            return true;
+        }
+        let ms = grace.as_millis() as u32;
+        // SAFETY: `process` is a handle this function owns and closes below.
+        let exited = unsafe { WaitForSingleObject(process, ms) } == WAIT_OBJECT_0;
+        if !exited {
+            // SAFETY: as above.
+            unsafe { TerminateProcess(process, 1) };
+        }
+        // SAFETY: as above; closed exactly once.
+        unsafe { CloseHandle(process) };
+        exited
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn version_of_resolves_a_bare_name_on_path() {
