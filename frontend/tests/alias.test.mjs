@@ -39,8 +39,9 @@ test('changing @/* in tsconfig.app.json changes what Vite resolves', async () =>
   // Vite does not apply tsconfig paths to files inside node_modules.
   const root = await mkdtemp(path.join(tmpdir(), 'alias-fixture-'))
   try {
-    // So the copied config's plugin imports resolve.
-    await symlink(path.join(frontendDir, 'node_modules'), path.join(root, 'node_modules'), 'dir')
+    // So the copied config's plugin imports resolve. A junction on Windows
+    // needs no admin rights; other platforms ignore the type.
+    await symlink(path.join(frontendDir, 'node_modules'), path.join(root, 'node_modules'), 'junction')
     await cp(path.join(frontendDir, 'vite.config.ts'), path.join(root, 'vite.config.ts'))
     await cp(path.join(frontendDir, 'tsconfig.json'), path.join(root, 'tsconfig.json'))
     await cp(path.join(frontendDir, 'tsconfig.node.json'), path.join(root, 'tsconfig.node.json'))
