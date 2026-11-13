@@ -199,6 +199,8 @@ fn html_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::script_json;
+    use regex::Regex;
+    use std::collections::BTreeMap;
 
     #[test]
     fn script_json_cannot_close_the_script_block() {
@@ -207,5 +209,92 @@ mod tests {
         assert!(!out.contains("</"), "unescaped `</` in {out}");
         let back: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(back, items);
+    }
+
+    /// share.html keeps its own copy of the design tokens so the page stays
+    /// self-contained (#31). This keeps that copy honest:
+    /// - both files define the same `[data-theme]` / `[data-accent]` blocks;
+    /// - each token block share.html declares appears exactly once in each file;
+    /// - every custom property in it has the same value in style.css's block.
+    ///
+    /// share.html may declare a subset of a block's tokens (it has no
+    /// --header-h / --shell-max).
+    #[test]
+    fn share_page_tokens_match_the_app_stylesheet() {
+        const SHARE: &str = include_str!("../../templates/share.html");
+        const APP: &str = include_str!("../../frontend/src/style.css");
+        let share = token_blocks(SHARE);
+        let app = token_blocks(APP);
+
+        let themed = |blocks: &BTreeMap<String, Vec<Tokens>>| -> Vec<String> {
+            blocks
+                .keys()
+                .filter(|s| s.starts_with("[data-theme=") || s.starts_with("[data-accent="))
+                .cloned()
+                .collect()
+        };
+        assert_eq!(
+            themed(&share),
+            themed(&app),
+            "share.html and style.css define different theme/accent blocks"
+        );
+        assert!(share.contains_key(":root"), "share.html has no :root tokens");
+
+        let mut drift = Vec::new();
+        for (selector, share_blocks) in &share {
+            let [share_tokens] = share_blocks.as_slice() else {
+                panic!("share.html has {} `{selector}` token blocks", share_blocks.len());
+            };
+            let app_tokens = match app.get(selector).map(Vec::as_slice) {
+                Some([one]) => one,
+                Some(many) => panic!("style.css has {} `{selector}` token blocks", many.len()),
+                None => {
+                    drift.push(format!("{selector}: no such block in style.css"));
+                    continue;
+                }
+            };
+            for (name, value) in share_tokens {
+                match app_tokens.get(name) {
+                    Some(app_value) if app_value == value => {}
+                    Some(app_value) => drift.push(format!(
+                        "{selector} {name}: share.html `{value}`, style.css `{app_value}`"
+                    )),
+                    None => drift.push(format!("{selector} {name}: not in style.css")),
+                }
+            }
+        }
+        assert!(
+            drift.is_empty(),
+            "templates/share.html tokens drifted from frontend/src/style.css:\n{}",
+            drift.join("\n")
+        );
+    }
+
+    /// Custom property name → value, with whitespace in values collapsed.
+    type Tokens = BTreeMap<String, String>;
+
+    /// Every brace-free rule (`selector { … }`, not an `@` rule) that declares
+    /// at least one custom property, grouped by selector. A rule nested in
+    /// `@media` / `@layer` counts too, so a second block with the same
+    /// selector shows up as a duplicate instead of being silently merged.
+    fn token_blocks(css: &str) -> BTreeMap<String, Vec<Tokens>> {
+        let css = Regex::new(r"(?s)/\*.*?\*/").unwrap().replace_all(css, "");
+        let rule = Regex::new(r"(?m)^[ \t]*([^\s{}@][^{}\n]*?)[ \t]*\{([^{}]*)\}").unwrap();
+        let mut blocks: BTreeMap<String, Vec<Tokens>> = BTreeMap::new();
+        for c in rule.captures_iter(&css) {
+            let tokens: Tokens = c[2]
+                .split(';')
+                .filter_map(|decl| {
+                    let (name, value) = decl.split_once(':')?;
+                    let name = name.trim();
+                    let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
+                    name.starts_with("--").then(|| (name.to_string(), value))
+                })
+                .collect();
+            if !tokens.is_empty() {
+                blocks.entry(c[1].to_string()).or_default().push(tokens);
+            }
+        }
+        blocks
     }
 }

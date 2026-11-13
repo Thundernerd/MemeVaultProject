@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
-import { api, isActive, isChatSource, type QueueItem, type QueueSource } from '@/api'
+import { api, errorMessage, isActive, isChatSource, type QueueItem, type QueueSource } from '@/api'
 import AddUrlModal from '@/components/AddUrlModal.vue'
 import DownloadProgress from '@/components/DownloadProgress.vue'
 
@@ -16,7 +16,7 @@ async function load() {
     loaded.value = true
     error.value = ''
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed'
+    error.value = errorMessage(e)
   }
 }
 
