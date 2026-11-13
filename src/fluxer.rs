@@ -476,7 +476,7 @@ async fn handle_message(
             c,
             &url,
             downloader,
-            "fluxer",
+            db::QueueSource::Fluxer,
             Some("Fluxer"),
             false,
         )?)

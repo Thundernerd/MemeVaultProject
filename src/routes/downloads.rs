@@ -34,7 +34,7 @@ pub async fn create(
             c,
             url,
             downloader,
-            "web",
+            db::QueueSource::Web,
             None,
             body.include_in_random,
         )?)

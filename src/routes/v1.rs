@@ -61,7 +61,7 @@ pub async fn submit(
             c,
             url,
             downloader,
-            "api",
+            db::QueueSource::Api,
             label,
             body.include_in_random,
         )?)
