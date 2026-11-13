@@ -272,13 +272,15 @@ mod tests {
 
     /// The theme and accent names are copied out of style.css (the source of
     /// truth: its `[data-theme="…"]` / `[data-accent="…"]` token blocks) into
-    /// THEMES / ACCENTS in theme.ts and share.html's pre-paint script. A name
-    /// missing from a copy makes a viewer who saved it fall back to the default.
+    /// THEMES / ACCENTS in theme.ts and the pre-paint scripts of share.html and
+    /// the app's index.html. A name missing from a copy makes a viewer who saved
+    /// it fall back to the default.
     #[test]
     fn theme_and_accent_name_lists_match_the_app_stylesheet() {
         const APP: &str = include_str!("../../frontend/src/style.css");
         const THEME_TS: &str = include_str!("../../frontend/src/theme.ts");
         const SHARE: &str = include_str!("../../templates/share.html");
+        const INDEX: &str = include_str!("../../frontend/index.html");
         let themes = css_names(APP, "data-theme");
         let accents = css_names(APP, "data-accent");
         assert!(!themes.is_empty(), "no [data-theme] blocks in style.css");
@@ -286,11 +288,14 @@ mod tests {
 
         let ts = |name| ts_list(THEME_TS, name);
         let share = |var| script_list(SHARE, "templates/share.html", var);
+        let index = |var| script_list(INDEX, "frontend/index.html", var);
         let copies = [
             ("THEMES in frontend/src/theme.ts", ts("THEMES"), &themes),
             ("ACCENTS in frontend/src/theme.ts", ts("ACCENTS"), &accents),
             ("themes in templates/share.html", share("theme"), &themes),
             ("accents in templates/share.html", share("accent"), &accents),
+            ("themes in frontend/index.html", index("theme"), &themes),
+            ("accents in frontend/index.html", index("accent"), &accents),
         ];
         for (copy, names, css) in copies {
             assert_eq!(&names, css, "{copy} differ from the style.css blocks");
