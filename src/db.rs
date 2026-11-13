@@ -1631,6 +1631,14 @@ mod tests {
     }
 
     #[test]
+    fn unknown_queue_strings_name_the_kind_and_value() {
+        let status = "x".parse::<QueueStatus>().unwrap_err();
+        assert_eq!(status.to_string(), r#"unknown queue status "x""#);
+        let source = "x".parse::<QueueSource>().unwrap_err();
+        assert_eq!(source.to_string(), r#"unknown queue source "x""#);
+    }
+
+    #[test]
     fn schema_roundtrip_and_settings() {
         let dir = tempdir().unwrap();
         let config = crate::config::Config {
