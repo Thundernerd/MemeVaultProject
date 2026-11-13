@@ -4,6 +4,8 @@
 //! or the Python a PyInstaller onefile bootloader runs, keep running.
 //! [`output_within`] starts the child in a group of its own (a process group
 //! on Unix, a Job Object on Windows) so the whole tree can be killed at once.
+//! On Windows the child starts suspended and joins its job before it runs,
+//! so nothing it starts, however early, escapes the job.
 //!
 //! A descendant that leaves the group on purpose (`setsid` or `setpgid` on
 //! Unix, breakaway on Windows) is out of reach.
@@ -37,7 +39,8 @@ struct ProcessTree {
     /// the id may belong to an unrelated process.
     #[cfg(unix)]
     pgid: Option<libc::pid_t>,
-    /// `None` if the job could not be set up; then only the child is killed.
+    /// `None` if the job could not be set up (a warning is logged); then
+    /// only the child is killed.
     #[cfg(windows)]
     job: Option<job::Job>,
 }
@@ -55,9 +58,33 @@ impl ProcessTree {
         }
         #[cfg(windows)]
         {
-            let child = cmd.spawn()?;
-            // Anything the child starts after this joins the job.
-            let job = child.raw_handle().and_then(job::Job::kill_on_close);
+            // The child starts suspended and is put in the job before any of
+            // its code runs, so everything it starts joins the job too. This
+            // replaces any creation flags `cmd` already had.
+            cmd.creation_flags(job::CREATE_SUSPENDED);
+            let mut child = cmd.spawn()?;
+            let job = match child.raw_handle() {
+                Some(handle) => job::Job::kill_on_close(handle),
+                None => Err(std::io::Error::other("the child has no process handle")),
+            };
+            let job = job
+                .inspect_err(|err| {
+                    tracing::warn!(
+                        program = ?cmd.as_std().get_program(),
+                        "could not put the child in a job; on timeout only the \
+                         child is killed, not what it starts: {err}"
+                    )
+                })
+                .ok();
+            let resumed = child
+                .id()
+                .ok_or_else(|| std::io::Error::other("the child has no pid"))
+                .and_then(job::resume_main_thread);
+            if let Err(err) = resumed {
+                // Left suspended, the child would never exit.
+                let _ = child.start_kill();
+                return Err(err);
+            }
             Ok(ProcessTree { child, job })
         }
     }
@@ -156,13 +183,65 @@ impl Drop for ProcessTree {
 
 #[cfg(windows)]
 mod job {
-    use std::os::windows::io::RawHandle;
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use std::io;
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+    };
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
         SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
+    use windows_sys::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
+
+    pub use windows_sys::Win32::System::Threading::CREATE_SUSPENDED;
+
+    /// Resumes the only thread of process `pid`, started with
+    /// [`CREATE_SUSPENDED`]. std and tokio keep the thread's handle to
+    /// themselves, so it is found by walking a snapshot of all threads.
+    pub fn resume_main_thread(pid: u32) -> io::Result<()> {
+        // SAFETY: no pointers are passed; the result is checked below.
+        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: `snapshot` is a valid handle that nothing else owns.
+        let snapshot = unsafe { OwnedHandle::from_raw_handle(snapshot as RawHandle) };
+        // SAFETY: an all-zero THREADENTRY32 is valid; dwSize is set below.
+        let mut entry: THREADENTRY32 = unsafe { std::mem::zeroed() };
+        entry.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
+        let snapshot = snapshot.as_raw_handle() as HANDLE;
+        // SAFETY: `entry` is a THREADENTRY32 with its size set, outliving the call.
+        let mut more = unsafe { Thread32First(snapshot, &mut entry) } != 0;
+        while more {
+            if entry.th32OwnerProcessID == pid {
+                return resume_thread(entry.th32ThreadID);
+            }
+            // SAFETY: as for Thread32First.
+            more = unsafe { Thread32Next(snapshot, &mut entry) } != 0;
+        }
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("process {pid} has no thread to resume"),
+        ))
+    }
+
+    fn resume_thread(tid: u32) -> io::Result<()> {
+        // SAFETY: no pointers are passed; the result is checked below.
+        let thread = unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, tid) };
+        if thread.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: `thread` is a valid handle that nothing else owns.
+        let thread = unsafe { OwnedHandle::from_raw_handle(thread as RawHandle) };
+        // SAFETY: `thread` is open with THREAD_SUSPEND_RESUME.
+        if unsafe { ResumeThread(thread.as_raw_handle() as HANDLE) } == u32::MAX {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
 
     /// A Job Object that kills its processes when it is closed.
     pub struct Job(HANDLE);
@@ -173,17 +252,21 @@ mod job {
     impl Job {
         /// Puts `process` in a new job that kills it, and everything it
         /// starts, when the job is closed.
-        pub fn kill_on_close(process: RawHandle) -> Option<Job> {
-            // SAFETY: CreateJobObjectW accepts null attributes and name; the
-            // handle is owned by `Job` and closed exactly once in `drop`.
-            let job = Job(unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) });
-            if job.0.is_null() {
-                return None;
+        pub fn kill_on_close(process: RawHandle) -> io::Result<Job> {
+            // SAFETY: CreateJobObjectW accepts null attributes and name.
+            let handle = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+            if handle.is_null() {
+                return Err(io::Error::last_os_error());
             }
-            (job.set_limit_flags(JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)
+            // The handle is owned by `Job` and closed exactly once in `drop`.
+            let job = Job(handle);
+            if !job.set_limit_flags(JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)
                 // SAFETY: `process` is the live child's handle, borrowed only for this call.
-                && unsafe { AssignProcessToJobObject(job.0, process as HANDLE) } != 0)
-                .then_some(job)
+                || unsafe { AssignProcessToJobObject(job.0, process as HANDLE) } == 0
+            {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(job)
         }
 
         fn set_limit_flags(&self, flags: u32) -> bool {
