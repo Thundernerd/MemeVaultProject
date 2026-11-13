@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { provideTheme } from '@/theme'
 import ThemeSwitcher from '@/components/ThemeSwitcher.vue'
 
@@ -16,6 +16,11 @@ function onKeydown(e: KeyboardEvent) {
   drawer.value = false
   menuBtn.value?.focus()
 }
+
+// Any navigation (back/forward, router.push) closes the drawer. Link clicks
+// still close it directly too, since re-selecting the current route
+// doesn't change fullPath.
+watch(() => route.fullPath, () => (drawer.value = false))
 
 onMounted(() => document.addEventListener('keydown', onKeydown))
 onUnmounted(() => document.removeEventListener('keydown', onKeydown))
