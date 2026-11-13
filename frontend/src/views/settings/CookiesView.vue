@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '@/api'
-import { useActionError } from './useActionError'
+import { useActionError } from '@/composables/useActionError'
 import ErrorTag from './ErrorTag.vue'
 
 type CookieTool = 'ytdlp' | 'gallerydl'
@@ -16,12 +16,12 @@ interface CookieStatus {
 const ytdlp = ref<CookieStatus | null>(null)
 const gallerydl = ref<CookieStatus | null>(null)
 
-async function load() {
+async function fetchCookies() {
   ytdlp.value = await api<CookieStatus>('/api/cookies/ytdlp')
   gallerydl.value = await api<CookieStatus>('/api/cookies/gallerydl')
 }
 
-const { error, attempt, initialLoad } = useActionError(load)
+const { error, attempt, load } = useActionError(fetchCookies)
 
 async function upload(tool: CookieTool, e: Event) {
   const input = e.target as HTMLInputElement
@@ -42,7 +42,7 @@ function cookieStatus(tool: CookieTool) {
   return tool === 'ytdlp' ? ytdlp.value : gallerydl.value
 }
 
-onMounted(initialLoad)
+onMounted(load)
 </script>
 
 <template>

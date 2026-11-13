@@ -18,19 +18,16 @@ pub fn script(dir: &Path, name: &str, body: &str) -> String {
 }
 
 /// The pid a test script wrote to `pidfile`.
-#[cfg(unix)]
-pub fn read_pid(pidfile: &Path) -> libc::pid_t {
-    try_read_pid(pidfile).unwrap_or_else(|| panic!("no pid in {}", pidfile.display()))
+pub fn read_pid(pidfile: &Path) -> u32 {
+    try_read_pid(pidfile).expect("the grandchild did not record its pid")
 }
 
-#[cfg(unix)]
-fn try_read_pid(pidfile: &Path) -> Option<libc::pid_t> {
+fn try_read_pid(pidfile: &Path) -> Option<u32> {
     std::fs::read_to_string(pidfile).ok()?.trim().parse().ok()
 }
 
 /// The pid a running test script writes to `pidfile`, once it has written it.
-#[cfg(unix)]
-pub async fn wait_for_pid(pidfile: &Path, within: Duration) -> libc::pid_t {
+pub async fn wait_for_pid(pidfile: &Path, within: Duration) -> u32 {
     let deadline = std::time::Instant::now() + within;
     loop {
         if let Some(pid) = try_read_pid(pidfile) {
@@ -49,7 +46,8 @@ pub async fn wait_for_pid(pidfile: &Path, within: Duration) -> libc::pid_t {
 /// init, which may take a moment. Kills `pid` if it is still running, so
 /// a failing test leaves nothing behind.
 #[cfg(unix)]
-pub async fn gone_within(pid: libc::pid_t, grace: Duration) -> bool {
+pub async fn gone_within(pid: u32, grace: Duration) -> bool {
+    let pid = pid as libc::pid_t;
     let deadline = std::time::Instant::now() + grace;
     loop {
         // SAFETY: signal 0 only checks whether the process exists.
@@ -64,6 +62,63 @@ pub async fn gone_within(pid: libc::pid_t, grace: Duration) -> bool {
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
+}
+
+/// Writes a `.cmd` script that runs `body`, and returns its path.
+#[cfg(windows)]
+pub fn cmd_script(dir: &Path, name: &str, body: &str) -> String {
+    let path = dir.join(format!("{name}.cmd"));
+    std::fs::write(
+        &path,
+        format!("@echo off\r\n{}\r\n", body.replace('\n', "\r\n")),
+    )
+    .unwrap();
+    path.to_string_lossy().into()
+}
+
+/// Script lines that start a PowerShell grandchild running for 30 s, with
+/// its output discarded, and wait until it has written its pid to
+/// `pidfile`. `start /b` gives the script no way to learn the pid itself.
+#[cfg(windows)]
+pub fn start_grandchild(pidfile: &Path) -> String {
+    let pid = pidfile.display();
+    format!(
+        "start /b powershell -NoProfile -NonInteractive -Command \
+         \"Set-Content -Path '{pid}' -Value $PID; Start-Sleep 30\" >nul 2>&1\n\
+         :wait\n\
+         if not exist \"{pid}\" (ping -n 2 127.0.0.1 >nul & goto wait)"
+    )
+}
+
+/// Whether process `pid` has exited, or is gone, within `grace`. Kills it
+/// if it is still running, so a failing test leaves nothing behind.
+#[cfg(windows)]
+pub async fn gone_within(pid: u32, grace: Duration) -> bool {
+    tokio::task::spawn_blocking(move || {
+        use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0};
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, TerminateProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
+            PROCESS_TERMINATE,
+        };
+        // SAFETY: OpenProcess takes no pointers; a null result means the
+        // process is gone (or its pid was reused by one we may not open).
+        let process = unsafe { OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_TERMINATE, 0, pid) };
+        if process.is_null() {
+            return true;
+        }
+        let ms = grace.as_millis() as u32;
+        // SAFETY: `process` is a handle this closure owns and closes below.
+        let exited = unsafe { WaitForSingleObject(process, ms) } == WAIT_OBJECT_0;
+        if !exited {
+            // SAFETY: as above.
+            unsafe { TerminateProcess(process, 1) };
+        }
+        // SAFETY: as above; closed exactly once.
+        unsafe { CloseHandle(process) };
+        exited
+    })
+    .await
+    .unwrap()
 }
 
 /// A throwaway data directory with its config and database.

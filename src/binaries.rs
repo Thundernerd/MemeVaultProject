@@ -486,7 +486,10 @@ mod tests {
     use super::*;
 
     #[cfg(unix)]
-    use crate::test_support::{gone_within, read_pid, script};
+    use crate::test_support::script;
+    #[cfg(windows)]
+    use crate::test_support::{cmd_script, start_grandchild};
+    use crate::test_support::{gone_within, read_pid};
 
     #[cfg(unix)]
     #[tokio::test]
@@ -555,6 +558,31 @@ mod tests {
         assert!(
             gone_within(pid, Duration::from_secs(2)).await,
             "grandchild {pid} is still running after a successful check"
+        );
+    }
+
+    // The window #115 closes, between spawning the child and putting it in
+    // its job, ends before cmd.exe gets as far as starting a grandchild, so
+    // this test fails only if the tree is not killed at all.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn version_of_kills_the_whole_process_tree_when_it_times_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("grandchild.pid");
+        let bin = cmd_script(
+            dir.path(),
+            "wrapper",
+            &format!("{}\nping -n 30 127.0.0.1 >nul", start_grandchild(&pidfile)),
+        );
+        // Long enough for PowerShell to start on a cold CI runner.
+        assert_eq!(
+            version_of_within(&bin, &["--version"], Duration::from_secs(15)).await,
+            None
+        );
+        let pid = read_pid(&pidfile);
+        assert!(
+            gone_within(pid, Duration::from_secs(2)).await,
+            "grandchild {pid} is still running after the timeout"
         );
     }
 

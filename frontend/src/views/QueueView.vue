@@ -1,55 +1,37 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { api, errorMessage, isActive, isChatSource, type QueueItem, type QueueSource } from '@/api'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { api, isActive, isChatSource, type QueueItem, type QueueSource } from '@/api'
+import { useActionError } from '@/composables/useActionError'
 import AddUrlModal from '@/components/AddUrlModal.vue'
 import DownloadProgress from '@/components/DownloadProgress.vue'
 
 const items = ref<QueueItem[]>([])
-const loadError = ref('')
-/** A failed cancel, remove or retry. Kept apart from `loadError` so the next successful poll doesn't clear it; cleared when the next action starts. */
-const actionError = ref('')
-/** A failing load wins: it means the list is stale, which matters more than an earlier action's failure. */
-const error = computed(() => loadError.value || actionError.value)
 const loaded = ref(false)
 const addOpen = ref(false)
 let timer: number | undefined
 
-async function load() {
-  try {
-    items.value = await api('/api/queue')
-    loaded.value = true
-    loadError.value = ''
-  } catch (e) {
-    loadError.value = errorMessage(e)
-  }
+async function fetchQueue() {
+  items.value = await api('/api/queue')
+  loaded.value = true
 }
+
+const { error, attempt, load } = useActionError(fetchQueue)
 
 /** Brand colour per source; anything else gets the API teal, as before. */
 function badgeClass(source: QueueSource) {
   return isChatSource(source) ? `badge-${source}` : 'badge-api'
 }
 
-/** Runs a row action, putting a failure in `actionError` as "<prefix>: <message>", then reloads. */
-async function runAction(prefix: string, request: () => Promise<unknown>) {
-  actionError.value = ''
-  try {
-    await request()
-  } catch (e) {
-    actionError.value = `${prefix}: ${errorMessage(e)}`
-  }
-  await load()
-}
-
 function cancel(id: string) {
-  return runAction('Cancel failed', () => api(`/api/queue/${id}`, { method: 'PATCH', body: JSON.stringify({ action: 'cancel' }) }))
+  return attempt('Cancel failed', () => api(`/api/queue/${id}`, { method: 'PATCH', body: JSON.stringify({ action: 'cancel' }) }))
 }
 
 function remove(id: string) {
-  return runAction('Remove failed', () => api(`/api/queue/${id}`, { method: 'DELETE' }))
+  return attempt('Remove failed', () => api(`/api/queue/${id}`, { method: 'DELETE' }))
 }
 
 function retry(item: QueueItem) {
-  return runAction('Retry failed', () =>
+  return attempt('Retry failed', () =>
     api('/api/downloads', {
       method: 'POST',
       body: JSON.stringify({ url: item.url, downloader: item.downloader }),
