@@ -112,8 +112,9 @@ fn ytdlp_filename() -> &'static str {
 fn gallerydl_asset(os: &str, arch: &str) -> Option<&'static str> {
     match (os, arch) {
         ("linux", "x86_64") => Some("gallery-dl.bin"),
-        ("windows", "x86_64") => Some("gallery-dl.exe"),
         ("windows", "x86") => Some("gallery-dl_x86.exe"),
+        // x86-64 and arm64 (which runs x64 builds under emulation).
+        ("windows", _) => Some("gallery-dl.exe"),
         _ => None,
     }
 }
@@ -460,6 +461,8 @@ mod tests {
         assert_eq!(gallerydl_asset("linux", "x86_64"), Some("gallery-dl.bin"));
         assert_eq!(gallerydl_asset("windows", "x86_64"), Some("gallery-dl.exe"));
         assert_eq!(gallerydl_asset("windows", "x86"), Some("gallery-dl_x86.exe"));
+        // x64 build runs under emulation on Windows on Arm.
+        assert_eq!(gallerydl_asset("windows", "aarch64"), Some("gallery-dl.exe"));
         assert_eq!(gallerydl_asset("macos", "aarch64"), None);
         assert_eq!(gallerydl_asset("macos", "x86_64"), None);
         assert_eq!(gallerydl_asset("linux", "aarch64"), None);
