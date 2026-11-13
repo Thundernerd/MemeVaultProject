@@ -1,4 +1,4 @@
-use crate::db;
+use crate::db::{self, QueueStatus};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use axum::extract::{Path, State};
@@ -39,10 +39,10 @@ pub async fn patch(
         .db
         .with_conn(|c| Ok(db::get_queue_item(c, &id)?))?
         .ok_or(AppError::NotFound)?;
-    if item.status != "pending" && item.status != "downloading" {
+    if !item.status.is_cancellable() {
         return Err(AppError::Conflict("Item cannot be cancelled".into()));
     }
-    if item.status == "downloading" {
+    if item.status == QueueStatus::Downloading {
         // The row is marked cancelled below whether or not the worker was still running.
         state.queue.cancel(&id).await;
     }
@@ -50,7 +50,7 @@ pub async fn patch(
         db::update_queue_item(
             c,
             &id,
-            Some("cancelled"),
+            Some(QueueStatus::Cancelled),
             None,
             Some(Some("cancelled")),
             Some(Some(&chrono::Utc::now().to_rfc3339())),
