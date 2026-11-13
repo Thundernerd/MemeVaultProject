@@ -40,7 +40,7 @@ export interface Album {
   media: MediaItem[]
 }
 
-/** Queue item lifecycle. Mirrors the `queue_items.status` strings the backend writes (`src/db.rs`, `src/queue.rs`, `src/routes/queue.rs`, `src/discord.rs`, `src/fluxer.rs`). */
+/** Queue item lifecycle. Mirrors the backend's `QueueStatus` enum in `src/db.rs`. */
 export type QueueStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled'
 
 /** Sources that are chat bots rather than a person in the web UI or an API client. */
