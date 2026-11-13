@@ -218,7 +218,10 @@ mod job {
         entry.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
         let snapshot = snapshot.as_raw_handle() as HANDLE;
         // SAFETY: `entry` is a THREADENTRY32 with its size set, outliving the call.
-        let mut more = unsafe { Thread32First(snapshot, &mut entry) } != 0;
+        if unsafe { Thread32First(snapshot, &mut entry) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let mut more = true;
         while more {
             if entry.th32OwnerProcessID == pid {
                 return resume_thread(entry.th32ThreadID);
