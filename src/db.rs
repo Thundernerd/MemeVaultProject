@@ -307,7 +307,8 @@ pub fn get_env_overridden_keys() -> Vec<String> {
 /// of that variant's string: the macro generates the enum (with its serde
 /// derives), `ALL`, `as_str`, `FromStr`, a `$err` error type whose message is
 /// `unknown <noun> "<value>"`, and the rusqlite `ToSql`/`FromSql` impls.
-/// Behaviour methods go in a separate, hand-written `impl` block.
+/// Behaviour methods go in a separate, hand-written `impl` block. Do not pass
+/// `#[serde(...)]` attributes: the wire strings come only from the pairs.
 macro_rules! sql_string_enum {
     (@one $variant:ident) => {
         1
@@ -319,7 +320,7 @@ macro_rules! sql_string_enum {
         }
     ) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, ::serde::Serialize, ::serde::Deserialize)]
         $vis enum $name {
             $(#[serde(rename = $wire)] $variant,)+
         }
@@ -334,7 +335,7 @@ macro_rules! sql_string_enum {
             }
         }
 
-        impl std::str::FromStr for $name {
+        impl ::std::str::FromStr for $name {
             type Err = $err;
 
             fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -349,28 +350,28 @@ macro_rules! sql_string_enum {
         #[derive(Debug, Clone, PartialEq, Eq)]
         $vis struct $err(pub String);
 
-        impl std::fmt::Display for $err {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        impl ::std::fmt::Display for $err {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 write!(f, concat!("unknown ", $noun, " {:?}"), self.0)
             }
         }
 
-        impl std::error::Error for $err {}
+        impl ::std::error::Error for $err {}
 
-        impl rusqlite::types::ToSql for $name {
-            fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        impl ::rusqlite::types::ToSql for $name {
+            fn to_sql(&self) -> ::rusqlite::Result<::rusqlite::types::ToSqlOutput<'_>> {
                 Ok(self.as_str().into())
             }
         }
 
-        impl rusqlite::types::FromSql for $name {
+        impl ::rusqlite::types::FromSql for $name {
             fn column_result(
-                value: rusqlite::types::ValueRef<'_>,
-            ) -> rusqlite::types::FromSqlResult<Self> {
+                value: ::rusqlite::types::ValueRef<'_>,
+            ) -> ::rusqlite::types::FromSqlResult<Self> {
                 value
                     .as_str()?
                     .parse::<Self>()
-                    .map_err(|e| rusqlite::types::FromSqlError::Other(Box::new(e)))
+                    .map_err(|e| ::rusqlite::types::FromSqlError::Other(Box::new(e)))
             }
         }
     };
@@ -378,7 +379,7 @@ macro_rules! sql_string_enum {
 
 sql_string_enum! {
     /// Lifecycle state of a queue item. Stored in `queue_items.status` and sent
-    /// over the API as the lowercase variant name.
+    /// over the API as each variant's paired string.
     pub enum QueueStatus / UnknownQueueStatus ("queue status") {
         Pending => "pending",
         Downloading => "downloading",
@@ -397,7 +398,7 @@ impl QueueStatus {
 
 sql_string_enum! {
     /// Where a queue item was submitted from. Stored in `queue_items.source` and
-    /// sent over the API as the lowercase variant name. Mirrors the frontend's
+    /// sent over the API as each variant's paired string. Mirrors the frontend's
     /// `QueueSource` type (`frontend/src/api.ts`).
     pub enum QueueSource / UnknownQueueSource ("queue source") {
         Web => "web",
