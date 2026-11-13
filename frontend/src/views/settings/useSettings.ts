@@ -17,15 +17,16 @@ export function useSettings() {
     }
   }
 
-  async function load() {
+  async function fetchSettings() {
     apply(await api<Settings>('/api/settings'))
   }
 
   // Shares the save error's tag, so a failed first load shows where a failed save would.
-  const { error, attempt, load: initialLoad } = useActionError(load)
+  const { error, attempt, load } = useActionError(fetchSettings)
 
   async function save(keys: string[]) {
     saved.value = false
+    // No reload: the PUT returns the settings, and reloading after a failure would wipe the form.
     await attempt('Save failed', async () => {
       const body: Record<string, string> = {}
       for (const k of keys) body[k] = settings[k] ?? ''
@@ -34,14 +35,14 @@ export function useSettings() {
         body: JSON.stringify(body),
       }))
       saved.value = true
-    })
+    }, { reload: false })
   }
 
   function isOverridden(key: string) {
     return overridden.value.includes(key)
   }
 
-  onMounted(initialLoad)
+  onMounted(load)
 
-  return { settings, save, isOverridden, saved, error, load }
+  return { settings, save, isOverridden, saved, error }
 }

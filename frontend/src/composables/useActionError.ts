@@ -21,14 +21,15 @@ export function useActionError(fetch: () => Promise<void>) {
     }
   }
 
-  async function attempt(prefix: string, action: () => Promise<unknown>) {
+  /** Pass `reload: false` when the action's own response already updates the page. */
+  async function attempt(prefix: string, action: () => Promise<unknown>, { reload = true } = {}) {
     actionError.value = ''
     try {
       await action()
     } catch (e) {
       actionError.value = `${prefix}: ${messageOf(e)}`
     }
-    await load()
+    if (reload) await load()
   }
 
   /** A failing load wins: it means the page is stale, which matters more than an earlier action's failure. */

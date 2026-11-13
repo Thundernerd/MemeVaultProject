@@ -62,3 +62,13 @@ test('starting the next action clears the action error', async () => {
   assert.equal(errorWhileRunning, '')
   assert.equal(error.value, '')
 })
+
+test('an action with reload: false does not load afterwards', async () => {
+  let fetches = 0
+  const { error, attempt } = useActionError(async () => {
+    fetches++
+  })
+  await attempt('Save failed', fail('read-only'), { reload: false })
+  assert.equal(fetches, 0)
+  assert.equal(error.value, 'Save failed: read-only')
+})
