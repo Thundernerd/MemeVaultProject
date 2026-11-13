@@ -3,6 +3,7 @@
 use crate::binaries;
 use crate::config::Config;
 use crate::db::Db;
+use crate::process_tree::ProcessTree;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -168,7 +169,7 @@ pub async fn ensure_h264_mp4(
     config: &Config,
     path: &Path,
     progress_tx: Option<&watch::Sender<f64>>,
-    mut cancel: Option<watch::Receiver<bool>>,
+    cancel: Option<watch::Receiver<bool>>,
     progress_base: f64,
 ) -> anyhow::Result<PathBuf> {
     let probe = probe_file(db, config, path).await;
@@ -280,15 +281,15 @@ pub async fn ensure_h264_mp4(
         let _ = tx.send(progress_base);
     }
 
-    let mut child = tokio::process::Command::new(&ffmpeg)
-        .args(&args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()?;
+    let mut tree = ProcessTree::spawn(
+        tokio::process::Command::new(&ffmpeg)
+            .args(&args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+    )?;
 
-    let stdout = child.stdout.take().unwrap();
-    let stderr = child.stderr.take().unwrap();
+    let stdout = tree.take_stdout().unwrap();
+    let stderr = tree.take_stderr().unwrap();
     let duration = probe.duration.unwrap_or(0.0);
     let progress_span = (100.0 - progress_base).max(0.0);
 
@@ -321,20 +322,18 @@ pub async fn ensure_h264_mp4(
     };
 
     let wait_task = async {
-        if let Some(ref mut cancel) = cancel {
-            loop {
-                tokio::select! {
-                    status = child.wait() => break status,
-                    _ = cancel.changed() => {
-                        if *cancel.borrow() {
-                            let _ = child.start_kill();
-                            break child.wait().await;
-                        }
-                    }
-                }
+        let cancelled = async {
+            match cancel.clone() {
+                Some(mut cancel) => cancel.wait_for(|cancelled| *cancelled).await.map(drop),
+                None => std::future::pending().await,
             }
-        } else {
-            child.wait().await
+        };
+        tokio::select! {
+            status = tree.wait() => status,
+            Ok(()) = cancelled => {
+                tree.kill();
+                tree.wait().await
+            }
         }
     };
 
