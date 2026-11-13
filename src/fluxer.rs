@@ -10,7 +10,7 @@
 use crate::config::Config;
 use crate::db::{self, Db, QueueStatus};
 use crate::gallerydl;
-use crate::queue::{spawn_progress_persister, QueueHandle};
+use crate::queue::{finish_queue_item, spawn_progress_persister, QueueHandle};
 use crate::state::{AppState, FluxerControl};
 use crate::ytdlp;
 use futures::{SinkExt, StreamExt};
@@ -476,7 +476,7 @@ async fn handle_message(
             c,
             &url,
             downloader,
-            "fluxer",
+            db::QueueSource::Fluxer,
             Some("Fluxer"),
             false,
         )?)
@@ -536,26 +536,7 @@ async fn handle_message(
 
     queue.unregister(&item_id).await;
 
-    match &result {
-        Ok(paths) if !paths.is_empty() => {
-            finalize_fluxer_queue(db, &item_id, QueueStatus::Completed, None);
-        }
-        Ok(_) => finalize_fluxer_queue(
-            db,
-            &item_id,
-            QueueStatus::Failed,
-            Some("No files downloaded"),
-        ),
-        Err(e) => {
-            let msg = e.to_string();
-            let status = if msg.contains("cancelled") {
-                QueueStatus::Cancelled
-            } else {
-                QueueStatus::Failed
-            };
-            finalize_fluxer_queue(db, &item_id, status, Some(&msg));
-        }
-    }
+    finish_queue_item(db, &item_id, result.as_ref().map(Vec::len));
 
     match result {
         Ok(paths) if !paths.is_empty() => {
@@ -726,22 +707,6 @@ fn avatar_url(media: &str, author: &Value) -> Option<String> {
     }
     let ext = if hash.starts_with("a_") { "gif" } else { "png" };
     Some(format!("{media}/avatars/{id}/{hash}.{ext}"))
-}
-
-fn finalize_fluxer_queue(db: &Db, item_id: &str, status: QueueStatus, error: Option<&str>) {
-    let completed = chrono::Utc::now().to_rfc3339();
-    let progress = (status == QueueStatus::Completed).then_some(100.0);
-    let _ = db.with_conn(|c| {
-        db::update_queue_item(
-            c,
-            item_id,
-            Some(status),
-            progress,
-            Some(error),
-            Some(Some(&completed)),
-        )?;
-        Ok(())
-    });
 }
 
 // ── REST helpers ─────────────────────────────────────────────────────────────
