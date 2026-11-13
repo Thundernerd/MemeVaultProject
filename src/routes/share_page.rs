@@ -329,6 +329,20 @@ mod tests {
         }
     }
 
+    /// The app and the share page agree on one default theme and one default
+    /// accent, so a viewer with nothing saved sees the same look on both.
+    #[test]
+    fn theme_and_accent_fallback_defaults_agree() {
+        for (attr, sites) in fallback_defaults() {
+            let (first_site, first) = &sites[0];
+            let disagree: Vec<_> = sites.iter().filter(|(_, v)| v != first).collect();
+            assert!(
+                disagree.is_empty(),
+                "{first_site} defaults {attr} to `{first}`, but {disagree:?} differ"
+            );
+        }
+    }
+
     /// For `data-theme` and `data-accent`: each fallback-default site and the
     /// name it hard-codes.
     fn fallback_defaults() -> [(&'static str, Vec<(String, String)>); 2] {
