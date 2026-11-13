@@ -5,6 +5,7 @@ use crate::db::{self, Db};
 use serde::Serialize;
 use std::path::Path;
 use std::process::Stdio;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct BinaryStatus {
@@ -158,7 +159,7 @@ fn ffprobe_filename() -> &'static str {
 
 /// How long a binary gets to print its version. PyInstaller onefile builds
 /// (yt-dlp, gallery-dl) unpack themselves on first run, which takes seconds.
-const VERSION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Runs `path args…` and returns the first line it prints. `path` may be a
 /// bare name, which is looked up on PATH. `None` if it cannot run or does not
@@ -167,11 +168,8 @@ async fn version_of(path: &str, args: &[&str]) -> Option<String> {
     version_of_within(path, args, VERSION_TIMEOUT).await
 }
 
-async fn version_of_within(
-    path: &str,
-    args: &[&str],
-    timeout: std::time::Duration,
-) -> Option<String> {
+/// [`version_of`] with a caller-chosen timeout, so tests need not wait 10 s.
+async fn version_of_within(path: &str, args: &[&str], timeout: Duration) -> Option<String> {
     let output = tokio::process::Command::new(path)
         .args(args)
         // A wrapper that reads stdin would otherwise wait for input forever.
@@ -479,10 +477,12 @@ mod tests {
     async fn version_of_is_none_when_binary_never_exits() {
         let dir = tempfile::tempdir().unwrap();
         let bin = script(dir.path(), "hangs", "sleep 30\necho 1.2.3");
-        let timeout = std::time::Duration::from_millis(200);
         let started = std::time::Instant::now();
-        assert_eq!(version_of_within(&bin, &["--version"], timeout).await, None);
-        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert_eq!(
+            version_of_within(&bin, &["--version"], Duration::from_millis(200)).await,
+            None
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 
     #[cfg(unix)]
