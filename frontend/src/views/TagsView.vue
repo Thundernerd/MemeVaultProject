@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { api, type TagWithCount } from '@/api'
+import { api, errorMessage, type TagWithCount } from '@/api'
 
 const tags = ref<TagWithCount[]>([])
 const error = ref('')
@@ -12,7 +12,7 @@ async function load() {
     loaded.value = true
     error.value = ''
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed'
+    error.value = errorMessage(e)
   }
 }
 

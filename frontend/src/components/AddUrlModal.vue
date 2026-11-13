@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { api } from '@/api'
+import { api, errorMessage } from '@/api'
 import { useDialog } from '@/composables/useDialog'
 
 const open = defineModel<boolean>('open', { default: false })
@@ -113,7 +113,7 @@ async function submitUrl() {
     open.value = false
     emit('done')
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed'
+    error.value = errorMessage(e)
   } finally {
     busy.value = false
   }
@@ -150,7 +150,7 @@ async function handleUpload() {
     if (json.results.some((r) => r.success)) emit('done')
     if (selectedFiles.value.every((f) => f.state === 'done')) open.value = false
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Upload failed'
+    const message = errorMessage(err, 'Upload failed')
     selectedFiles.value = selectedFiles.value.map((entry) =>
       entry.state === 'pending' ? { ...entry, state: 'error', error: message } : entry,
     )
