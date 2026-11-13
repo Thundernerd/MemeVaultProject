@@ -202,11 +202,7 @@ async fn version_of_within(path: &str, args: &[&str], timeout: Duration) -> Opti
     }
     let text = String::from_utf8_lossy(&out.stdout);
     let text2 = String::from_utf8_lossy(&out.stderr);
-    let combined = if text.trim().is_empty() {
-        text2
-    } else {
-        text
-    };
+    let combined = if text.trim().is_empty() { text2 } else { text };
     combined.lines().next().map(|s| s.trim().to_string())
 }
 
@@ -240,9 +236,7 @@ pub async fn download_binary(
 
 async fn download_ytdlp(config: &Config) -> anyhow::Result<()> {
     let asset = ytdlp_filename();
-    let url = format!(
-        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/{asset}"
-    );
+    let url = format!("https://github.com/yt-dlp/yt-dlp/releases/latest/download/{asset}");
     let dest = config.bin_dir().join(asset);
     download_file(&url, &dest).await?;
     #[cfg(unix)]
@@ -379,11 +373,7 @@ fn copy_ffmpeg_bins(tmp_dir: &Path, bin_dir: &Path) -> anyhow::Result<()> {
     for entry in walkdir::WalkDir::new(tmp_dir) {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy();
-        if name == "ffmpeg"
-            || name == "ffprobe"
-            || name == "ffmpeg.exe"
-            || name == "ffprobe.exe"
-        {
+        if name == "ffmpeg" || name == "ffprobe" || name == "ffmpeg.exe" || name == "ffprobe.exe" {
             let dest = bin_dir.join(name.as_ref());
             std::fs::copy(entry.path(), &dest)?;
             #[cfg(unix)]
@@ -528,9 +518,15 @@ mod tests {
     fn gallerydl_is_downloaded_only_where_upstream_publishes_a_build() {
         assert_eq!(gallerydl_asset("linux", "x86_64"), Some("gallery-dl.bin"));
         assert_eq!(gallerydl_asset("windows", "x86_64"), Some("gallery-dl.exe"));
-        assert_eq!(gallerydl_asset("windows", "x86"), Some("gallery-dl_x86.exe"));
+        assert_eq!(
+            gallerydl_asset("windows", "x86"),
+            Some("gallery-dl_x86.exe")
+        );
         // x64 build runs under emulation on Windows on Arm.
-        assert_eq!(gallerydl_asset("windows", "aarch64"), Some("gallery-dl.exe"));
+        assert_eq!(
+            gallerydl_asset("windows", "aarch64"),
+            Some("gallery-dl.exe")
+        );
         assert_eq!(gallerydl_asset("macos", "aarch64"), None);
         assert_eq!(gallerydl_asset("macos", "x86_64"), None);
         assert_eq!(gallerydl_asset("linux", "aarch64"), None);

@@ -76,12 +76,7 @@ pub async fn probe_file(db: &Db, config: &Config, path: &Path) -> ProbeResult {
         .format
         .as_ref()
         .and_then(|f| f.format_name.clone())
-        .map(|s| {
-            s.split(',')
-                .next()
-                .unwrap_or(&s)
-                .to_string()
-        });
+        .map(|s| s.split(',').next().unwrap_or(&s).to_string());
     let streams = parsed.streams.unwrap_or_default();
     let video = streams
         .iter()
@@ -138,7 +133,10 @@ fn is_aac(codec: &str) -> bool {
 
 fn is_mp4_container(format: &str, path: &Path) -> bool {
     let fmt = format.to_ascii_lowercase();
-    if fmt.split(',').any(|p| matches!(p.trim(), "mp4" | "mov" | "m4a" | "3gp" | "3g2" | "mj2")) {
+    if fmt
+        .split(',')
+        .any(|p| matches!(p.trim(), "mp4" | "mov" | "m4a" | "3gp" | "3g2" | "mj2"))
+    {
         // Prefer extension when format_name is the broad ISO BMFF list
         let ext = path
             .extension()
@@ -231,11 +229,7 @@ pub async fn ensure_h264_mp4(
     let has_audio = probe.audio_codec.is_some();
     let remux = is_h264(video_codec) && pix_ok;
 
-    let mut args: Vec<String> = vec![
-        "-y".into(),
-        "-i".into(),
-        path.to_string_lossy().into(),
-    ];
+    let mut args: Vec<String> = vec!["-y".into(), "-i".into(), path.to_string_lossy().into()];
     if remux {
         tracing::info!(
             path = %path.display(),
@@ -270,12 +264,7 @@ pub async fn ensure_h264_mp4(
             "yuv420p".into(),
         ]);
         if has_audio {
-            args.extend([
-                "-c:a".into(),
-                "aac".into(),
-                "-b:a".into(),
-                "192k".into(),
-            ]);
+            args.extend(["-c:a".into(), "aac".into(), "-b:a".into(), "192k".into()]);
         } else {
             args.push("-an".into());
         }
@@ -309,7 +298,8 @@ pub async fn ensure_h264_mp4(
             let mut reader = BufReader::new(stdout).lines();
             while let Ok(Some(line)) = reader.next_line().await {
                 if let Some(tx) = &progress_tx {
-                    if let Some(pct) = parse_ffmpeg_progress(&line, duration, progress_base, progress_span)
+                    if let Some(pct) =
+                        parse_ffmpeg_progress(&line, duration, progress_base, progress_span)
                     {
                         let _ = tx.send(pct);
                     }
@@ -351,11 +341,7 @@ pub async fn ensure_h264_mp4(
     let (_, stderr_tail, status) = tokio::join!(progress_task, stderr_task, wait_task);
     let status = status?;
 
-    if cancel
-        .as_ref()
-        .map(|c| *c.borrow())
-        .unwrap_or(false)
-    {
+    if cancel.as_ref().map(|c| *c.borrow()).unwrap_or(false) {
         let _ = std::fs::remove_file(&tmp_path);
         anyhow::bail!("cancelled");
     }

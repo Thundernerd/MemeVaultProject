@@ -25,10 +25,19 @@ pub async fn create(
     }
     let downloader = body.downloader.as_deref().unwrap_or("ytdlp");
     if downloader != "ytdlp" && downloader != "gallery-dl" {
-        return Err(AppError::bad_request("downloader must be ytdlp or gallery-dl"));
+        return Err(AppError::bad_request(
+            "downloader must be ytdlp or gallery-dl",
+        ));
     }
-    let item = state
-        .db
-        .with_conn(|c| Ok(db::insert_queue_item(c, url, downloader, "web", None, body.include_in_random)?))?;
+    let item = state.db.with_conn(|c| {
+        Ok(db::insert_queue_item(
+            c,
+            url,
+            downloader,
+            "web",
+            None,
+            body.include_in_random,
+        )?)
+    })?;
     Ok((StatusCode::CREATED, Json(item)))
 }

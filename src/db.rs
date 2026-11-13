@@ -246,7 +246,10 @@ fn seed_default_settings(db: &rusqlite::Connection, data_dir: &Path) -> anyhow::
 pub static ENV_OVERRIDES: &[(&str, &str)] = &[
     ("download_path", "MEMEVAULTPROJECT_DOWNLOAD_PATH"),
     ("ytdlp_extra_args", "MEMEVAULTPROJECT_YTDLP_EXTRA_ARGS"),
-    ("gallerydl_extra_args", "MEMEVAULTPROJECT_GALLERYDL_EXTRA_ARGS"),
+    (
+        "gallerydl_extra_args",
+        "MEMEVAULTPROJECT_GALLERYDL_EXTRA_ARGS",
+    ),
     ("api_key", "MEMEVAULTPROJECT_API_KEY"),
     ("ytdlp_bin", "MEMEVAULTPROJECT_YTDLP_BIN"),
     ("gallerydl_bin", "MEMEVAULTPROJECT_GALLERYDL_BIN"),
@@ -260,11 +263,9 @@ pub fn get_setting(conn: &rusqlite::Connection, key: &str) -> Option<String> {
             return Some(v);
         }
     }
-    conn.query_row(
-        "SELECT value FROM settings WHERE key = ?",
-        [key],
-        |r| r.get(0),
-    )
+    conn.query_row("SELECT value FROM settings WHERE key = ?", [key], |r| {
+        r.get(0)
+    })
     .optional()
     .ok()
     .flatten()
@@ -538,14 +539,19 @@ pub fn insert_queue_item(
     Ok(item)
 }
 
-pub fn get_queue_item(conn: &rusqlite::Connection, id: &str) -> rusqlite::Result<Option<QueueItem>> {
+pub fn get_queue_item(
+    conn: &rusqlite::Connection,
+    id: &str,
+) -> rusqlite::Result<Option<QueueItem>> {
     conn.query_row("SELECT * FROM queue_items WHERE id = ?", [id], map_queue)
         .optional()
 }
 
 pub fn list_queue_items(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<QueueItem>> {
     let mut stmt = conn.prepare("SELECT * FROM queue_items ORDER BY created_at DESC")?;
-    let rows = stmt.query_map([], map_queue)?.collect::<Result<Vec<_>, _>>()?;
+    let rows = stmt
+        .query_map([], map_queue)?
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(rows)
 }
 
@@ -591,13 +597,22 @@ pub fn update_queue_item(
     completed_at: Option<Option<&str>>,
 ) -> rusqlite::Result<()> {
     if let Some(s) = status {
-        conn.execute("UPDATE queue_items SET status = ? WHERE id = ?", params![s, id])?;
+        conn.execute(
+            "UPDATE queue_items SET status = ? WHERE id = ?",
+            params![s, id],
+        )?;
     }
     if let Some(p) = progress {
-        conn.execute("UPDATE queue_items SET progress = ? WHERE id = ?", params![p, id])?;
+        conn.execute(
+            "UPDATE queue_items SET progress = ? WHERE id = ?",
+            params![p, id],
+        )?;
     }
     if let Some(e) = error {
-        conn.execute("UPDATE queue_items SET error = ? WHERE id = ?", params![e, id])?;
+        conn.execute(
+            "UPDATE queue_items SET error = ? WHERE id = ?",
+            params![e, id],
+        )?;
     }
     if let Some(c) = completed_at {
         conn.execute(
@@ -634,7 +649,10 @@ pub struct NewMedia<'a> {
     pub include_in_random: i64,
 }
 
-pub fn insert_media_item(conn: &rusqlite::Connection, item: NewMedia<'_>) -> rusqlite::Result<MediaItem> {
+pub fn insert_media_item(
+    conn: &rusqlite::Connection,
+    item: NewMedia<'_>,
+) -> rusqlite::Result<MediaItem> {
     let full = MediaItem {
         id: Uuid::new_v4().to_string(),
         queue_item_id: item.queue_item_id.map(|s| s.to_string()),
@@ -685,7 +703,10 @@ pub fn insert_media_item(conn: &rusqlite::Connection, item: NewMedia<'_>) -> rus
     Ok(full)
 }
 
-pub fn get_media_item(conn: &rusqlite::Connection, id: &str) -> rusqlite::Result<Option<MediaItem>> {
+pub fn get_media_item(
+    conn: &rusqlite::Connection,
+    id: &str,
+) -> rusqlite::Result<Option<MediaItem>> {
     conn.query_row("SELECT * FROM media WHERE id = ?", [id], map_media)
         .optional()
 }
@@ -724,7 +745,10 @@ pub fn set_media_random_flag(
     Ok(())
 }
 
-pub fn get_tags_for_media(conn: &rusqlite::Connection, media_id: &str) -> rusqlite::Result<Vec<Tag>> {
+pub fn get_tags_for_media(
+    conn: &rusqlite::Connection,
+    media_id: &str,
+) -> rusqlite::Result<Vec<Tag>> {
     let mut stmt = conn.prepare(
         "SELECT t.id, t.name, t.created_at FROM tags t
          JOIN media_tags mt ON mt.tag_id = t.id
@@ -754,9 +778,7 @@ pub fn get_media_item_with_tags(
     Ok(Some(MediaItemWithTags { media, tags }))
 }
 
-fn collapse_media_join(
-    rows: Vec<(MediaItem, Option<Tag>)>,
-) -> Vec<MediaItemWithTags> {
+fn collapse_media_join(rows: Vec<(MediaItem, Option<Tag>)>) -> Vec<MediaItemWithTags> {
     let mut map: HashMap<String, MediaItemWithTags> = HashMap::new();
     let mut order: Vec<String> = Vec::new();
     for (media, tag) in rows {
@@ -777,10 +799,7 @@ fn collapse_media_join(
             }
         }
     }
-    order
-        .into_iter()
-        .filter_map(|id| map.remove(&id))
-        .collect()
+    order.into_iter().filter_map(|id| map.remove(&id)).collect()
 }
 
 fn query_media_with_tags(
@@ -1015,7 +1034,9 @@ pub fn get_media_items_by_album(
     )
 }
 
-pub fn list_albums_with_media(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<AlbumWithMedia>> {
+pub fn list_albums_with_media(
+    conn: &rusqlite::Connection,
+) -> rusqlite::Result<Vec<AlbumWithMedia>> {
     let mut stmt =
         conn.prepare("SELECT id, queue_item_id, url, title, uploader, created_at FROM albums ORDER BY created_at DESC")?;
     let albums: Vec<Album> = stmt
@@ -1091,7 +1112,10 @@ pub fn create_share_link(
     Ok(link)
 }
 
-pub fn get_share_link(conn: &rusqlite::Connection, token: &str) -> rusqlite::Result<Option<ShareLink>> {
+pub fn get_share_link(
+    conn: &rusqlite::Connection,
+    token: &str,
+) -> rusqlite::Result<Option<ShareLink>> {
     conn.query_row(
         "SELECT token, media_id, allow_download, expires_at, created_at FROM share_links WHERE token = ?",
         [token],
@@ -1332,7 +1356,8 @@ mod tests {
         };
         let db = Db::open(&config).unwrap();
         db.with_conn(|c| {
-            let item = insert_queue_item(c, "https://example.com/v", "ytdlp", "web", None, false).unwrap();
+            let item =
+                insert_queue_item(c, "https://example.com/v", "ytdlp", "web", None, false).unwrap();
             assert_eq!(item.status, "pending");
             assert_eq!(item.source, "web");
             assert_eq!(item.source_label, None);
@@ -1432,8 +1457,9 @@ mod tests {
             let items = list_media_items_with_tags(c).unwrap();
             assert_eq!(items.len(), 1);
             assert_eq!(items[0].media.id, "m1");
-            let migrated = insert_queue_item(c, "https://example.com/v1", "ytdlp", "web", None, false)
-                .unwrap();
+            let migrated =
+                insert_queue_item(c, "https://example.com/v1", "ytdlp", "web", None, false)
+                    .unwrap();
             assert_eq!(migrated.include_in_random, 0);
             Ok(())
         })
@@ -1457,13 +1483,25 @@ mod tests {
         };
         let db = Db::open(&config).unwrap();
         db.with_conn(|c| {
-            let discord_pending =
-                insert_queue_item(c, "https://example.com/d1", "ytdlp", "discord", Some("Discord"), false)
-                    .unwrap();
+            let discord_pending = insert_queue_item(
+                c,
+                "https://example.com/d1",
+                "ytdlp",
+                "discord",
+                Some("Discord"),
+                false,
+            )
+            .unwrap();
             assert_eq!(discord_pending.source, "discord");
-            let fluxer_pending =
-                insert_queue_item(c, "https://example.com/f1", "ytdlp", "fluxer", Some("Fluxer"), false)
-                    .unwrap();
+            let fluxer_pending = insert_queue_item(
+                c,
+                "https://example.com/f1",
+                "ytdlp",
+                "fluxer",
+                Some("Fluxer"),
+                false,
+            )
+            .unwrap();
             assert_eq!(fluxer_pending.source, "fluxer");
             assert!(get_next_pending_item(c).unwrap().is_none());
 
@@ -1476,8 +1514,15 @@ mod tests {
                 false,
             )
             .unwrap();
-            update_queue_item(c, &discord_dl.id, Some("downloading"), Some(10.0), None, None)
-                .unwrap();
+            update_queue_item(
+                c,
+                &discord_dl.id,
+                Some("downloading"),
+                Some(10.0),
+                None,
+                None,
+            )
+            .unwrap();
             let fluxer_dl = insert_queue_item(
                 c,
                 "https://example.com/f2",
@@ -1487,11 +1532,19 @@ mod tests {
                 false,
             )
             .unwrap();
-            update_queue_item(c, &fluxer_dl.id, Some("downloading"), Some(10.0), None, None)
-                .unwrap();
+            update_queue_item(
+                c,
+                &fluxer_dl.id,
+                Some("downloading"),
+                Some(10.0),
+                None,
+                None,
+            )
+            .unwrap();
             assert_eq!(count_active_downloads(c).unwrap(), 0);
 
-            let web = insert_queue_item(c, "https://example.com/w", "ytdlp", "web", None, false).unwrap();
+            let web =
+                insert_queue_item(c, "https://example.com/w", "ytdlp", "web", None, false).unwrap();
             let next = get_next_pending_item(c).unwrap().unwrap();
             assert_eq!(next.id, web.id);
             assert_eq!(next.source, "web");

@@ -219,13 +219,11 @@ async fn post_via_webhook(
         anyhow::bail!("no attachable files");
     }
 
-    let mut builder = apply_open_original(
-        apply_optional_content(ExecuteWebhook::new(), message),
-        url,
-    )
-    .username(&username)
-    .avatar_url(&avatar_url)
-    .files(attachments);
+    let mut builder =
+        apply_open_original(apply_optional_content(ExecuteWebhook::new(), message), url)
+            .username(&username)
+            .avatar_url(&avatar_url)
+            .files(attachments);
     if let Some(thread) = thread_id {
         builder = builder.in_thread(thread);
     }
@@ -240,11 +238,9 @@ async fn post_via_webhook(
             if retry_attachments.is_empty() {
                 anyhow::bail!("webhook execute failed: {first_err}");
             }
-            let mut retry = apply_open_original(
-                apply_optional_content(ExecuteWebhook::new(), message),
-                url,
-            )
-            .files(retry_attachments);
+            let mut retry =
+                apply_open_original(apply_optional_content(ExecuteWebhook::new(), message), url)
+                    .files(retry_attachments);
             if let Some(thread) = thread_id {
                 retry = retry.in_thread(thread);
             }
@@ -437,7 +433,14 @@ async fn run_bot(
             };
 
             let queue_item = match self.db.with_conn(|c| {
-                Ok(db::insert_queue_item(c, &url, downloader, "discord", Some("Discord"), false)?)
+                Ok(db::insert_queue_item(
+                    c,
+                    &url,
+                    downloader,
+                    "discord",
+                    Some("Discord"),
+                    false,
+                )?)
             }) {
                 Ok(item) => item,
                 Err(e) => {
@@ -476,12 +479,7 @@ async fn run_bot(
                     Some(tmp.path().to_path_buf()),
                 )
                 .await
-                .map(|files| {
-                    files
-                        .into_iter()
-                        .map(|f| f.file_path)
-                        .collect::<Vec<_>>()
-                })
+                .map(|files| files.into_iter().map(|f| f.file_path).collect::<Vec<_>>())
             } else {
                 ytdlp::run_ytdlp(
                     &self.db,
@@ -554,9 +552,7 @@ async fn run_bot(
                                 edit_status(
                                     &ctx,
                                     &cmd,
-                                    format!(
-                                        "Could not post as you ({e}); posting as bot instead"
-                                    ),
+                                    format!("Could not post as you ({e}); posting as bot instead"),
                                 )
                                 .await;
                                 post_as_bot_followups(&ctx, &cmd, &paths, &url, message_ref).await;

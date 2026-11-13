@@ -45,11 +45,8 @@ pub async fn try_build_oidc(config: &Config) -> anyhow::Result<Option<OidcState>
         .clone()
         .unwrap_or_else(|| "http://localhost:3000".into());
 
-    let metadata = CoreProviderMetadata::discover_async(
-        IssuerUrl::new(issuer)?,
-        async_http_client,
-    )
-    .await?;
+    let metadata =
+        CoreProviderMetadata::discover_async(IssuerUrl::new(issuer)?, async_http_client).await?;
 
     let client = CoreClient::from_provider_metadata(
         metadata,
@@ -159,8 +156,12 @@ pub async fn oidc_callback(
     if q.error.is_some() {
         return Ok(Redirect::temporary("/auth/error").into_response());
     }
-    let code = q.code.ok_or_else(|| AppError::bad_request("missing code"))?;
-    let csrf = q.state.ok_or_else(|| AppError::bad_request("missing state"))?;
+    let code = q
+        .code
+        .ok_or_else(|| AppError::bad_request("missing code"))?;
+    let csrf = q
+        .state
+        .ok_or_else(|| AppError::bad_request("missing state"))?;
     let nonce = oidc
         .pending
         .write()
@@ -217,7 +218,10 @@ pub async fn logout(State(state): State<AppState>) -> Response {
     let _ = state;
     (
         StatusCode::FOUND,
-        [(header::SET_COOKIE, cookie), (header::LOCATION, "/auth/login".into())],
+        [
+            (header::SET_COOKIE, cookie),
+            (header::LOCATION, "/auth/login".into()),
+        ],
     )
         .into_response()
 }

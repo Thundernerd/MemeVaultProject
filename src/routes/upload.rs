@@ -63,16 +63,8 @@ pub async fn upload(
     let download_path = state
         .db
         .with_conn(|c| Ok(db::get_setting(c, "download_path")))?
-        .unwrap_or_else(|| {
-            state
-                .config
-                .data_dir
-                .join("media")
-                .to_string_lossy()
-                .into()
-        });
-    std::fs::create_dir_all(&download_path)
-        .map_err(|e| AppError::internal(e.to_string()))?;
+        .unwrap_or_else(|| state.config.data_dir.join("media").to_string_lossy().into());
+    std::fs::create_dir_all(&download_path).map_err(|e| AppError::internal(e.to_string()))?;
 
     let mut results = Vec::new();
 
@@ -85,10 +77,7 @@ pub async fn upload(
         if name != "files" && name != "files[]" {
             continue;
         }
-        let filename = field
-            .file_name()
-            .unwrap_or("upload.bin")
-            .to_string();
+        let filename = field.file_name().unwrap_or("upload.bin").to_string();
         let content_type = field
             .content_type()
             .map(|m| m.to_string())
@@ -151,16 +140,7 @@ pub async fn upload(
         }
 
         let dest = if media_type == "video" {
-            match ffprobe::ensure_h264_mp4(
-                &state.db,
-                &state.config,
-                &dest,
-                None,
-                None,
-                0.0,
-            )
-            .await
-            {
+            match ffprobe::ensure_h264_mp4(&state.db, &state.config, &dest, None, None, 0.0).await {
                 Ok(p) => p,
                 Err(e) => {
                     results.push(json!({

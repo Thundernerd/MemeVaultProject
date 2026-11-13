@@ -24,7 +24,10 @@ fn check_media_share(state: &AppState, token: &str) -> AppResult<(db::ShareLink,
     Ok((link, media))
 }
 
-fn check_album_share(state: &AppState, token: &str) -> AppResult<(db::AlbumShareLink, db::AlbumWithMedia)> {
+fn check_album_share(
+    state: &AppState,
+    token: &str,
+) -> AppResult<(db::AlbumShareLink, db::AlbumWithMedia)> {
     let link = state
         .db
         .with_conn(|c| Ok(db::get_album_share_link(c, token)?))?
