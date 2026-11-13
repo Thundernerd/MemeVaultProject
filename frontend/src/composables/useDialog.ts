@@ -1,5 +1,30 @@
 import { nextTick, onBeforeUnmount, toValue, watch, type MaybeRefOrGetter, type Ref } from 'vue'
 
+// The media modal's <video controls> is a Tab stop too, and the first one in its box.
+const TABBABLE = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type=hidden])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'video[controls]',
+  '[tabindex]',
+]
+  .map((s) => `${s}:not([tabindex="-1"])`)
+  .join(',')
+
+/** The visible elements in `root` that Tab stops on, in document order. */
+function tabbables(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(TABBABLE)).filter(
+    (el) => el.getClientRects().length > 0,
+  )
+}
+
+/** Whether `node` comes after `ref` in the document, or is inside it. */
+function isAfter(node: Node, ref: Node): boolean {
+  return (ref.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+}
+
 /**
  * Make a modal box behave like a dialog for keyboard users.
  *
@@ -9,29 +34,6 @@ import { nextTick, onBeforeUnmount, toValue, watch, type MaybeRefOrGetter, type 
  * style.css). When it closes, focus returns to the element that had it before the dialog
  * opened and `<main>` scrolls again.
  */
-const TABBABLE = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled]):not([type=hidden])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  'audio[controls]',
-  'video[controls]',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',')
-
-/** The elements in `root` that Tab stops on, in document order. */
-function tabbables(root: HTMLElement): HTMLElement[] {
-  return Array.from(root.querySelectorAll<HTMLElement>(TABBABLE)).filter((el) => {
-    if (!el.checkVisibility({ visibilityProperty: true })) return false
-    // Tab stops on only the checked radio of a group that has one.
-    if (el instanceof HTMLInputElement && el.type === 'radio' && !el.checked && el.name) {
-      return !(el.form ?? root).querySelector(`input[type=radio][name="${CSS.escape(el.name)}"]:checked`)
-    }
-    return true
-  })
-}
-
 export function useDialog(
   open: MaybeRefOrGetter<boolean>,
   close: () => void,
@@ -49,19 +51,21 @@ export function useDialog(
   }
 
   // Wrap Tab at the ends of the box and pull focus back in from outside it; the browser
-  // moves focus between the elements in between.
+  // moves focus between the elements in between. Ends are found by position, not identity,
+  // because focus can sit on an element that is no longer a stop (a button disabled while
+  // focused, such as Upload or Delete going busy).
   function trapTab(e: KeyboardEvent) {
-    const el = box.value
-    if (!el) return
-    const stops = tabbables(el)
+    const root = box.value
+    if (!root) return
+    const stops = tabbables(root)
     if (!stops.length) return
     const first = stops[0]!
     const last = stops[stops.length - 1]!
     const current = document.activeElement
     let target: HTMLElement | null = null
-    if (!current || !el.contains(current)) target = e.shiftKey ? last : first
-    else if (e.shiftKey && current === first) target = last
-    else if (!e.shiftKey && current === last) target = first
+    if (!current || !root.contains(current)) target = e.shiftKey ? last : first
+    else if (e.shiftKey && (current === first || !isAfter(current, first))) target = last
+    else if (!e.shiftKey && (current === last || isAfter(current, last))) target = first
     if (target) {
       e.preventDefault()
       target.focus()
