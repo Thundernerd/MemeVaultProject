@@ -22,7 +22,7 @@ async function load() {
   keys.value = await api('/api/api-keys')
 }
 
-const { error, attempt } = useActionError(load)
+const { error, attempt, initialLoad } = useActionError(load)
 
 async function create() {
   // Hide the last key so it isn't shown next to a failed create as if it were the new one.
@@ -40,7 +40,7 @@ async function revoke(id: string) {
   await attempt('Revoke failed', () => api(`/api/api-keys/${id}`, { method: 'DELETE' }))
 }
 
-onMounted(load)
+onMounted(initialLoad)
 </script>
 
 <template>
