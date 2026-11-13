@@ -150,6 +150,11 @@ async fn version_of(path: &str, args: &[&str]) -> Option<String> {
         .output()
         .await
         .ok()?;
+    // A binary that cannot run (wrong architecture, missing interpreter)
+    // prints its error to stderr and exits non-zero; that is not a version.
+    if !out.status.success() {
+        return None;
+    }
     let text = String::from_utf8_lossy(&out.stdout);
     let text2 = String::from_utf8_lossy(&out.stderr);
     let combined = if text.trim().is_empty() {
@@ -405,5 +410,31 @@ pub async fn ensure_binaries(db: &Db, config: &Config) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    fn script(dir: &Path, name: &str, body: &str) -> String {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.join(name);
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path.to_string_lossy().into()
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn version_of_is_none_when_binary_exits_non_zero() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = script(
+            dir.path(),
+            "broken",
+            "echo 'broken: cannot execute binary file' >&2\nexit 126",
+        );
+        assert_eq!(version_of(&bin, &["--version"]).await, None);
     }
 }
