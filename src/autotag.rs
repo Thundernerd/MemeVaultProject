@@ -12,7 +12,9 @@ pub fn auto_tag_media(
     created_at: &str,
 ) {
     let _ = db.with_conn(|conn| {
-        let _ = apply(conn, media_id, url, media_type, uploader, format, created_at);
+        let _ = apply(
+            conn, media_id, url, media_type, uploader, format, created_at,
+        );
         Ok(())
     });
 }
@@ -108,9 +110,6 @@ mod tests {
             platform_from_url("https://www.tiktok.com/@user/video/123"),
             "tiktok"
         );
-        assert_eq!(
-            platform_from_url("https://m.tiktok.com/v/123"),
-            "tiktok"
-        );
+        assert_eq!(platform_from_url("https://m.tiktok.com/v/123"), "tiktok");
     }
 }

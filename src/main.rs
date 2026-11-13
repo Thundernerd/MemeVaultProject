@@ -39,8 +39,7 @@ async fn main() -> anyhow::Result<()> {
 
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new(&config.log_level)),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.log_level)),
         )
         .init();
 
@@ -96,9 +95,8 @@ async fn main() -> anyhow::Result<()> {
     let api = routes::api_router(oidc.clone());
 
     let spa = if index.exists() {
-        Router::new().fallback_service(
-            ServeDir::new(&static_dir).not_found_service(ServeFile::new(&index)),
-        )
+        Router::new()
+            .fallback_service(ServeDir::new(&static_dir).not_found_service(ServeFile::new(&index)))
     } else {
         Router::new().fallback(|| async {
             (
@@ -112,10 +110,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .merge(api)
         .merge(spa)
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            oidc_gate,
-        ))
+        .layer(middleware::from_fn_with_state(state.clone(), oidc_gate))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
@@ -148,6 +143,11 @@ async fn oidc_gate(
         )
             .into_response();
     }
-    let callback = urlencoding::encode(req.uri().path_and_query().map(|p| p.as_str()).unwrap_or("/"));
+    let callback = urlencoding::encode(
+        req.uri()
+            .path_and_query()
+            .map(|p| p.as_str())
+            .unwrap_or("/"),
+    );
     Redirect::temporary(&format!("/auth/login?callbackUrl={callback}")).into_response()
 }

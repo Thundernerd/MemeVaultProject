@@ -20,10 +20,7 @@ struct ShareTemplate {
     og_meta: String,
 }
 
-pub async fn page(
-    State(state): State<AppState>,
-    Path(token): Path<String>,
-) -> AppResult<Response> {
+pub async fn page(State(state): State<AppState>, Path(token): Path<String>) -> AppResult<Response> {
     // Album share?
     if let Some(album_link) = state
         .db
@@ -90,7 +87,11 @@ pub async fn page(
             album_items_json: script_json(&serde_json::Value::Array(items)),
             og_meta: og,
         };
-        return Ok(Html(tmpl.render().map_err(|e| AppError::internal(e.to_string()))?).into_response());
+        return Ok(Html(
+            tmpl.render()
+                .map_err(|e| AppError::internal(e.to_string()))?,
+        )
+        .into_response());
     }
 
     let link = state
@@ -121,9 +122,7 @@ pub async fn page(
     let mut og = String::new();
     if !base.is_empty() {
         let abs_file = format!("{base}{file_src}");
-        let abs_thumb = thumbnail_src
-            .as_ref()
-            .map(|t| format!("{base}{t}"));
+        let abs_thumb = thumbnail_src.as_ref().map(|t| format!("{base}{t}"));
         let ext = FsPath::new(&media.file_path)
             .extension()
             .and_then(|e| e.to_str())
@@ -178,7 +177,11 @@ pub async fn page(
         album_items_json: "[]".into(),
         og_meta: og,
     };
-    Ok(Html(tmpl.render().map_err(|e| AppError::internal(e.to_string()))?).into_response())
+    Ok(Html(
+        tmpl.render()
+            .map_err(|e| AppError::internal(e.to_string()))?,
+    )
+    .into_response())
 }
 
 /// JSON for embedding in an inline `<script>`: escapes `<` so a value such as
@@ -238,12 +241,18 @@ mod tests {
             themed(&app),
             "share.html and style.css define different theme/accent blocks"
         );
-        assert!(share.contains_key(":root"), "share.html has no :root tokens");
+        assert!(
+            share.contains_key(":root"),
+            "share.html has no :root tokens"
+        );
 
         let mut drift = Vec::new();
         for (selector, share_blocks) in &share {
             let [share_tokens] = share_blocks.as_slice() else {
-                panic!("share.html has {} `{selector}` token blocks", share_blocks.len());
+                panic!(
+                    "share.html has {} `{selector}` token blocks",
+                    share_blocks.len()
+                );
             };
             let app_tokens = match app.get(selector).map(Vec::as_slice) {
                 Some([one]) => one,

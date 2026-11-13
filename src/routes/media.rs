@@ -103,7 +103,9 @@ pub async fn get_tags(
         .db
         .with_conn(|c| Ok(db::get_media_item(c, &id)?))?
         .ok_or(AppError::NotFound)?;
-    let tags = state.db.with_conn(|c| Ok(db::get_tags_for_media(c, &id)?))?;
+    let tags = state
+        .db
+        .with_conn(|c| Ok(db::get_tags_for_media(c, &id)?))?;
     Ok(Json(tags))
 }
 

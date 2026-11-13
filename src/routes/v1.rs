@@ -13,10 +13,9 @@ use serde_json::{json, Value};
 use std::path::Path as FsPath;
 
 fn require_read(state: &AppState, headers: &HeaderMap) -> AppResult<auth::ApiKeyContext> {
-    let key = headers
-        .get("x-api-key")
-        .and_then(|v| v.to_str().ok());
-    let ctx = auth::validate_api_key(&state.db, &state.config, key).ok_or(AppError::Unauthorized)?;
+    let key = headers.get("x-api-key").and_then(|v| v.to_str().ok());
+    let ctx =
+        auth::validate_api_key(&state.db, &state.config, key).ok_or(AppError::Unauthorized)?;
     if !ctx.has_read() {
         return Err(AppError::Unauthorized);
     }
@@ -58,7 +57,14 @@ pub async fn submit(
     let label = ctx.name.trim();
     let label = if label.is_empty() { None } else { Some(label) };
     let item = state.db.with_conn(|c| {
-        Ok(db::insert_queue_item(c, url, downloader, "api", label, body.include_in_random)?)
+        Ok(db::insert_queue_item(
+            c,
+            url,
+            downloader,
+            "api",
+            label,
+            body.include_in_random,
+        )?)
     })?;
     Ok((StatusCode::CREATED, Json(json!({ "id": item.id }))))
 }
@@ -109,10 +115,7 @@ pub async fn download(
     serve_file_with_range(FsPath::new(&item.file_path), &headers, true).await
 }
 
-pub async fn random(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> AppResult<Json<Value>> {
+pub async fn random(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Json<Value>> {
     require_read(&state, &headers)?;
     let mode = state
         .db

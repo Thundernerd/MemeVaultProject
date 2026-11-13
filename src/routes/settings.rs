@@ -40,10 +40,7 @@ pub async fn get(State(state): State<AppState>) -> AppResult<Json<Value>> {
     for (k, v) in settings.drain() {
         obj.insert(k, Value::String(v));
     }
-    obj.insert(
-        "_overridden_by_env".into(),
-        json!(overridden),
-    );
+    obj.insert("_overridden_by_env".into(), json!(overridden));
     Ok(Json(Value::Object(obj)))
 }
 

@@ -57,10 +57,7 @@ pub async fn serve_file_with_range(
         .unwrap_or("download");
 
     let mut response_headers = HeaderMap::new();
-    response_headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(content_type),
-    );
+    response_headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
     response_headers.insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
     if as_attachment {
         let cd = format!("attachment; filename=\"{filename}\"");
@@ -72,9 +69,7 @@ pub async fn serve_file_with_range(
     if let Some(range_hdr) = headers.get(header::RANGE).and_then(|v| v.to_str().ok()) {
         if let Some((start, end)) = parse_bytes_range(range_hdr, file_size) {
             let len = end - start + 1;
-            let mut file = File::open(path)
-                .await
-                .map_err(|_| StatusCode::NOT_FOUND)?;
+            let mut file = File::open(path).await.map_err(|_| StatusCode::NOT_FOUND)?;
             file.seek(std::io::SeekFrom::Start(start))
                 .await
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -102,9 +97,7 @@ pub async fn serve_file_with_range(
         header::CONTENT_LENGTH,
         HeaderValue::from_str(&file_size.to_string()).unwrap(),
     );
-    let file = File::open(path)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    let file = File::open(path).await.map_err(|_| StatusCode::NOT_FOUND)?;
     let body = Body::from_stream(ReaderStream::new(file));
     Ok((StatusCode::OK, response_headers, body).into_response())
 }
