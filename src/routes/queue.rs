@@ -43,12 +43,10 @@ pub async fn patch(
         return Err(AppError::Conflict("Item cannot be cancelled".into()));
     }
     if item.status == "downloading" {
-        let cancelled = state.queue.cancel(&id).await;
-        if !cancelled {
-            // Still mark cancelled in DB
-        }
+        // The row is marked cancelled below whether or not the worker was still running.
+        state.queue.cancel(&id).await;
     }
-    let _ = state.db.with_conn(|c| {
+    state.db.with_conn(|c| {
         db::update_queue_item(
             c,
             &id,
@@ -66,11 +64,10 @@ pub async fn delete(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> AppResult<StatusCode> {
-    let item = state
+    state
         .db
         .with_conn(|c| Ok(db::get_queue_item(c, &id)?))?
         .ok_or(AppError::NotFound)?;
-    let _ = item;
     state.db.with_conn(|c| {
         db::delete_queue_item(c, &id)?;
         Ok(())
