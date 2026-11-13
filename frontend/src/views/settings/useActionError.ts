@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { errorMessage } from '@/api'
 
 /**
  * The error tag for a settings tab whose buttons act straight away (upload, delete, create, revoke).
@@ -13,19 +14,15 @@ export function useActionError(reload: () => Promise<void>) {
       await action()
       error.value = ''
     } catch (e) {
-      error.value = `${prefix}: ${messageOf(e)}`
+      error.value = `${prefix}: ${errorMessage(e, String(e))}`
     }
     try {
       await reload()
     } catch (e) {
       // Keep the action's own error if there is one; otherwise say the refresh failed.
-      error.value ||= `Reload failed: ${messageOf(e)}`
+      error.value ||= `Reload failed: ${errorMessage(e, String(e))}`
     }
   }
 
   return { error, attempt }
-}
-
-function messageOf(e: unknown) {
-  return e instanceof Error ? e.message : String(e)
 }
