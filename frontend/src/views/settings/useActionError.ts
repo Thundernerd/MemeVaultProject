@@ -4,7 +4,8 @@ import { errorMessage } from '@/api'
 /**
  * The error tag for a settings tab whose buttons act straight away (upload, delete, create, revoke).
  * `attempt` runs one action, then reloads the tab. A failure shows "<prefix>: <message>";
- * the next successful action clears it.
+ * the next successful action clears it. `initialLoad` runs `reload` alone, for the tab's first load,
+ * and shows "Load failed: <message>" instead of leaving an unhandled rejection.
  */
 export function useActionError(reload: () => Promise<void>) {
   const error = ref('')
@@ -24,7 +25,16 @@ export function useActionError(reload: () => Promise<void>) {
     }
   }
 
-  return { error, attempt }
+  async function initialLoad() {
+    try {
+      await reload()
+      error.value = ''
+    } catch (e) {
+      error.value = `Load failed: ${messageOf(e)}`
+    }
+  }
+
+  return { error, attempt, initialLoad }
 }
 
 /** Falls back to the thrown value itself, so a non-`Error` rejection still says something. */
