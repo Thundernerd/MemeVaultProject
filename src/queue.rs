@@ -47,16 +47,16 @@ impl QueueHandle {
 /// Write the end of a download to its queue item row. `outcome` is the
 /// number of files the download produced, or the error it stopped with.
 pub fn finish_queue_item(db: &Db, item_id: &str, outcome: Result<usize, &anyhow::Error>) {
-    let message;
+    let error_text;
     let (status, progress, error) = match outcome {
         Ok(0) => (QueueStatus::Failed, None, Some("No files downloaded")),
         Ok(_) => (QueueStatus::Completed, Some(100.0), None),
         Err(e) => {
-            message = e.to_string();
-            if message.contains("cancelled") {
+            error_text = e.to_string();
+            if error_text.contains("cancelled") {
                 (QueueStatus::Cancelled, None, Some("cancelled"))
             } else {
-                (QueueStatus::Failed, None, Some(message.as_str()))
+                (QueueStatus::Failed, None, Some(error_text.as_str()))
             }
         }
     };
@@ -279,6 +279,7 @@ async fn run_video(
         media.format.as_deref(),
         &media.created_at,
     );
+    // yt-dlp downloads exactly one file per job.
     Ok(1)
 }
 
