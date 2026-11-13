@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { api } from '@/api'
 import { useActionError } from './useActionError'
+import ErrorTag from './ErrorTag.vue'
 
 type CookieTool = 'ytdlp' | 'gallerydl'
 const tools: CookieTool[] = ['ytdlp', 'gallerydl']
@@ -46,7 +47,7 @@ onMounted(load)
 
 <template>
   <div class="cards">
-    <p v-if="error" class="label save-error self-start" role="status">{{ error }}</p>
+    <ErrorTag :message="error" class="self-start" />
     <div
       v-for="tool in tools"
       :key="tool"
