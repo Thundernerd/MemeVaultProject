@@ -37,12 +37,13 @@ function remove(dialog: OpenDialog) {
   const i = stack.indexOf(dialog)
   if (i === -1) return
   stack.splice(i, 1)
-  const above = stack[i]
-  if (above) {
-    // Closed out of order (e.g. a parent dialog unmounting with its child still open).
-    // Focus is in the dialog above, so leave it there; if that dialog was opened from
-    // inside this one, its opener is about to go away, so hand it this dialog's opener.
-    if (above.opener && dialog.box.value?.contains(above.opener)) above.opener = dialog.opener
+  if (i < stack.length) {
+    // Closed out of order (e.g. a parent dialog unmounting with its children still open).
+    // Focus is in a dialog above, so leave it there; any dialog above that was opened
+    // from inside this one is about to lose its opener, so hand it this dialog's opener.
+    for (const above of stack.slice(i)) {
+      if (above.opener && dialog.box.value?.contains(above.opener)) above.opener = dialog.opener
+    }
   } else if (dialog.opener?.isConnected) {
     dialog.opener.focus()
   }
