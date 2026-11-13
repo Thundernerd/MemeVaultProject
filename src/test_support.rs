@@ -22,8 +22,14 @@ pub fn read_pid(pidfile: &Path) -> u32 {
     try_read_pid(pidfile).expect("the grandchild did not record its pid")
 }
 
+/// `None` until the script has written its pid and the newline after it, so
+/// a half-written pid is never read as a different, nonexistent process.
 fn try_read_pid(pidfile: &Path) -> Option<u32> {
-    std::fs::read_to_string(pidfile).ok()?.trim().parse().ok()
+    let text = std::fs::read_to_string(pidfile).ok()?;
+    if !text.ends_with('\n') {
+        return None;
+    }
+    text.trim().parse().ok()
 }
 
 /// The pid a running test script writes to `pidfile`, once it has written it.

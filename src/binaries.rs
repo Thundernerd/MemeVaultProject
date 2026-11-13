@@ -615,6 +615,31 @@ mod tests {
         );
     }
 
+    // The grandchild inherits the check's stdout and stderr and keeps them
+    // open, so they reach EOF only once it is killed.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn version_of_returns_the_version_while_a_grandchild_holds_its_pipes() {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("grandchild.pid");
+        let bin = script(
+            dir.path(),
+            "holds_pipes",
+            &format!("sleep 30 &\necho $! > '{}'\necho 1.2.3", pidfile.display()),
+        );
+        let started = std::time::Instant::now();
+        assert_eq!(
+            version_of_within(&bin, &["--version"], Duration::from_secs(5)).await,
+            Some("1.2.3".to_string())
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
+        let pid = read_pid(&pidfile);
+        assert!(
+            gone_within(pid, Duration::from_secs(2)).await,
+            "grandchild {pid} is still running after a successful check"
+        );
+    }
+
     // The window #115 closes, between spawning the child and putting it in
     // its job, ends before cmd.exe gets as far as starting a grandchild, so
     // this test fails only if the tree is not killed at all.
@@ -637,6 +662,31 @@ mod tests {
         assert!(
             gone_within(pid, Duration::from_secs(2)).await,
             "grandchild {pid} is still running after the timeout"
+        );
+    }
+
+    // cmd.exe passes every inheritable handle to what it starts, the
+    // check's pipes included, even when the grandchild's own output is
+    // redirected to nul.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn version_of_returns_the_version_while_a_grandchild_holds_its_pipes() {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("grandchild.pid");
+        let bin = cmd_script(
+            dir.path(),
+            "holds_pipes",
+            &format!("{}\necho 1.2.3", start_grandchild(&pidfile)),
+        );
+        // Long enough for PowerShell to start on a cold CI runner.
+        assert_eq!(
+            version_of_within(&bin, &["--version"], Duration::from_secs(15)).await,
+            Some("1.2.3".to_string())
+        );
+        let pid = read_pid(&pidfile);
+        assert!(
+            gone_within(pid, Duration::from_secs(2)).await,
+            "grandchild {pid} is still running after a successful check"
         );
     }
 
