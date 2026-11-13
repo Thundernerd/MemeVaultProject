@@ -26,7 +26,8 @@ async function download(name: string) {
   busy.value = name
   notes.value[name] = ''
   try {
-    await api(`/api/binaries/${encodeURIComponent(name)}`, { method: 'POST' })
+    const res = await api<BinaryStatus>(`/api/binaries/${encodeURIComponent(name)}`, { method: 'POST' })
+    if (!res.exists) notes.value[name] = 'Downloaded, but the binary cannot run on this system'
     await loadBins()
   } catch (e) {
     notes.value[name] = `Download failed: ${e instanceof Error ? e.message : String(e)}`
