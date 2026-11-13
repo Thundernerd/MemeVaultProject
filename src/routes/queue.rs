@@ -64,11 +64,10 @@ pub async fn delete(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> AppResult<StatusCode> {
-    let item = state
+    state
         .db
         .with_conn(|c| Ok(db::get_queue_item(c, &id)?))?
         .ok_or(AppError::NotFound)?;
-    let _ = item;
     state.db.with_conn(|c| {
         db::delete_queue_item(c, &id)?;
         Ok(())
