@@ -25,7 +25,9 @@ use axum::extract::Request;
 use axum::http::{header, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
+use axum::routing::any;
 use axum::Router;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_http::services::{ServeDir, ServeFile};
@@ -39,8 +41,7 @@ async fn main() -> anyhow::Result<()> {
 
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new(&config.log_level)),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.log_level)),
         )
         .init();
 
@@ -90,15 +91,30 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    let static_dir = config.static_dir.clone();
+    let app = app_router(routes::api_router(oidc.clone()), &config.static_dir)
+        .layer(middleware::from_fn_with_state(state.clone(), oidc_gate))
+        .layer(TraceLayer::new_for_http())
+        .with_state(state);
+
+    let listener = tokio::net::TcpListener::bind(&config.bind).await?;
+    tracing::info!("listening on http://{}", config.bind);
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+
+/// The API routes plus the frontend: the built SPA from `static_dir` when it
+/// has an `index.html`, otherwise a "Frontend not built" page.
+///
+/// Paths that aren't files in `static_dir` are client-side routes, so they get
+/// `index.html` with 200 (#104); that includes missing assets. Unknown `/api` paths are not, so they get the
+/// API's own 404 instead.
+fn app_router<S>(api: Router<S>, static_dir: &Path) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
     let index = static_dir.join("index.html");
-
-    let api = routes::api_router(oidc.clone());
-
     let spa = if index.exists() {
-        Router::new().fallback_service(
-            ServeDir::new(&static_dir).not_found_service(ServeFile::new(&index)),
-        )
+        Router::new().fallback_service(ServeDir::new(static_dir).fallback(ServeFile::new(&index)))
     } else {
         Router::new().fallback(|| async {
             (
@@ -108,21 +124,11 @@ async fn main() -> anyhow::Result<()> {
             )
         })
     };
-
-    let app = Router::new()
-        .merge(api)
+    let api_not_found = || async { crate::error::AppError::NotFound };
+    api.route("/api", any(api_not_found))
+        .route("/api/", any(api_not_found))
+        .route("/api/{*rest}", any(api_not_found))
         .merge(spa)
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            oidc_gate,
-        ))
-        .layer(TraceLayer::new_for_http())
-        .with_state(state);
-
-    let listener = tokio::net::TcpListener::bind(&config.bind).await?;
-    tracing::info!("listening on http://{}", config.bind);
-    axum::serve(listener, app).await?;
-    Ok(())
 }
 
 async fn oidc_gate(
@@ -148,6 +154,91 @@ async fn oidc_gate(
         )
             .into_response();
     }
-    let callback = urlencoding::encode(req.uri().path_and_query().map(|p| p.as_str()).unwrap_or("/"));
+    let callback = urlencoding::encode(
+        req.uri()
+            .path_and_query()
+            .map(|p| p.as_str())
+            .unwrap_or("/"),
+    );
     Redirect::temporary(&format!("/auth/login?callbackUrl={callback}")).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::app_router;
+    use axum::body::{to_bytes, Body};
+    use axum::http::{Request, StatusCode};
+    use axum::Router;
+    use tower::ServiceExt;
+
+    const INDEX: &str = "<!doctype html><title>spa</title>";
+
+    fn static_dir() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("index.html"), INDEX).unwrap();
+        dir
+    }
+
+    async fn get(app: Router, path: &str) -> (StatusCode, String) {
+        let res = app
+            .oneshot(Request::get(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = res.status();
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        (status, String::from_utf8(body.to_vec()).unwrap())
+    }
+
+    #[tokio::test]
+    async fn client_route_deep_link_serves_index_with_200() {
+        let dir = static_dir();
+        let app = app_router(Router::new(), dir.path());
+
+        let (status, body) = get(app, "/settings/binaries").await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, INDEX);
+    }
+
+    #[tokio::test]
+    async fn unknown_api_path_is_404_not_the_spa() {
+        let dir = static_dir();
+        let api = Router::new().route("/api/ping", axum::routing::get(|| async { "pong" }));
+        let app = app_router(api, dir.path());
+
+        let (status, body) = get(app.clone(), "/api/does-not-exist").await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_ne!(body, INDEX);
+
+        for path in ["/api", "/api/"] {
+            assert_eq!(
+                get(app.clone(), path).await.0,
+                StatusCode::NOT_FOUND,
+                "{path}"
+            );
+        }
+
+        assert_eq!(get(app, "/api/ping").await, (StatusCode::OK, "pong".into()));
+    }
+
+    #[tokio::test]
+    async fn existing_asset_is_served_as_is() {
+        let dir = static_dir();
+        std::fs::create_dir(dir.path().join("assets")).unwrap();
+        std::fs::write(dir.path().join("assets/app.js"), "console.log(1)").unwrap();
+        let app = app_router(Router::new(), dir.path());
+
+        assert_eq!(
+            get(app, "/assets/app.js").await,
+            (StatusCode::OK, "console.log(1)".into())
+        );
+    }
+
+    /// Route registration panics on a conflict, so building the app with the
+    /// real API router checks the `/api` catch-alls sit beside its routes.
+    #[test]
+    fn api_catch_alls_compose_with_the_real_api_router() {
+        let dir = static_dir();
+        let _ = app_router(crate::routes::api_router(None), dir.path());
+    }
 }

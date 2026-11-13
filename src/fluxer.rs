@@ -120,9 +120,7 @@ pub async fn restart_fluxer_bot(state: AppState) {
     let config = state.config.clone();
     let queue = state.queue.clone();
     tokio::spawn(async move {
-        if let Err(e) =
-            run_bot(settings, instance_url, db, config, queue, shutdown_rx).await
-        {
+        if let Err(e) = run_bot(settings, instance_url, db, config, queue, shutdown_rx).await {
             tracing::error!("Fluxer bot error: {e:#}");
         }
     });
@@ -153,7 +151,10 @@ async fn discover(http: &reqwest::Client, instance_url: &str) -> anyhow::Result<
         .as_str()
         .filter(|s| !s.is_empty())
         .ok_or_else(|| anyhow::anyhow!("discovery missing endpoints.gateway"))?;
-    let media = ep["media"].as_str().filter(|s| !s.is_empty()).unwrap_or(base);
+    let media = ep["media"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(base);
     Ok(Endpoints {
         api: api.trim_end_matches('/').to_string(),
         gateway: gateway.to_string(),
@@ -202,7 +203,13 @@ async fn run_bot(
         }
         let started = Instant::now();
         let result = gateway_session(
-            &http, &settings, &endpoints, &db, &config, &queue, &mut shutdown,
+            &http,
+            &settings,
+            &endpoints,
+            &db,
+            &config,
+            &queue,
+            &mut shutdown,
         )
         .await;
         if let Err(e) = result {
@@ -236,7 +243,11 @@ async fn gateway_session(
     queue: &Arc<QueueHandle>,
     shutdown: &mut watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
-    let sep = if endpoints.gateway.contains('?') { '&' } else { '?' };
+    let sep = if endpoints.gateway.contains('?') {
+        '&'
+    } else {
+        '?'
+    };
     let ws_url = format!("{}{sep}v=1&encoding=json", endpoints.gateway);
     let (ws, _) = tokio_tungstenite::connect_async(ws_url.as_str()).await?;
     let (mut sink, mut stream) = ws.split();
@@ -368,7 +379,10 @@ async fn gateway_session(
 // ── Command handling ─────────────────────────────────────────────────────────
 
 /// Parse `prefix + command [image|video] <url> [caption]`.
-fn parse_command(content: &str, settings: &FluxerSettings) -> Option<(&'static str, String, Option<String>)> {
+fn parse_command(
+    content: &str,
+    settings: &FluxerSettings,
+) -> Option<(&'static str, String, Option<String>)> {
     let rest = content
         .trim()
         .strip_prefix(settings.command_prefix.as_str())?
@@ -442,12 +456,30 @@ async fn handle_message(
     // Remove the sender's command message (guild only; another user's message
     // needs Manage Messages, and private-channel messages cannot be deleted).
     if settings.delete_command && guild_id.is_some() && !message_id.is_empty() {
-        delete_message(http, &endpoints.api, &settings.token, channel_id, &message_id).await;
+        delete_message(
+            http,
+            &endpoints.api,
+            &settings.token,
+            channel_id,
+            &message_id,
+        )
+        .await;
     }
 
-    let downloader = if media_type == "image" { "gallery-dl" } else { "ytdlp" };
+    let downloader = if media_type == "image" {
+        "gallery-dl"
+    } else {
+        "ytdlp"
+    };
     let queue_item = db.with_conn(|c| {
-        Ok(db::insert_queue_item(c, &url, downloader, "fluxer", Some("Fluxer"), false)?)
+        Ok(db::insert_queue_item(
+            c,
+            &url,
+            downloader,
+            "fluxer",
+            Some("Fluxer"),
+            false,
+        )?)
     })?;
     let item_id = queue_item.id.clone();
 
@@ -461,9 +493,15 @@ async fn handle_message(
         Ok(())
     });
 
-    let placeholder = create_text_message(http, &endpoints.api, &settings.token, channel_id, "⏳ Downloading…")
-        .await
-        .ok();
+    let placeholder = create_text_message(
+        http,
+        &endpoints.api,
+        &settings.token,
+        channel_id,
+        "⏳ Downloading…",
+    )
+    .await
+    .ok();
 
     let result = if media_type == "image" {
         gallerydl::run_gallery_dl(
@@ -498,7 +536,11 @@ async fn handle_message(
         Ok(_) => finalize_fluxer_queue(db, &item_id, "failed", Some("No files downloaded")),
         Err(e) => {
             let msg = e.to_string();
-            let status = if msg.contains("cancelled") { "cancelled" } else { "failed" };
+            let status = if msg.contains("cancelled") {
+                "cancelled"
+            } else {
+                "failed"
+            };
             finalize_fluxer_queue(db, &item_id, status, Some(&msg));
         }
     }
@@ -526,7 +568,15 @@ async fn handle_message(
         }
         Ok(_) => {
             tracing::warn!(url = %url, "fluxer download returned no files");
-            set_status(http, endpoints, &settings.token, channel_id, placeholder.as_deref(), "No files downloaded").await;
+            set_status(
+                http,
+                endpoints,
+                &settings.token,
+                channel_id,
+                placeholder.as_deref(),
+                "No files downloaded",
+            )
+            .await;
         }
         Err(e) => {
             let msg = e.to_string();
@@ -536,7 +586,15 @@ async fn handle_message(
                 tracing::error!(url = %url, error = %format!("{e:#}"), "fluxer download failed");
                 format!("Download failed: {e}")
             };
-            set_status(http, endpoints, &settings.token, channel_id, placeholder.as_deref(), &text).await;
+            set_status(
+                http,
+                endpoints,
+                &settings.token,
+                channel_id,
+                placeholder.as_deref(),
+                &text,
+            )
+            .await;
         }
     }
 
@@ -557,9 +615,22 @@ async fn post_result(
 ) {
     let as_user = settings.post_as_user && guild_id.is_some();
     if as_user {
-        match post_via_webhook(http, &settings.token, endpoints, channel_id, files, caption, author).await {
+        match post_via_webhook(
+            http,
+            &settings.token,
+            endpoints,
+            channel_id,
+            files,
+            caption,
+            author,
+        )
+        .await
+        {
             Ok(()) => {
-                tracing::info!(file_count = files.len().min(MAX_FILES), "fluxer posted as user via webhook");
+                tracing::info!(
+                    file_count = files.len().min(MAX_FILES),
+                    "fluxer posted as user via webhook"
+                );
                 if let Some(id) = placeholder {
                     delete_message(http, &endpoints.api, &settings.token, channel_id, id).await;
                 }
@@ -570,8 +641,20 @@ async fn post_result(
             }
         }
     }
-    finalize_as_bot(http, &endpoints.api, &settings.token, channel_id, placeholder, files, caption).await;
-    tracing::info!(file_count = files.len().min(MAX_FILES), "fluxer posted as bot");
+    finalize_as_bot(
+        http,
+        &endpoints.api,
+        &settings.token,
+        channel_id,
+        placeholder,
+        files,
+        caption,
+    )
+    .await;
+    tracing::info!(
+        file_count = files.len().min(MAX_FILES),
+        "fluxer posted as bot"
+    );
 }
 
 async fn post_via_webhook(
@@ -588,7 +671,17 @@ async fn post_via_webhook(
     let avatar = avatar_url(&endpoints.media, author);
     // First attempt with the sender identity; fall back to the webhook's own
     // identity if the instance rejects the override.
-    match execute_webhook(http, &endpoints.api, &wh, Some(&name), avatar.as_deref(), caption, files).await {
+    match execute_webhook(
+        http,
+        &endpoints.api,
+        &wh,
+        Some(&name),
+        avatar.as_deref(),
+        caption,
+        files,
+    )
+    .await
+    {
         Ok(()) => Ok(()),
         Err(first) => {
             tracing::warn!("webhook identity override failed ({first:#}); retrying without it");
@@ -655,8 +748,8 @@ async fn build_form(
     } else if let Some(c) = content.filter(|c| !c.is_empty()) {
         payload.insert("content".into(), json!(c));
     }
-    let mut form = reqwest::multipart::Form::new()
-        .text("payload_json", Value::Object(payload).to_string());
+    let mut form =
+        reqwest::multipart::Form::new().text("payload_json", Value::Object(payload).to_string());
     for (i, p) in files.iter().take(MAX_FILES).enumerate() {
         let bytes = tokio::fs::read(p).await?;
         let name = p
@@ -791,7 +884,16 @@ async fn finalize_as_bot(
             }
         }
         // Last resort: leave an error note on the placeholder.
-        let _ = edit_message(http, api, token, channel_id, id, Some("Download finished but posting failed"), &[]).await;
+        let _ = edit_message(
+            http,
+            api,
+            token,
+            channel_id,
+            id,
+            Some("Download finished but posting failed"),
+            &[],
+        )
+        .await;
     } else {
         let _ = create_message_with_files(http, api, token, channel_id, caption, files).await;
     }
@@ -879,8 +981,8 @@ async fn execute_webhook(
     if let Some(a) = avatar_url {
         payload.insert("avatar_url".into(), json!(a));
     }
-    let mut form = reqwest::multipart::Form::new()
-        .text("payload_json", Value::Object(payload).to_string());
+    let mut form =
+        reqwest::multipart::Form::new().text("payload_json", Value::Object(payload).to_string());
     for (i, p) in files.iter().take(MAX_FILES).enumerate() {
         let bytes = tokio::fs::read(p).await?;
         let name = p
