@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '@/api'
-import { useActionError } from './useActionError'
+import { useActionError } from '@/composables/useActionError'
 import SaveRow from './SaveRow.vue'
 
 interface ApiKeyRow {
@@ -18,11 +18,11 @@ const name = ref('')
 const permission = ref<'read' | 'read_write'>('read_write')
 const created = ref<ApiKeyRow | null>(null)
 
-async function load() {
+async function fetchKeys() {
   keys.value = await api('/api/api-keys')
 }
 
-const { error, attempt, initialLoad } = useActionError(load)
+const { error, attempt, load } = useActionError(fetchKeys)
 
 async function create() {
   // Hide the last key so it isn't shown next to a failed create as if it were the new one.
@@ -40,7 +40,7 @@ async function revoke(id: string) {
   await attempt('Revoke failed', () => api(`/api/api-keys/${id}`, { method: 'DELETE' }))
 }
 
-onMounted(initialLoad)
+onMounted(load)
 </script>
 
 <template>

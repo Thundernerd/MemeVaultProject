@@ -1,6 +1,6 @@
 import { onMounted, reactive, ref } from 'vue'
 import { api } from '@/api'
-import { messageOf, useActionError } from './useActionError'
+import { useActionError } from '@/composables/useActionError'
 
 type Settings = Record<string, string> & { _overridden_by_env?: string[] }
 
@@ -17,17 +17,17 @@ export function useSettings() {
     }
   }
 
-  async function load() {
+  async function fetchSettings() {
     apply(await api<Settings>('/api/settings'))
   }
 
   // Shares the save error's tag, so a failed first load shows where a failed save would.
-  const { error, initialLoad } = useActionError(load)
+  const { error, attempt, load } = useActionError(fetchSettings)
 
   async function save(keys: string[]) {
-    error.value = ''
     saved.value = false
-    try {
+    // No reload: the PUT returns the settings, and reloading after a failure would wipe the form.
+    await attempt('Save failed', async () => {
       const body: Record<string, string> = {}
       for (const k of keys) body[k] = settings[k] ?? ''
       apply(await api<Settings>('/api/settings', {
@@ -35,16 +35,14 @@ export function useSettings() {
         body: JSON.stringify(body),
       }))
       saved.value = true
-    } catch (e) {
-      error.value = `Save failed: ${messageOf(e)}`
-    }
+    }, { reload: false })
   }
 
   function isOverridden(key: string) {
     return overridden.value.includes(key)
   }
 
-  onMounted(initialLoad)
+  onMounted(load)
 
-  return { settings, save, isOverridden, saved, error, load }
+  return { settings, save, isOverridden, saved, error }
 }
