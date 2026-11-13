@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { api } from '@/api'
 import { useSettings } from './useSettings'
 import SaveRow from './SaveRow.vue'
+import ErrorTag from './ErrorTag.vue'
 
 interface BinaryStatus {
   name: string
@@ -14,6 +15,8 @@ interface BinaryStatus {
 const { settings, save, isOverridden, saved, error } = useSettings()
 const binaries = ref<Record<string, BinaryStatus>>({})
 const busy = ref('')
+/** Per-binary feedback from the last "Download / update" click, keyed by binary name. */
+const notes = ref<Record<string, string>>({})
 
 async function loadBins() {
   binaries.value = await api('/api/binaries')
@@ -21,9 +24,12 @@ async function loadBins() {
 
 async function download(name: string) {
   busy.value = name
+  notes.value[name] = ''
   try {
     await api(`/api/binaries/${encodeURIComponent(name)}`, { method: 'POST' })
     await loadBins()
+  } catch (e) {
+    notes.value[name] = `Download failed: ${e instanceof Error ? e.message : String(e)}`
   } finally {
     busy.value = ''
   }
@@ -58,6 +64,7 @@ onMounted(loadBins)
           <p class="min-w-0">
             <span class="pill label" :class="b.exists ? 'pill-ok' : 'pill-off'" :title="b.version || undefined">{{ b.exists ? (b.version || 'installed') : 'missing' }}</span>
           </p>
+          <ErrorTag :message="notes[b.name] ?? ''" class="self-start" />
         </div>
         <button
           type="button"
