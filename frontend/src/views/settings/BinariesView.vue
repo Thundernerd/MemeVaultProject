@@ -4,7 +4,7 @@ import { api } from '@/api'
 import { useSettings } from './useSettings'
 import SaveRow from './SaveRow.vue'
 import ErrorTag from './ErrorTag.vue'
-import { messageOf, useActionError } from './useActionError'
+import { messageOf, useActionError } from '@/composables/useActionError'
 
 interface BinaryStatus {
   name: string
@@ -25,7 +25,7 @@ async function loadBins() {
 }
 
 // The binaries list's own load tag; the paths form above reports its load in its save row.
-const { error: binsError, initialLoad: initialLoadBins } = useActionError(loadBins)
+const { error: binsError, load: initialLoadBins } = useActionError(loadBins)
 
 async function download(name: string) {
   busy.value.add(name)

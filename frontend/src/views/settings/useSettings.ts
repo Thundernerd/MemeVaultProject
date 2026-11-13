@@ -1,6 +1,6 @@
 import { onMounted, reactive, ref } from 'vue'
 import { api } from '@/api'
-import { messageOf, useActionError } from './useActionError'
+import { useActionError } from '@/composables/useActionError'
 
 type Settings = Record<string, string> & { _overridden_by_env?: string[] }
 
@@ -22,12 +22,11 @@ export function useSettings() {
   }
 
   // Shares the save error's tag, so a failed first load shows where a failed save would.
-  const { error, initialLoad } = useActionError(load)
+  const { error, attempt, load: initialLoad } = useActionError(load)
 
   async function save(keys: string[]) {
-    error.value = ''
     saved.value = false
-    try {
+    await attempt('Save failed', async () => {
       const body: Record<string, string> = {}
       for (const k of keys) body[k] = settings[k] ?? ''
       apply(await api<Settings>('/api/settings', {
@@ -35,9 +34,7 @@ export function useSettings() {
         body: JSON.stringify(body),
       }))
       saved.value = true
-    } catch (e) {
-      error.value = `Save failed: ${messageOf(e)}`
-    }
+    })
   }
 
   function isOverridden(key: string) {
