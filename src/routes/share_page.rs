@@ -297,8 +297,8 @@ mod tests {
             ("themes in frontend/index.html", index("theme"), &themes),
             ("accents in frontend/index.html", index("accent"), &accents),
         ];
-        for (copy, names, css) in copies {
-            assert_eq!(&names, css, "{copy} differ from the style.css blocks");
+        for (copy, names, expected) in copies {
+            assert_eq!(&names, expected, "{copy} differ from the style.css blocks");
         }
     }
 
