@@ -34,6 +34,8 @@ export function useDialog(
       scroller.style.overflow = 'hidden'
     }
     await nextTick()
+    // The dialog may have closed again before it rendered.
+    if (!active) return
     box.value?.querySelector<HTMLElement>('[data-autofocus]')?.focus()
   }
 
