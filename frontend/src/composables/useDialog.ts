@@ -15,12 +15,61 @@ const stack: OpenDialog[] = []
 // stack is non-empty; `overflow` is its own inline value from before the first dialog.
 let scrollLock: { scroller: HTMLElement; overflow: string } | null = null
 
-function onKeydown(e: KeyboardEvent) {
-  // Leave Escape alone while an IME is composing or another handler already used it.
-  if (e.key === 'Escape' && !e.isComposing && !e.defaultPrevented) stack.at(-1)?.close()
+// The media modal's <video controls> is a Tab stop too, and the first one in its box.
+const TABBABLE = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type=hidden])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'video[controls]',
+  '[tabindex]',
+]
+  .map((s) => `${s}:not([tabindex="-1"])`)
+  .join(',')
+
+/** The visible elements in `root` that Tab stops on, in document order. */
+function tabbables(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(TABBABLE)).filter(
+    (el) => el.getClientRects().length > 0,
+  )
 }
 
-/** Put a dialog on the stack, taking the Escape listener and scroll lock if it is the first. */
+/** Whether `node` comes after `ref` in the document, or is inside it. */
+function isAfter(node: Node, ref: Node): boolean {
+  return (ref.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+}
+
+// Wrap Tab at the ends of `root` and pull focus back in from outside it; the browser
+// moves focus between the elements in between. Ends are found by position, not identity,
+// because focus can sit on an element that is no longer a stop (a button disabled while
+// focused, such as Upload or Delete going busy).
+function trapTab(e: KeyboardEvent, root: HTMLElement) {
+  const stops = tabbables(root)
+  if (!stops.length) return
+  const first = stops[0]!
+  const last = stops[stops.length - 1]!
+  const current = document.activeElement
+  let target: HTMLElement | null = null
+  if (!current || !root.contains(current)) target = e.shiftKey ? last : first
+  else if (e.shiftKey && (current === first || !isAfter(current, first))) target = last
+  else if (!e.shiftKey && (current === last || isAfter(current, last))) target = first
+  if (target) {
+    e.preventDefault()
+    target.focus()
+  }
+}
+
+function onKeydown(e: KeyboardEvent) {
+  const top = stack.at(-1)
+  if (!top || e.defaultPrevented) return
+  // Leave Escape alone while an IME is composing.
+  if (e.key === 'Escape' && !e.isComposing) top.close()
+  // Tab stays inside the innermost dialog.
+  else if (e.key === 'Tab' && top.box.value) trapTab(e, top.box.value)
+}
+
+/** Put a dialog on the stack, taking the keydown listener and scroll lock if it is the first. */
 function openDialog(dialog: OpenDialog) {
   if (stack.length === 0) {
     document.addEventListener('keydown', onKeydown)
@@ -34,7 +83,7 @@ function openDialog(dialog: OpenDialog) {
 }
 
 /**
- * Take a dialog off the stack and restore focus to its opener. Releases the Escape
+ * Take a dialog off the stack and restore focus to its opener. Releases the keydown
  * listener and scroll lock if it was the last one.
  */
 function closeDialog(dialog: OpenDialog) {
@@ -63,11 +112,13 @@ function closeDialog(dialog: OpenDialog) {
  * Make a modal box behave like a dialog for keyboard users.
  *
  * While `open` is true, focus moves to the `[data-autofocus]` element inside `box`,
- * Escape anywhere on the page calls `close`, and the scrolling `<main>` is locked
- * (the app scrolls in `<main>`, not the page; see style.css). When it closes, focus
- * returns to the element that had it before the dialog opened and `<main>` scrolls again.
+ * Escape anywhere on the page calls `close`, Tab and Shift+Tab wrap around inside `box`,
+ * and the scrolling `<main>` is locked (the app scrolls in `<main>`, not the page; see
+ * style.css). When it closes, focus returns to the element that had it before the dialog
+ * opened and `<main>` scrolls again.
  *
- * Dialogs may nest: Escape closes only the most recently opened one, and `<main>`
+ * Dialogs may nest: Escape closes and Tab is trapped in only the most recently opened
+ * one, and `<main>`
  * stays locked until the last one closes, in whichever order they close.
  */
 export function useDialog(
