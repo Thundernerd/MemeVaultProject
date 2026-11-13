@@ -113,7 +113,7 @@ onUnmounted(() => clearInterval(timer))
 </template>
 
 <style scoped>
-/* Ported from prototypes/brutalist/styles.css (queue). */
+/* Brutalist queue styles (#29). */
 .queue { display: flex; flex-direction: column; gap: 16px; }
 .q-row {
   display: flex; min-width: 0;
