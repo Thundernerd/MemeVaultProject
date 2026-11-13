@@ -67,8 +67,10 @@ Helpers:
 
 - `MOCK.thumbnail(item)` returns an inline SVG data URI at the item's aspect ratio,
   or `null` for a video without a thumbnail (the app shows no image then).
-- `MOCK.activeQueue()` returns the pending and downloading items that the vault
-  shows as progress cards.
+- `MOCK.activeQueue(items?)` returns the pending and downloading items that the vault
+  shows as progress cards. Like `VaultView.vue`, it leaves out `discord` and `fluxer`
+  downloads, which are posted to the chat platform and never land in the vault. It
+  filters `MOCK.queue` by default; pass a style's live copy of the queue to filter that.
 - `MOCK.shareUrl(token)` returns the share URL for a token, as the media modal shows it (with `http://localhost:3000` standing in for the origin).
 
 To check the data loads, open the browser console on any page that includes it and

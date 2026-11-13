@@ -124,7 +124,7 @@
       if (state === 'error') grid.appendChild(B.stateBlock('error', M.states.vault.error))
       else if (state === 'loading') grid.appendChild(B.stateBlock('loading', M.states.vault.loading))
 
-      var active = state ? [] : B.store.queue.filter(function (q) { return q.status === 'pending' || q.status === 'downloading' })
+      var active = state ? [] : M.activeQueue(B.store.queue)
       if (active.length) {
         grid.appendChild(h('h2', { class: 'section-title label', text: 'Downloading · ' + active.length }))
         grid.appendChild(h('div', { class: 'grid' }, active.map(function (q) {
