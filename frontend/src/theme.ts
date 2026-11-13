@@ -1,7 +1,25 @@
 import { computed, inject, provide, ref, type InjectionKey, type Ref } from 'vue'
 
-export type Theme = 'dark' | 'light'
-export type Accent = 'blue' | 'purple' | 'green' | 'orange' | 'rose'
+// The pre-paint snippets in frontend/index.html and templates/share.html copy
+// these lists and the storage keys; keep them in sync.
+export const THEMES = ['dark', 'light'] as const
+export const ACCENTS = ['blue', 'purple', 'green', 'orange', 'rose'] as const
+
+export type Theme = (typeof THEMES)[number]
+export type Accent = (typeof ACCENTS)[number]
+
+const THEME_KEY = 'mvp-theme'
+const ACCENT_KEY = 'mvp-accent'
+
+/** The saved value under `key`, or `fallback` when it is missing, unknown, or unreadable. */
+function readStored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const saved = localStorage.getItem(key)
+    return allowed.find((v) => v === saved) ?? fallback
+  } catch {
+    return fallback
+  }
+}
 
 interface ThemeCtx {
   theme: Ref<Theme>
@@ -13,8 +31,8 @@ interface ThemeCtx {
 const KEY: InjectionKey<ThemeCtx> = Symbol('theme')
 
 export function provideTheme() {
-  const theme = ref<Theme>((localStorage.getItem('mvp-theme') as Theme) || 'dark')
-  const accent = ref<Accent>((localStorage.getItem('mvp-accent') as Accent) || 'blue')
+  const theme = ref<Theme>(readStored(THEME_KEY, THEMES, 'dark'))
+  const accent = ref<Accent>(readStored(ACCENT_KEY, ACCENTS, 'blue'))
 
   function apply() {
     document.documentElement.setAttribute('data-theme', theme.value)
@@ -24,12 +42,12 @@ export function provideTheme() {
 
   function setTheme(t: Theme) {
     theme.value = t
-    localStorage.setItem('mvp-theme', t)
+    localStorage.setItem(THEME_KEY, t)
     apply()
   }
   function setAccent(a: Accent) {
     accent.value = a
-    localStorage.setItem('mvp-accent', a)
+    localStorage.setItem(ACCENT_KEY, a)
     apply()
   }
 
