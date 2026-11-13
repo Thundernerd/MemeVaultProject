@@ -255,10 +255,7 @@ async fn download_gallerydl(config: &Config) -> anyhow::Result<()> {
     })?;
     // Codeberg/Forgejo has no GitHub-style /releases/latest/download/{asset}
     // shortcut — resolve the latest tag via the API, then download by tag.
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .build()?;
-    let release: serde_json::Value = client
+    let release: serde_json::Value = http_client()?
         .get("https://codeberg.org/api/v1/repos/mikf/gallery-dl/releases/latest")
         .send()
         .await?
@@ -336,16 +333,9 @@ impl FfmpegSource {
         match self {
             FfmpegSource::Direct(url) => Ok(url.to_string()),
             FfmpegSource::EvermeetInfo(info_url) => {
-                let client = reqwest::Client::builder()
-                    .redirect(reqwest::redirect::Policy::limited(10))
-                    .build()?;
-                let info = client
-                    .get(info_url)
-                    .send()
-                    .await?
-                    .error_for_status()?
-                    .text()
-                    .await?;
+                let info = fetch_text(info_url).await.map_err(|e| {
+                    anyhow::anyhow!("fetching evermeet.cx ffmpeg info failed: {e:#}")
+                })?;
                 evermeet_zip_url(&info)
             }
         }
@@ -430,11 +420,26 @@ fn copy_ffmpeg_bins(tmp_dir: &Path, bin_dir: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn download_file(url: &str, dest: &Path) -> anyhow::Result<()> {
-    let client = reqwest::Client::builder()
+async fn fetch_text(url: &str) -> anyhow::Result<String> {
+    Ok(http_client()?
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?)
+}
+
+/// The HTTP client used for every binary download: follows up to 10
+/// redirects, as GitHub release and evermeet download links redirect.
+fn http_client() -> anyhow::Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::limited(10))
-        .build()?;
-    let resp = client.get(url).send().await?.error_for_status()?;
+        .build()?)
+}
+
+async fn download_file(url: &str, dest: &Path) -> anyhow::Result<()> {
+    let resp = http_client()?.get(url).send().await?.error_for_status()?;
     let bytes = resp.bytes().await?;
     let partial = dest.with_extension("partial");
     tokio::fs::write(&partial, &bytes).await?;
