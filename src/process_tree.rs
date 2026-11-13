@@ -88,14 +88,14 @@ impl ProcessTree {
                     return None;
                 }
             }
-            self.kill();
+            self.kill_remaining();
         }
         let status = self.child.wait().await.ok()?;
         // A job is held by its handle, not an id, so it can be closed after
         // the child is reaped. Closing it earlier could kill a child that has
         // closed its pipes but not yet exited.
         #[cfg(windows)]
-        self.kill();
+        self.kill_remaining();
         Some(Output {
             status,
             stdout,
@@ -104,7 +104,7 @@ impl ProcessTree {
     }
 
     /// Kills everything left in the group. Only the first call does anything.
-    fn kill(&mut self) {
+    fn kill_remaining(&mut self) {
         #[cfg(unix)]
         if let Some(pgid) = self.pgid.take() {
             // SAFETY: no memory is involved. The leader has not been waited
@@ -150,7 +150,7 @@ impl Drop for ProcessTree {
     // Runs before `child` is dropped, so the group dies while its leader is
     // still unreaped.
     fn drop(&mut self) {
-        self.kill();
+        self.kill_remaining();
     }
 }
 
