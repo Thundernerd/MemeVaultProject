@@ -25,6 +25,8 @@ async function load() {
 const { error, attempt } = useActionError(load)
 
 async function create() {
+  // Hide the last key so it isn't shown next to a failed create as if it were the new one.
+  created.value = null
   await attempt('Create failed', async () => {
     created.value = await api('/api/api-keys', {
       method: 'POST',
