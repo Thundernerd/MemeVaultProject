@@ -10,7 +10,7 @@
 use crate::config::Config;
 use crate::db::{self, Db, QueueStatus};
 use crate::gallerydl;
-use crate::queue::{finish_queue_item, spawn_progress_persister, DownloadOutcome, QueueHandle};
+use crate::queue::{spawn_progress_persister, DownloadOutcome, QueueHandle};
 use crate::state::{AppState, FluxerControl};
 use crate::ytdlp;
 use futures::{SinkExt, StreamExt};
@@ -535,13 +535,12 @@ async fn handle_message(
         .map(|r| vec![r.file_path])
     };
 
-    queue.unregister(&item_id).await;
-
-    let outcome = DownloadOutcome::from_result(result.as_ref().map(Vec::len));
-    finish_queue_item(db, &item_id, &outcome);
+    let outcome = queue
+        .finish(db, &item_id, result.as_ref().map(Vec::len))
+        .await;
     let paths = result.as_deref().unwrap_or_default();
 
-    let status_text = match outcome {
+    match &outcome {
         DownloadOutcome::Completed(_) => {
             tracing::info!(
                 item_id = %item_id,
@@ -565,26 +564,26 @@ async fn handle_message(
         }
         DownloadOutcome::Empty => {
             tracing::warn!(url = %url, "fluxer download returned no files");
-            "No files downloaded".to_string()
         }
-        DownloadOutcome::Cancelled => "Download cancelled".to_string(),
-        DownloadOutcome::Failed(msg) => {
+        DownloadOutcome::Cancelled => {}
+        DownloadOutcome::Failed(_) => {
             // Log the full error chain; the reply keeps the top-level message.
             if let Err(e) = &result {
                 tracing::error!(url = %url, error = %format!("{e:#}"), "fluxer download failed");
             }
-            format!("Download failed: {msg}")
         }
-    };
-    set_status(
-        http,
-        endpoints,
-        &settings.token,
-        channel_id,
-        placeholder.as_deref(),
-        &status_text,
-    )
-    .await;
+    }
+    if let Some(status_text) = outcome.status_text() {
+        set_status(
+            http,
+            endpoints,
+            &settings.token,
+            channel_id,
+            placeholder.as_deref(),
+            &status_text,
+        )
+        .await;
+    }
 
     Ok(())
 }

@@ -3,7 +3,7 @@
 use crate::config::Config;
 use crate::db::{self, Db, QueueStatus};
 use crate::gallerydl;
-use crate::queue::{finish_queue_item, spawn_progress_persister, DownloadOutcome, QueueHandle};
+use crate::queue::{spawn_progress_persister, DownloadOutcome, QueueHandle};
 use crate::state::{AppState, DiscordControl};
 use crate::ytdlp;
 use serenity::all::*;
@@ -481,13 +481,13 @@ async fn run_bot(
                 .map(|r| vec![r.file_path])
             };
 
-            self.queue.unregister(&item_id).await;
-
-            let outcome = DownloadOutcome::from_result(result.as_ref().map(Vec::len));
-            finish_queue_item(&self.db, &item_id, &outcome);
+            let outcome = self
+                .queue
+                .finish(&self.db, &item_id, result.as_ref().map(Vec::len))
+                .await;
             let paths = result.as_deref().unwrap_or_default();
 
-            match outcome {
+            match &outcome {
                 DownloadOutcome::Completed(_) => {
                     tracing::info!(
                         item_id = %item_id,
@@ -568,19 +568,19 @@ async fn run_bot(
                 }
                 DownloadOutcome::Empty => {
                     tracing::warn!(url = %url, "discord download returned no files");
-                    edit_status(&ctx, &cmd, "No files downloaded").await;
                 }
                 DownloadOutcome::Cancelled => {
                     tracing::warn!(item_id = %item_id, url = %url, "discord download cancelled");
-                    edit_status(&ctx, &cmd, "Download cancelled").await;
                 }
-                DownloadOutcome::Failed(msg) => {
+                DownloadOutcome::Failed(_) => {
                     // Log the full error chain; the reply keeps the top-level message.
                     if let Err(e) = &result {
                         tracing::error!(url = %url, error = %format!("{e:#}"), "discord download failed");
                     }
-                    edit_status(&ctx, &cmd, format!("Download failed: {msg}")).await;
                 }
+            }
+            if let Some(text) = outcome.status_text() {
+                edit_status(&ctx, &cmd, text).await;
             }
         }
     }
