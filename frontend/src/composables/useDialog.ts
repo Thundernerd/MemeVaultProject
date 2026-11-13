@@ -3,7 +3,7 @@ import { nextTick, onBeforeUnmount, toValue, watch, type MaybeRefOrGetter, type 
 /**
  * Make a modal box behave like a dialog for keyboard users.
  *
- * While `open` is true, focus moves to the `[data-autofocus]` element inside `box`
+ * While `open` is true, focus moves to the `[data-autofocus]` element inside `box`,
  * Escape anywhere on the page calls `close`, and the scrolling `<main>` is locked
  * (the app scrolls in `<main>`, not the page; see style.css). When it closes, focus
  * returns to the element that had it before the dialog opened and `<main>` scrolls again.
