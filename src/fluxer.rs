@@ -10,7 +10,7 @@
 use crate::config::Config;
 use crate::db::{self, Db, QueueStatus};
 use crate::gallerydl;
-use crate::queue::{spawn_progress_persister, DownloadOutcome, QueueHandle};
+use crate::queue::{spawn_progress_persister, QueueHandle};
 use crate::state::{AppState, FluxerControl};
 use crate::ytdlp;
 use futures::{SinkExt, StreamExt};
@@ -540,21 +540,6 @@ async fn handle_message(
         .await;
     let paths = result.as_deref().unwrap_or_default();
 
-    if matches!(outcome, DownloadOutcome::Completed(_)) {
-        post_result(
-            http,
-            settings,
-            endpoints,
-            channel_id,
-            placeholder.as_deref(),
-            paths,
-            caption.as_deref(),
-            guild_id.as_deref(),
-            &author,
-        )
-        .await;
-        return Ok(());
-    }
     if let Some(status_text) = outcome.status_text() {
         set_status(
             http,
@@ -565,8 +550,21 @@ async fn handle_message(
             &status_text,
         )
         .await;
+        return Ok(());
     }
 
+    post_result(
+        http,
+        settings,
+        endpoints,
+        channel_id,
+        placeholder.as_deref(),
+        paths,
+        caption.as_deref(),
+        guild_id.as_deref(),
+        &author,
+    )
+    .await;
     Ok(())
 }
 

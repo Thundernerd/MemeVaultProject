@@ -3,7 +3,7 @@
 use crate::config::Config;
 use crate::db::{self, Db, QueueStatus};
 use crate::gallerydl;
-use crate::queue::{spawn_progress_persister, DownloadOutcome, QueueHandle};
+use crate::queue::{spawn_progress_persister, QueueHandle};
 use crate::state::{AppState, DiscordControl};
 use crate::ytdlp;
 use serenity::all::*;
@@ -487,80 +487,77 @@ async fn run_bot(
                 .await;
             let paths = result.as_deref().unwrap_or_default();
 
-            if matches!(outcome, DownloadOutcome::Completed(_)) {
-                if as_user {
-                    match post_via_webhook(&ctx, &cmd, paths, &url, message_ref).await {
-                        Ok(()) => {
-                            tracing::info!(
-                                file_count = paths.len().min(10),
-                                url = %url,
-                                "discord posted as user via webhook"
-                            );
-                            edit_status(
-                                &ctx,
-                                &cmd,
-                                format!(
-                                    "Posted {} file(s) from <{url}> as you",
-                                    paths.len().min(10)
-                                ),
-                            )
-                            .await;
-                        }
-                        Err(e) => {
-                            tracing::warn!(
-                                error = %format!("{e:#}"),
-                                "post-as-user failed; falling back to bot"
-                            );
-                            edit_status(
-                                &ctx,
-                                &cmd,
-                                format!("Could not post as you ({e}); posting as bot instead"),
-                            )
-                            .await;
-                            post_as_bot_followups(&ctx, &cmd, paths, &url, message_ref).await;
-                            tracing::info!(
-                                file_count = paths.len().min(10),
-                                url = %url,
-                                "discord posted as bot after webhook fallback"
-                            );
-                        }
-                    }
-                } else {
-                    // Public post: optional caption + files + Open original on the response.
-                    let attachments = load_attachments(paths).await;
-                    if attachments.is_empty() {
-                        tracing::warn!(url = %url, "discord download produced no attachable files");
-                        edit_status(&ctx, &cmd, "No attachable files").await;
-                    } else {
-                        let mut atts = EditAttachments::new();
-                        for att in attachments {
-                            atts = atts.add(att);
-                        }
-                        let mut edit = EditInteractionResponse::new().attachments(atts);
-                        if let Some(content) = message_ref {
-                            edit = edit.content(content);
-                        }
-                        if let Some(button) = open_original_button(&url) {
-                            edit = edit.button(button);
-                        }
-                        if cmd.edit_response(&ctx.http, edit).await.is_err() {
-                            tracing::warn!(
-                                url = %url,
-                                "edit_response failed; posting as bot follow-ups"
-                            );
-                            post_as_bot_followups(&ctx, &cmd, paths, &url, message_ref).await;
-                        } else {
-                            tracing::info!(
-                                file_count = paths.len().min(10),
-                                url = %url,
-                                "discord posted as bot"
-                            );
-                        }
-                    }
-                }
-            }
             if let Some(text) = outcome.status_text() {
                 edit_status(&ctx, &cmd, text).await;
+                return;
+            }
+
+            if as_user {
+                match post_via_webhook(&ctx, &cmd, paths, &url, message_ref).await {
+                    Ok(()) => {
+                        tracing::info!(
+                            file_count = paths.len().min(10),
+                            url = %url,
+                            "discord posted as user via webhook"
+                        );
+                        edit_status(
+                            &ctx,
+                            &cmd,
+                            format!("Posted {} file(s) from <{url}> as you", paths.len().min(10)),
+                        )
+                        .await;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %format!("{e:#}"),
+                            "post-as-user failed; falling back to bot"
+                        );
+                        edit_status(
+                            &ctx,
+                            &cmd,
+                            format!("Could not post as you ({e}); posting as bot instead"),
+                        )
+                        .await;
+                        post_as_bot_followups(&ctx, &cmd, paths, &url, message_ref).await;
+                        tracing::info!(
+                            file_count = paths.len().min(10),
+                            url = %url,
+                            "discord posted as bot after webhook fallback"
+                        );
+                    }
+                }
+            } else {
+                // Public post: optional caption + files + Open original on the response.
+                let attachments = load_attachments(paths).await;
+                if attachments.is_empty() {
+                    tracing::warn!(url = %url, "discord download produced no attachable files");
+                    edit_status(&ctx, &cmd, "No attachable files").await;
+                } else {
+                    let mut atts = EditAttachments::new();
+                    for att in attachments {
+                        atts = atts.add(att);
+                    }
+                    let mut edit = EditInteractionResponse::new().attachments(atts);
+                    if let Some(content) = message_ref {
+                        edit = edit.content(content);
+                    }
+                    if let Some(button) = open_original_button(&url) {
+                        edit = edit.button(button);
+                    }
+                    if cmd.edit_response(&ctx.http, edit).await.is_err() {
+                        tracing::warn!(
+                            url = %url,
+                            "edit_response failed; posting as bot follow-ups"
+                        );
+                        post_as_bot_followups(&ctx, &cmd, paths, &url, message_ref).await;
+                    } else {
+                        tracing::info!(
+                            file_count = paths.len().min(10),
+                            url = %url,
+                            "discord posted as bot"
+                        );
+                    }
+                }
             }
         }
     }
