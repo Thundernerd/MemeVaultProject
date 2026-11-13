@@ -57,8 +57,10 @@ enum Group {
     /// `taskkill /T` kills the child and its descendants, found through
     /// their parent pids, but only while the child is unreaped and so its
     /// pid still names it. A descendant whose parent has already exited
-    /// is out of reach.
-    Untracked,
+    /// is out of reach, and an unrelated orphan whose dead parent had the
+    /// child's pid is killed too. Killing blocks the calling thread while
+    /// taskkill runs.
+    Taskkill,
 }
 
 impl ProcessTree {
@@ -85,7 +87,7 @@ impl ProcessTree {
 
     /// Spawns `cmd` suspended, puts it in the job `new_job` makes for its
     /// process handle, then resumes it. If there is no job, the tree is
-    /// killed with `taskkill` instead (see [`Group::Untracked`]).
+    /// killed with `taskkill` instead (see [`Group::Taskkill`]).
     #[cfg(windows)]
     fn spawn_in_job(
         cmd: &mut Command,
@@ -108,7 +110,7 @@ impl ProcessTree {
                      taskkill instead, which misses anything whose parent has \
                      already exited: {err}"
                 );
-                Group::Untracked
+                Group::Taskkill
             }
         };
         let resumed = child
@@ -243,7 +245,7 @@ impl ProcessTree {
             Some(Group::Job(job)) => drop(job),
             // `id` is `None` once the child has been reaped, when its pid
             // may name an unrelated process.
-            Some(Group::Untracked) => {
+            Some(Group::Taskkill) => {
                 if let Some(pid) = self.child.id() {
                     taskkill_tree(pid);
                 }
@@ -254,9 +256,13 @@ impl ProcessTree {
 }
 
 /// Kills process `pid` and its descendants with `taskkill /T /F`, blocking
-/// until taskkill exits. Fails if `pid` has already exited.
+/// until taskkill exits. Does nothing if `pid` has already exited. Only the
+/// fallback for a missing job runs this, so the block is accepted: running
+/// taskkill in the background could let the pid be reused before it acts.
 #[cfg(windows)]
 fn taskkill_tree(pid: u32) {
+    // taskkill's exit code when there is no process `pid`.
+    const NOT_FOUND: i32 = 128;
     use std::os::windows::process::CommandExt;
     // From System32, so nothing on PATH can stand in for it.
     let taskkill = std::env::var_os("SystemRoot")
@@ -270,7 +276,8 @@ fn taskkill_tree(pid: u32) {
         .creation_flags(job::CREATE_NO_WINDOW)
         .status();
     match killed {
-        Ok(status) if status.success() => {}
+        // Not found: the child exited before it could be killed.
+        Ok(status) if status.success() || status.code() == Some(NOT_FOUND) => {}
         Ok(status) => tracing::warn!(pid, "taskkill could not kill the child's tree: {status}"),
         Err(err) => tracing::warn!(pid, "could not run taskkill: {err}"),
     }
@@ -439,7 +446,8 @@ mod tests {
     /// Spawns, with no job, a script that starts a PowerShell grandchild
     /// holding the script's stdout for 30 s, like the Python a PyInstaller
     /// onefile bootloader runs. Returns the tree and the file the grandchild
-    /// writes its pid to.
+    /// writes its pid to. Unlike `test_support::start_grandchild`, the
+    /// grandchild keeps stdout, so the tree is gone only once it reaches EOF.
     fn spawn_tree_without_job(dir: &Path) -> (ProcessTree, PathBuf) {
         let pidfile = dir.join("grandchild.pid");
         let bin = cmd_script(
