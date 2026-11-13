@@ -76,34 +76,21 @@ pub fn get_ffprobe_path(db: &Db, config: &Config) -> String {
         .into()
 }
 
+/// The upstream yt-dlp release asset for a target.
+fn ytdlp_asset(os: &str, arch: &str) -> &'static str {
+    match (os, arch) {
+        ("windows", _) => "yt-dlp.exe",
+        ("macos", "aarch64") => "yt-dlp_macos",
+        ("linux", "aarch64") => "yt-dlp_linux_aarch64",
+        // PyInstaller standalone (bundles Python). The plain `yt-dlp` asset is a
+        // zipimport that needs system python3 — which the Docker image does not ship.
+        ("linux", "x86_64") => "yt-dlp_linux",
+        _ => "yt-dlp",
+    }
+}
+
 fn ytdlp_filename() -> &'static str {
-    #[cfg(target_os = "windows")]
-    {
-        "yt-dlp.exe"
-    }
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    {
-        "yt-dlp_macos"
-    }
-    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-    {
-        "yt-dlp_linux_aarch64"
-    }
-    // PyInstaller standalone (bundles Python). The plain `yt-dlp` asset is a
-    // zipimport that needs system python3 — which the Docker image does not ship.
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    {
-        "yt-dlp_linux"
-    }
-    #[cfg(all(
-        not(target_os = "windows"),
-        not(all(target_os = "linux", target_arch = "aarch64")),
-        not(all(target_os = "linux", target_arch = "x86_64")),
-        not(all(target_os = "macos", target_arch = "aarch64"))
-    ))]
-    {
-        "yt-dlp"
-    }
+    ytdlp_asset(std::env::consts::OS, std::env::consts::ARCH)
 }
 
 /// The upstream gallery-dl release asset for a target, if one exists.
@@ -476,5 +463,17 @@ mod tests {
         assert_eq!(gallerydl_asset("macos", "x86_64"), None);
         assert_eq!(gallerydl_asset("linux", "aarch64"), None);
         assert_eq!(gallerydl_asset("freebsd", "x86_64"), None);
+    }
+
+    #[test]
+    fn ytdlp_uses_the_standalone_build_for_each_target() {
+        assert_eq!(ytdlp_asset("windows", "x86_64"), "yt-dlp.exe");
+        assert_eq!(ytdlp_asset("windows", "aarch64"), "yt-dlp.exe");
+        assert_eq!(ytdlp_asset("macos", "aarch64"), "yt-dlp_macos");
+        assert_eq!(ytdlp_asset("linux", "aarch64"), "yt-dlp_linux_aarch64");
+        assert_eq!(ytdlp_asset("linux", "x86_64"), "yt-dlp_linux");
+        // Everywhere else: the zipimport build, which needs python3.
+        assert_eq!(ytdlp_asset("macos", "x86_64"), "yt-dlp");
+        assert_eq!(ytdlp_asset("freebsd", "x86_64"), "yt-dlp");
     }
 }
