@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { api } from '@/api'
 
 type CookieTool = 'ytdlp' | 'gallerydl'
 const tools: CookieTool[] = ['ytdlp', 'gallerydl']
@@ -12,24 +13,37 @@ interface CookieStatus {
 
 const ytdlp = ref<CookieStatus | null>(null)
 const gallerydl = ref<CookieStatus | null>(null)
+const error = ref('')
 
 async function load() {
   ytdlp.value = await fetch('/api/cookies/ytdlp').then((r) => r.json())
   gallerydl.value = await fetch('/api/cookies/gallerydl').then((r) => r.json())
 }
 
-async function upload(tool: CookieTool, e: Event) {
-  const input = e.target as HTMLInputElement
-  if (!input.files?.[0]) return
-  const fd = new FormData()
-  fd.append('file', input.files[0])
-  await fetch(`/api/cookies/${tool}`, { method: 'POST', body: fd })
+/** Runs a cookie action, showing "<prefix>: <message>" if it fails and clearing it if it succeeds. */
+async function run(prefix: string, action: () => Promise<unknown>) {
+  try {
+    await action()
+    error.value = ''
+  } catch (e) {
+    error.value = `${prefix}: ${e instanceof Error ? e.message : String(e)}`
+  }
   await load()
 }
 
+async function upload(tool: CookieTool, e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  // Reset so picking the same file again (a retry) fires another change event.
+  input.value = ''
+  const fd = new FormData()
+  fd.append('file', file)
+  await run('Upload failed', () => api(`/api/cookies/${tool}`, { method: 'POST', body: fd }))
+}
+
 async function remove(tool: CookieTool) {
-  await fetch(`/api/cookies/${tool}`, { method: 'DELETE' })
-  await load()
+  await run('Delete failed', () => api(`/api/cookies/${tool}`, { method: 'DELETE' }))
 }
 
 function cookieStatus(tool: CookieTool) {
@@ -41,6 +55,7 @@ onMounted(load)
 
 <template>
   <div class="cards">
+    <p v-if="error" class="label save-error self-start" role="status">{{ error }}</p>
     <div
       v-for="tool in tools"
       :key="tool"
