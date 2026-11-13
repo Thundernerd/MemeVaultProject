@@ -19,7 +19,8 @@ export function useDialog(
   let scrollerOverflow = ''
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') close()
+    // Leave Escape alone while an IME is composing or another handler already used it.
+    if (e.key === 'Escape' && !e.isComposing && !e.defaultPrevented) close()
   }
 
   async function activate() {
