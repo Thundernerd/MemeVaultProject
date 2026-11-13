@@ -69,7 +69,7 @@ onMounted(load)
 </template>
 
 <style scoped>
-/* Ported from prototypes/brutalist/styles.css (tags). */
+/* Brutalist tags styles (#29). */
 .error { font-family: var(--font-mono); font-size: 0.85rem; font-weight: 700; color: var(--danger); }
 .tag-groups { display: flex; flex-direction: column; gap: 28px; }
 .tag-group { display: flex; flex-direction: column; gap: 12px; }
