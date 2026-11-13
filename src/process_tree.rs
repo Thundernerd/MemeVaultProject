@@ -20,6 +20,8 @@ use tokio::process::{Child, Command};
 /// still running is killed; on timeout, or when the returned future is
 /// dropped, the child is killed too. `None` if `cmd` cannot be
 /// spawned, its output cannot be read, or it does not finish in time.
+///
+/// On Windows this replaces any creation flags already set on `cmd`.
 pub async fn output_within(cmd: &mut Command, timeout: Duration) -> Option<Output> {
     cmd.stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -59,8 +61,7 @@ impl ProcessTree {
         #[cfg(windows)]
         {
             // The child starts suspended and is put in the job before any of
-            // its code runs, so everything it starts joins the job too. This
-            // replaces any creation flags `cmd` already had.
+            // its code runs, so everything it starts joins the job too.
             cmd.creation_flags(job::CREATE_SUSPENDED);
             let mut child = cmd.spawn()?;
             let job = match child.raw_handle() {
