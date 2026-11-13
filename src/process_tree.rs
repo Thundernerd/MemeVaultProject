@@ -54,7 +54,7 @@ pub struct ProcessTree {
 #[cfg(windows)]
 enum Group {
     /// Closing the job kills every process in it.
-    Job(job::Job),
+    Job(win32::Job),
     /// The job could not be set up (a warning is logged at spawn).
     /// `taskkill /T` kills the child and its descendants, found through
     /// their parent pids, but only while the child is unreaped and so its
@@ -63,7 +63,7 @@ enum Group {
     /// child's pid is killed too. Killing blocks the calling thread while
     /// taskkill runs. When the child exits by itself, [`ProcessTree::wait`]
     /// kills what it left running instead (see
-    /// [`job::wait_then_kill_descendants`]), as taskkill cannot walk the
+    /// [`win32::wait_then_kill_descendants`]), as taskkill cannot walk the
     /// tree of an exited process.
     Taskkill,
 }
@@ -86,7 +86,7 @@ impl ProcessTree {
         }
         #[cfg(windows)]
         {
-            ProcessTree::spawn_in_job(cmd, job::Job::kill_on_close)
+            ProcessTree::spawn_in_job(cmd, win32::Job::kill_on_close)
         }
     }
 
@@ -96,11 +96,11 @@ impl ProcessTree {
     #[cfg(windows)]
     fn spawn_in_job(
         cmd: &mut Command,
-        new_job: impl FnOnce(RawHandle) -> std::io::Result<job::Job>,
+        new_job: impl FnOnce(RawHandle) -> std::io::Result<win32::Job>,
     ) -> std::io::Result<ProcessTree> {
         // The child starts suspended and is put in the job before any of
         // its code runs, so everything it starts joins the job too.
-        cmd.creation_flags(job::CREATE_SUSPENDED);
+        cmd.creation_flags(win32::CREATE_SUSPENDED);
         let mut child = cmd.spawn()?;
         let job = match child.raw_handle() {
             Some(handle) => new_job(handle),
@@ -121,7 +121,7 @@ impl ProcessTree {
         let resumed = child
             .id()
             .ok_or_else(|| std::io::Error::other("the child has no pid"))
-            .and_then(job::resume_main_thread);
+            .and_then(win32::resume_main_thread);
         if let Err(err) = resumed {
             tracing::warn!(
                 program = ?cmd.as_std().get_program(),
@@ -217,7 +217,7 @@ impl ProcessTree {
 
     /// Without a job: blocks until the child has exited, leaving it
     /// unreaped, then kills its descendants (see
-    /// [`job::wait_then_kill_descendants`]). Logs a warning if it cannot.
+    /// [`win32::wait_then_kill_descendants`]). Logs a warning if it cannot.
     #[cfg(windows)]
     async fn kill_descendants_once_exited(&mut self) {
         use std::os::windows::io::BorrowedHandle;
@@ -238,7 +238,7 @@ impl ProcessTree {
             }
         };
         let killed =
-            tokio::task::spawn_blocking(move || job::wait_then_kill_descendants(process, pid))
+            tokio::task::spawn_blocking(move || win32::wait_then_kill_descendants(process, pid))
                 .await
                 .unwrap_or_else(|e| Err(std::io::Error::other(e)));
         match killed {
@@ -321,7 +321,7 @@ fn taskkill_tree(pid: u32) {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .creation_flags(job::CREATE_NO_WINDOW)
+        .creation_flags(win32::CREATE_NO_WINDOW)
         .status();
     match killed {
         // Not found: the child exited before it could be killed.
@@ -366,8 +366,11 @@ impl Drop for ProcessTree {
     }
 }
 
+/// The Win32 calls behind [`ProcessTree`] on Windows: its Job Object,
+/// resuming its suspended child, and finding and killing descendants
+/// when there is no job.
 #[cfg(windows)]
-mod job {
+mod win32 {
     use std::io;
     use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
     use windows_sys::Win32::Foundation::{
