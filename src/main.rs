@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
 /// has an `index.html`, otherwise a "Frontend not built" page.
 ///
 /// Paths that aren't files in `static_dir` are client-side routes, so they get
-/// `index.html` with 200 (#104). Unknown `/api` paths are not, so they get the
+/// `index.html` with 200 (#104); that includes missing assets. Unknown `/api` paths are not, so they get the
 /// API's own 404 instead.
 fn app_router<S>(api: Router<S>, static_dir: &Path) -> Router<S>
 where
@@ -223,16 +223,17 @@ mod tests {
         std::fs::write(dir.path().join("assets/app.js"), "console.log(1)").unwrap();
         let app = app_router(Router::new(), dir.path());
 
-        let res = app
-            .oneshot(Request::get("/assets/app.js").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        assert_eq!(res.status(), StatusCode::OK);
         assert_eq!(
-            res.headers()[axum::http::header::CONTENT_TYPE],
-            "text/javascript"
+            get(app, "/assets/app.js").await,
+            (StatusCode::OK, "console.log(1)".into())
         );
-        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
-        assert_eq!(&body[..], b"console.log(1)");
+    }
+
+    /// Route registration panics on a conflict, so building the app with the
+    /// real API router checks the `/api` catch-alls sit beside its routes.
+    #[test]
+    fn api_catch_alls_compose_with_the_real_api_router() {
+        let dir = static_dir();
+        let _ = app_router(crate::routes::api_router(None), dir.path());
     }
 }
