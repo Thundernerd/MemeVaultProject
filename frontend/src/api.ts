@@ -46,7 +46,7 @@ export type QueueStatus = 'pending' | 'downloading' | 'completed' | 'failed' | '
 /** Sources that are chat bots rather than a person in the web UI or an API client. */
 export type ChatSource = 'discord' | 'fluxer'
 
-/** Where a queue item was submitted from. Mirrors the `source` passed to `insert_queue_item` in the backend. */
+/** Where a queue item was submitted from. Mirrors the backend `QueueSource` enum (`src/db.rs`). */
 export type QueueSource = 'web' | 'api' | ChatSource
 
 /** Still in the queue: waiting or downloading, so it can be cancelled. */

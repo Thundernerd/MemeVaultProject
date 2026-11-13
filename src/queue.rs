@@ -462,7 +462,7 @@ mod tests {
                     c,
                     "https://example.com/v",
                     "yt-dlp",
-                    "web",
+                    db::QueueSource::Web,
                     None,
                     false,
                 )?;

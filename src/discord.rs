@@ -417,7 +417,7 @@ async fn run_bot(
                     c,
                     &url,
                     downloader,
-                    "discord",
+                    db::QueueSource::Discord,
                     Some("Discord"),
                     false,
                 )?)
