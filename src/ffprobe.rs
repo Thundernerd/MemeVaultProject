@@ -106,7 +106,7 @@ pub async fn generate_video_thumbnail(
     video_path: &Path,
     output_path: &Path,
 ) -> bool {
-    let ffmpeg = binaries::get_ffmpeg_path(db, config);
+    let ffmpeg = binaries::Binary::Ffmpeg.path(db, config);
     if !Path::new(&ffmpeg).exists() {
         return false;
     }
@@ -210,7 +210,7 @@ pub async fn ensure_h264_mp4(
         return Ok(path.to_path_buf());
     }
 
-    let ffmpeg = binaries::get_ffmpeg_path(db, config);
+    let ffmpeg = binaries::Binary::Ffmpeg.path(db, config);
     if !Path::new(&ffmpeg).exists() {
         anyhow::bail!("ffmpeg not found; cannot normalize video to H.264");
     }
