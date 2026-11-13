@@ -208,4 +208,76 @@ mod tests {
         let back: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(back, items);
     }
+
+    /// share.html keeps its own copy of the design tokens so the page stays
+    /// self-contained (#31). This keeps that copy honest: every custom property
+    /// it declares must have the same value in the same block of style.css.
+    /// share.html may declare a subset (it has no --header-h / --shell-max).
+    #[test]
+    fn share_page_tokens_match_the_app_stylesheet() {
+        const SHARE: &str = include_str!("../../templates/share.html");
+        const APP: &str = include_str!("../../frontend/src/style.css");
+        const BLOCKS: [&str; 8] = [
+            r#"[data-theme="light"]"#,
+            r#"[data-theme="dark"]"#,
+            r#"[data-accent="blue"]"#,
+            r#"[data-accent="purple"]"#,
+            r#"[data-accent="green"]"#,
+            r#"[data-accent="orange"]"#,
+            r#"[data-accent="rose"]"#,
+            ":root",
+        ];
+
+        let mut drift = Vec::new();
+        for selector in BLOCKS {
+            let share = custom_properties(SHARE, selector);
+            let app = custom_properties(APP, selector);
+            assert!(!share.is_empty(), "share.html has no tokens in {selector}");
+            for (name, value) in &share {
+                match app.get(name) {
+                    Some(v) if v == value => {}
+                    Some(v) => drift.push(format!(
+                        "{selector} {name}: share.html `{value}`, style.css `{v}`"
+                    )),
+                    None => drift.push(format!("{selector} {name}: not in style.css")),
+                }
+            }
+        }
+        assert!(
+            drift.is_empty(),
+            "templates/share.html tokens drifted from frontend/src/style.css:\n{}",
+            drift.join("\n")
+        );
+    }
+
+    /// The `--name: value` declarations of the top-level block whose selector
+    /// is exactly `selector`, with whitespace in values collapsed.
+    fn custom_properties(
+        css: &str,
+        selector: &str,
+    ) -> std::collections::BTreeMap<String, String> {
+        let css = regex::Regex::new(r"(?s)/\*.*?\*/")
+            .unwrap()
+            .replace_all(css, "");
+        let block = regex::Regex::new(&format!(
+            r"(?m)^\s*{}\s*\{{([^}}]*)\}}",
+            regex::escape(selector)
+        ))
+        .unwrap();
+        block
+            .captures_iter(&css)
+            .flat_map(|c| {
+                c[1].split(';')
+                    .filter_map(|decl| {
+                        let (name, value) = decl.split_once(':')?;
+                        let name = name.trim();
+                        name.starts_with("--").then(|| {
+                            let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
+                            (name.to_string(), value)
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
 }
