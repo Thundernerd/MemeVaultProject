@@ -22,8 +22,21 @@ function onKeydown(e: KeyboardEvent) {
 // doesn't change fullPath.
 watch(() => route.fullPath, () => (drawer.value = false))
 
-onMounted(() => document.addEventListener('keydown', onKeydown))
-onUnmounted(() => document.removeEventListener('keydown', onKeydown))
+// The drawer is mobile-only (style.css hides the menu button from 768px up),
+// so reaching that width closes it rather than leaving it hidden but open.
+const desktop = window.matchMedia('(min-width: 768px)')
+function onDesktopChange(e: MediaQueryListEvent) {
+  if (e.matches) drawer.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', onKeydown)
+  desktop.addEventListener('change', onDesktopChange)
+})
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKeydown)
+  desktop.removeEventListener('change', onDesktopChange)
+})
 
 onMounted(async () => {
   try {
