@@ -258,52 +258,56 @@ async fn download_gallerydl(config: &Config) -> anyhow::Result<()> {
 }
 
 async fn download_ffmpeg(config: &Config) -> anyhow::Result<()> {
-    let (url, is_xz) = ffmpeg_archive();
-    let ext = if is_xz { "tar.xz" } else { "zip" };
+    let archive = ffmpeg_archive(std::env::consts::OS, std::env::consts::ARCH);
+    let ext = match archive.format {
+        ArchiveFormat::TarXz => "tar.xz",
+        ArchiveFormat::Zip => "zip",
+    };
     let tmp = config.bin_dir().join(format!("ffmpeg-tmp.{ext}"));
-    download_file(url, &tmp).await?;
-    if is_xz {
-        extract_ffmpeg_xz(&tmp, &config.bin_dir())?;
-    } else {
-        extract_ffmpeg_zip(&tmp, &config.bin_dir())?;
+    download_file(archive.url, &tmp).await?;
+    match archive.format {
+        ArchiveFormat::TarXz => extract_ffmpeg_xz(&tmp, &config.bin_dir())?,
+        ArchiveFormat::Zip => extract_ffmpeg_zip(&tmp, &config.bin_dir())?,
     }
     let _ = std::fs::remove_file(&tmp);
     Ok(())
 }
 
-fn ffmpeg_archive() -> (&'static str, bool) {
-    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-    {
-        (
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArchiveFormat {
+    TarXz,
+    Zip,
+}
+
+/// Where the ffmpeg + ffprobe build for a target is downloaded from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FfmpegArchive {
+    url: &'static str,
+    format: ArchiveFormat,
+}
+
+/// The ffmpeg archive for a target. Targets with no build of their own get
+/// the Linux x86-64 one.
+fn ffmpeg_archive(os: &str, arch: &str) -> FfmpegArchive {
+    let (url, format) = match (os, arch) {
+        ("linux", "aarch64") => (
             "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-gpl.tar.xz",
-            true,
-        )
-    }
-    #[cfg(all(target_os = "linux", not(target_arch = "aarch64")))]
-    {
-        (
-            "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz",
-            true,
-        )
-    }
-    #[cfg(target_os = "macos")]
-    {
-        ("https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip", false)
-    }
-    #[cfg(target_os = "windows")]
-    {
-        (
+            ArchiveFormat::TarXz,
+        ),
+        ("macos", _) => (
+            "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip",
+            ArchiveFormat::Zip,
+        ),
+        ("windows", _) => (
             "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip",
-            false,
-        )
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    {
-        (
+            ArchiveFormat::Zip,
+        ),
+        _ => (
             "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz",
-            true,
-        )
-    }
+            ArchiveFormat::TarXz,
+        ),
+    };
+    FfmpegArchive { url, format }
 }
 
 fn extract_ffmpeg_xz(archive: &Path, bin_dir: &Path) -> anyhow::Result<()> {
@@ -475,5 +479,36 @@ mod tests {
         // Everywhere else: the zipimport build, which needs python3.
         assert_eq!(ytdlp_asset("macos", "x86_64"), "yt-dlp");
         assert_eq!(ytdlp_asset("freebsd", "x86_64"), "yt-dlp");
+    }
+
+    #[test]
+    fn ffmpeg_archive_matches_each_target() {
+        let linux64 = FfmpegArchive {
+            url: "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz",
+            format: ArchiveFormat::TarXz,
+        };
+        assert_eq!(ffmpeg_archive("linux", "x86_64"), linux64);
+        assert_eq!(
+            ffmpeg_archive("linux", "aarch64"),
+            FfmpegArchive {
+                url: "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-gpl.tar.xz",
+                format: ArchiveFormat::TarXz,
+            }
+        );
+        let evermeet = FfmpegArchive {
+            url: "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip",
+            format: ArchiveFormat::Zip,
+        };
+        assert_eq!(ffmpeg_archive("macos", "aarch64"), evermeet);
+        assert_eq!(ffmpeg_archive("macos", "x86_64"), evermeet);
+        assert_eq!(
+            ffmpeg_archive("windows", "x86_64"),
+            FfmpegArchive {
+                url: "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip",
+                format: ArchiveFormat::Zip,
+            }
+        );
+        // Unknown targets fall back to the Linux x86-64 build.
+        assert_eq!(ffmpeg_archive("freebsd", "x86_64"), linux64);
     }
 }
