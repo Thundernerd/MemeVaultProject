@@ -16,8 +16,8 @@ const ytdlp = ref<CookieStatus | null>(null)
 const gallerydl = ref<CookieStatus | null>(null)
 
 async function load() {
-  ytdlp.value = await fetch('/api/cookies/ytdlp').then((r) => r.json())
-  gallerydl.value = await fetch('/api/cookies/gallerydl').then((r) => r.json())
+  ytdlp.value = await api<CookieStatus>('/api/cookies/ytdlp')
+  gallerydl.value = await api<CookieStatus>('/api/cookies/gallerydl')
 }
 
 const { error, attempt } = useActionError(load)

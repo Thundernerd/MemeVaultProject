@@ -15,7 +15,12 @@ export function useActionError(reload: () => Promise<void>) {
     } catch (e) {
       error.value = `${prefix}: ${messageOf(e)}`
     }
-    await reload()
+    try {
+      await reload()
+    } catch (e) {
+      // Keep the action's own error if there is one; otherwise say the refresh failed.
+      error.value ||= `Reload failed: ${messageOf(e)}`
+    }
   }
 
   return { error, attempt }
