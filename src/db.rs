@@ -706,7 +706,9 @@ pub fn get_next_pending_item(conn: &rusqlite::Connection) -> rusqlite::Result<Op
              ORDER BY created_at ASC LIMIT 1",
             chat_bots.placeholders()
         ),
-        chat_bots.params_after(&[&QueueStatus::Pending]).as_slice(),
+        chat_bots
+            .with_leading_params(&[&QueueStatus::Pending])
+            .as_slice(),
         map_queue,
     )
     .optional()
@@ -720,7 +722,7 @@ pub fn count_active_downloads(conn: &rusqlite::Connection) -> rusqlite::Result<i
             chat_bots.placeholders()
         ),
         chat_bots
-            .params_after(&[&QueueStatus::Downloading])
+            .with_leading_params(&[&QueueStatus::Downloading])
             .as_slice(),
         |r| r.get(0),
     )
@@ -736,7 +738,7 @@ pub fn reset_stale_downloads(conn: &rusqlite::Connection) -> rusqlite::Result<us
             chat_bots.placeholders()
         ),
         chat_bots
-            .params_after(&[&QueueStatus::Pending, &QueueStatus::Downloading])
+            .with_leading_params(&[&QueueStatus::Pending, &QueueStatus::Downloading])
             .as_slice(),
     )?;
     let now = now_iso();
@@ -747,7 +749,7 @@ pub fn reset_stale_downloads(conn: &rusqlite::Connection) -> rusqlite::Result<us
             chat_bots.placeholders()
         ),
         chat_bots
-            .params_after(&[&QueueStatus::Failed, &now, &QueueStatus::Downloading])
+            .with_leading_params(&[&QueueStatus::Failed, &now, &QueueStatus::Downloading])
             .as_slice(),
     )?;
     Ok(web + bot)
@@ -771,9 +773,12 @@ impl ChatBotSources {
         vec!["?"; self.0.len()].join(", ")
     }
 
-    /// `leading` followed by the chat-bot sources, matching a statement whose
-    /// `IN` list is its last placeholders.
-    fn params_after<'a>(
+    /// The statement's parameters: `leading` binds every `?` before the
+    /// `IN (...)` list, then the chat-bot sources bind the list itself.
+    ///
+    /// The `IN (...)` list must therefore be the statement's last placeholders,
+    /// and every placeholder must be an anonymous `?`.
+    fn with_leading_params<'a>(
         &'a self,
         leading: &[&'a dyn rusqlite::ToSql],
     ) -> Vec<&'a dyn rusqlite::ToSql> {
