@@ -192,8 +192,9 @@ async fn version_of_within(path: &str, args: &[&str], timeout: Duration) -> Opti
         // A wrapper that reads stdin would otherwise wait for input forever.
         .stdin(Stdio::null());
     // A binary that hangs (cannot unpack, network-mounted path) has no
-    // version, the same as one that exits non-zero. On timeout, everything it
-    // started (PyInstaller's Python, a wrapper's grandchildren) is killed too.
+    // version, the same as one that exits non-zero. Anything it started
+    // (PyInstaller's Python, a wrapper's grandchildren) is killed once it
+    // exits, and on timeout the binary is killed with them.
     let out = process_tree::output_within(&mut cmd, timeout).await?;
     // A binary that cannot run (wrong architecture, missing interpreter)
     // prints its error to stderr and exits non-zero; that is not a version.
