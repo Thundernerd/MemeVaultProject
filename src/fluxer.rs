@@ -565,7 +565,9 @@ async fn handle_message(
         DownloadOutcome::Empty => {
             tracing::warn!(url = %url, "fluxer download returned no files");
         }
-        DownloadOutcome::Cancelled => {}
+        DownloadOutcome::Cancelled => {
+            tracing::warn!(item_id = %item_id, url = %url, "fluxer download cancelled");
+        }
         DownloadOutcome::Failed(_) => {
             // Log the full error chain; the reply keeps the top-level message.
             if let Err(e) = &result {
