@@ -10,7 +10,8 @@
       try {
         // Keep in sync with THEMES / ACCENTS in frontend/src/theme.ts and the
         // style.css blocks; checked by theme_and_accent_name_lists_match_the_app_stylesheet
-        // in src/routes/share_page.rs.
+        // in src/routes/share_page.rs. The fallback defaults here and in the catch
+        // are checked by theme_and_accent_fallback_defaults_* there too.
         var theme = localStorage.getItem('mvp-theme');
         var accent = localStorage.getItem('mvp-accent');
         if (['dark', 'light'].indexOf(theme) === -1) theme = 'dark';
