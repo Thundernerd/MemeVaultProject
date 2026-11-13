@@ -8,7 +8,7 @@
 //! command sender's identity via a channel webhook.
 
 use crate::config::Config;
-use crate::db::{self, Db};
+use crate::db::{self, Db, QueueStatus};
 use crate::gallerydl;
 use crate::queue::{spawn_progress_persister, QueueHandle};
 use crate::state::{AppState, FluxerControl};
@@ -489,7 +489,14 @@ async fn handle_message(
     let (progress_tx, progress_rx) = watch::channel(0.0f64);
     spawn_progress_persister(db.clone(), item_id.clone(), progress_rx);
     let _ = db.with_conn(|c| {
-        db::update_queue_item(c, &item_id, Some("downloading"), Some(0.0), None, None)?;
+        db::update_queue_item(
+            c,
+            &item_id,
+            Some(QueueStatus::Downloading),
+            Some(0.0),
+            None,
+            None,
+        )?;
         Ok(())
     });
 
@@ -531,15 +538,20 @@ async fn handle_message(
 
     match &result {
         Ok(paths) if !paths.is_empty() => {
-            finalize_fluxer_queue(db, &item_id, "completed", None);
+            finalize_fluxer_queue(db, &item_id, QueueStatus::Completed, None);
         }
-        Ok(_) => finalize_fluxer_queue(db, &item_id, "failed", Some("No files downloaded")),
+        Ok(_) => finalize_fluxer_queue(
+            db,
+            &item_id,
+            QueueStatus::Failed,
+            Some("No files downloaded"),
+        ),
         Err(e) => {
             let msg = e.to_string();
             let status = if msg.contains("cancelled") {
-                "cancelled"
+                QueueStatus::Cancelled
             } else {
-                "failed"
+                QueueStatus::Failed
             };
             finalize_fluxer_queue(db, &item_id, status, Some(&msg));
         }
@@ -716,9 +728,9 @@ fn avatar_url(media: &str, author: &Value) -> Option<String> {
     Some(format!("{media}/avatars/{id}/{hash}.{ext}"))
 }
 
-fn finalize_fluxer_queue(db: &Db, item_id: &str, status: &str, error: Option<&str>) {
+fn finalize_fluxer_queue(db: &Db, item_id: &str, status: QueueStatus, error: Option<&str>) {
     let completed = chrono::Utc::now().to_rfc3339();
-    let progress = (status == "completed").then_some(100.0);
+    let progress = (status == QueueStatus::Completed).then_some(100.0);
     let _ = db.with_conn(|c| {
         db::update_queue_item(
             c,

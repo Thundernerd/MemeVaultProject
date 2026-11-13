@@ -4,7 +4,7 @@ import { api } from '@/api'
 import { useSettings } from './useSettings'
 import SaveRow from './SaveRow.vue'
 import ErrorTag from './ErrorTag.vue'
-import { messageOf, useActionError } from './useActionError'
+import { messageOf, useActionError } from '@/composables/useActionError'
 
 interface BinaryStatus {
   name: string
@@ -20,12 +20,12 @@ const busy = ref(new Set<string>())
 /** Per-binary feedback from the last "Download / update" click, keyed by binary name. */
 const downloadNotes = ref<Record<string, string>>({})
 
-async function loadBins() {
+async function fetchBins() {
   binaries.value = await api('/api/binaries')
 }
 
 // The binaries list's own load tag; the paths form above reports its load in its save row.
-const { error: binsError, initialLoad: initialLoadBins } = useActionError(loadBins)
+const { error: binsError, load: loadBins } = useActionError(fetchBins)
 
 async function download(name: string) {
   busy.value.add(name)
@@ -37,7 +37,7 @@ async function download(name: string) {
     downloadNotes.value[name] = `Download failed: ${messageOf(e)}`
   }
   try {
-    await loadBins()
+    await fetchBins()
   } catch (e) {
     // Keep the download's own note if there is one; otherwise say the refresh failed.
     downloadNotes.value[name] ||= `Reload failed: ${messageOf(e)}`
@@ -46,7 +46,7 @@ async function download(name: string) {
   }
 }
 
-onMounted(initialLoadBins)
+onMounted(loadBins)
 </script>
 
 <template>

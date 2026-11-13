@@ -1,47 +1,29 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { api, errorMessage, type TagWithCount } from '@/api'
+import { api, type TagWithCount } from '@/api'
+import { useActionError } from '@/composables/useActionError'
 
 const tags = ref<TagWithCount[]>([])
-const loadError = ref('')
-/** A failed delete or purge. Kept apart from `loadError` so the reload that follows doesn't clear it; cleared when the next action starts. */
-const actionError = ref('')
-/** A failing load wins: it means the list is stale, which matters more than an earlier action's failure. */
-const error = computed(() => loadError.value || actionError.value)
 const loaded = ref(false)
 
-async function load() {
-  try {
-    tags.value = await api('/api/tags')
-    loaded.value = true
-    loadError.value = ''
-  } catch (e) {
-    loadError.value = errorMessage(e)
-  }
+async function fetchTags() {
+  tags.value = await api('/api/tags')
+  loaded.value = true
 }
 
-/** Runs an action, putting a failure in `actionError` as "<prefix>: <message>", then reloads. */
-async function runAction(prefix: string, request: () => Promise<unknown>) {
-  actionError.value = ''
-  try {
-    await request()
-  } catch (e) {
-    actionError.value = `${prefix}: ${errorMessage(e)}`
-  }
-  await load()
-}
+const { error, attempt, load } = useActionError(fetchTags)
 
 const deleteTag = (id: string) => api('/api/tags', { method: 'DELETE', body: JSON.stringify({ id }) })
 
 async function remove(id: string) {
   if (!confirm('Delete this tag?')) return
-  await runAction('Delete failed', () => deleteTag(id))
+  await attempt('Delete failed', () => deleteTag(id))
 }
 
 /** Deletes unused tags one by one, stopping at the first failure; the reload then shows which ones went. */
 function purgeOrphans() {
   const orphans = tags.value.filter((t) => t.usage_count === 0)
-  return runAction('Purge failed', async () => {
+  return attempt('Purge failed', async () => {
     for (const t of orphans) await deleteTag(t.id)
   })
 }

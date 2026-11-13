@@ -1,7 +1,7 @@
 //! Optional Discord slash-command bot (downloads to Discord, not vault).
 
 use crate::config::Config;
-use crate::db::{self, Db};
+use crate::db::{self, Db, QueueStatus};
 use crate::gallerydl;
 use crate::queue::{spawn_progress_persister, QueueHandle};
 use crate::state::{AppState, DiscordControl};
@@ -290,9 +290,9 @@ async fn edit_status(ctx: &Context, cmd: &CommandInteraction, content: impl Into
         .await;
 }
 
-fn finalize_discord_queue(db: &Db, item_id: &str, status: &str, error: Option<&str>) {
+fn finalize_discord_queue(db: &Db, item_id: &str, status: QueueStatus, error: Option<&str>) {
     let completed = chrono::Utc::now().to_rfc3339();
-    let progress = if status == "completed" {
+    let progress = if status == QueueStatus::Completed {
         Some(100.0)
     } else {
         None
@@ -458,7 +458,14 @@ async fn run_bot(
             spawn_progress_persister(self.db.clone(), item_id.clone(), progress_rx);
 
             let _ = self.db.with_conn(|c| {
-                db::update_queue_item(c, &item_id, Some("downloading"), Some(0.0), None, None)?;
+                db::update_queue_item(
+                    c,
+                    &item_id,
+                    Some(QueueStatus::Downloading),
+                    Some(0.0),
+                    None,
+                    None,
+                )?;
                 Ok(())
             });
 
@@ -497,13 +504,13 @@ async fn run_bot(
 
             match &result {
                 Ok(paths) if !paths.is_empty() => {
-                    finalize_discord_queue(&self.db, &item_id, "completed", None);
+                    finalize_discord_queue(&self.db, &item_id, QueueStatus::Completed, None);
                 }
                 Ok(_) => {
                     finalize_discord_queue(
                         &self.db,
                         &item_id,
-                        "failed",
+                        QueueStatus::Failed,
                         Some("No files downloaded"),
                     );
                 }
@@ -511,9 +518,14 @@ async fn run_bot(
                     let msg = e.to_string();
                     let cancelled = msg.contains("cancelled");
                     if cancelled {
-                        finalize_discord_queue(&self.db, &item_id, "cancelled", Some("cancelled"));
+                        finalize_discord_queue(
+                            &self.db,
+                            &item_id,
+                            QueueStatus::Cancelled,
+                            Some("cancelled"),
+                        );
                     } else {
-                        finalize_discord_queue(&self.db, &item_id, "failed", Some(&msg));
+                        finalize_discord_queue(&self.db, &item_id, QueueStatus::Failed, Some(&msg));
                     }
                 }
             }
