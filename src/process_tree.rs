@@ -81,6 +81,10 @@ impl ProcessTree {
                 .ok_or_else(|| std::io::Error::other("the child has no pid"))
                 .and_then(job::resume_main_thread);
             if let Err(err) = resumed {
+                tracing::warn!(
+                    program = ?cmd.as_std().get_program(),
+                    "could not resume the child; killing it: {err}"
+                );
                 // Left suspended, the child would never exit.
                 let _ = child.start_kill();
                 return Err(err);
