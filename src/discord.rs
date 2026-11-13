@@ -3,7 +3,7 @@
 use crate::config::Config;
 use crate::db::{self, Db, QueueStatus};
 use crate::gallerydl;
-use crate::queue::{finish_queue_item, spawn_progress_persister, QueueHandle};
+use crate::queue::{finish_queue_item, spawn_progress_persister, DownloadOutcome, QueueHandle};
 use crate::state::{AppState, DiscordControl};
 use crate::ytdlp;
 use serenity::all::*;
@@ -483,10 +483,12 @@ async fn run_bot(
 
             self.queue.unregister(&item_id).await;
 
-            finish_queue_item(&self.db, &item_id, result.as_ref().map(Vec::len));
+            let outcome = DownloadOutcome::from_result(result.as_ref().map(Vec::len));
+            finish_queue_item(&self.db, &item_id, &outcome);
+            let paths = result.as_deref().unwrap_or_default();
 
-            match result {
-                Ok(paths) if !paths.is_empty() => {
+            match outcome {
+                DownloadOutcome::Completed(_) => {
                     tracing::info!(
                         item_id = %item_id,
                         file_count = paths.len(),
@@ -494,7 +496,7 @@ async fn run_bot(
                         "discord download succeeded"
                     );
                     if as_user {
-                        match post_via_webhook(&ctx, &cmd, &paths, &url, message_ref).await {
+                        match post_via_webhook(&ctx, &cmd, paths, &url, message_ref).await {
                             Ok(()) => {
                                 tracing::info!(
                                     file_count = paths.len().min(10),
@@ -522,7 +524,7 @@ async fn run_bot(
                                     format!("Could not post as you ({e}); posting as bot instead"),
                                 )
                                 .await;
-                                post_as_bot_followups(&ctx, &cmd, &paths, &url, message_ref).await;
+                                post_as_bot_followups(&ctx, &cmd, paths, &url, message_ref).await;
                                 tracing::info!(
                                     file_count = paths.len().min(10),
                                     url = %url,
@@ -532,7 +534,7 @@ async fn run_bot(
                         }
                     } else {
                         // Public post: optional caption + files + Open original on the response.
-                        let attachments = load_attachments(&paths).await;
+                        let attachments = load_attachments(paths).await;
                         if attachments.is_empty() {
                             tracing::warn!(url = %url, "discord download produced no attachable files");
                             edit_status(&ctx, &cmd, "No attachable files").await;
@@ -553,7 +555,7 @@ async fn run_bot(
                                     url = %url,
                                     "edit_response failed; posting as bot follow-ups"
                                 );
-                                post_as_bot_followups(&ctx, &cmd, &paths, &url, message_ref).await;
+                                post_as_bot_followups(&ctx, &cmd, paths, &url, message_ref).await;
                             } else {
                                 tracing::info!(
                                     file_count = paths.len().min(10),
@@ -564,19 +566,20 @@ async fn run_bot(
                         }
                     }
                 }
-                Ok(_) => {
+                DownloadOutcome::Empty => {
                     tracing::warn!(url = %url, "discord download returned no files");
                     edit_status(&ctx, &cmd, "No files downloaded").await;
                 }
-                Err(e) => {
-                    let msg = e.to_string();
-                    if msg.contains("cancelled") {
-                        tracing::warn!(item_id = %item_id, url = %url, "discord download cancelled");
-                        edit_status(&ctx, &cmd, "Download cancelled").await;
-                    } else {
+                DownloadOutcome::Cancelled => {
+                    tracing::warn!(item_id = %item_id, url = %url, "discord download cancelled");
+                    edit_status(&ctx, &cmd, "Download cancelled").await;
+                }
+                DownloadOutcome::Failed(msg) => {
+                    // Log the full error chain; the reply keeps the top-level message.
+                    if let Err(e) = &result {
                         tracing::error!(url = %url, error = %format!("{e:#}"), "discord download failed");
-                        edit_status(&ctx, &cmd, format!("Download failed: {e}")).await;
                     }
+                    edit_status(&ctx, &cmd, format!("Download failed: {msg}")).await;
                 }
             }
         }

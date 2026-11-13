@@ -10,7 +10,7 @@
 use crate::config::Config;
 use crate::db::{self, Db, QueueStatus};
 use crate::gallerydl;
-use crate::queue::{finish_queue_item, spawn_progress_persister, QueueHandle};
+use crate::queue::{finish_queue_item, spawn_progress_persister, DownloadOutcome, QueueHandle};
 use crate::state::{AppState, FluxerControl};
 use crate::ytdlp;
 use futures::{SinkExt, StreamExt};
@@ -537,10 +537,12 @@ async fn handle_message(
 
     queue.unregister(&item_id).await;
 
-    finish_queue_item(db, &item_id, result.as_ref().map(Vec::len));
+    let outcome = DownloadOutcome::from_result(result.as_ref().map(Vec::len));
+    finish_queue_item(db, &item_id, &outcome);
+    let paths = result.as_deref().unwrap_or_default();
 
-    match result {
-        Ok(paths) if !paths.is_empty() => {
+    let status_text = match outcome {
+        DownloadOutcome::Completed(_) => {
             tracing::info!(
                 item_id = %item_id,
                 file_count = paths.len(),
@@ -553,44 +555,36 @@ async fn handle_message(
                 endpoints,
                 channel_id,
                 placeholder.as_deref(),
-                &paths,
+                paths,
                 caption.as_deref(),
                 guild_id.as_deref(),
                 &author,
             )
             .await;
+            return Ok(());
         }
-        Ok(_) => {
+        DownloadOutcome::Empty => {
             tracing::warn!(url = %url, "fluxer download returned no files");
-            set_status(
-                http,
-                endpoints,
-                &settings.token,
-                channel_id,
-                placeholder.as_deref(),
-                "No files downloaded",
-            )
-            .await;
+            "No files downloaded".to_string()
         }
-        Err(e) => {
-            let msg = e.to_string();
-            let text = if msg.contains("cancelled") {
-                "Download cancelled".to_string()
-            } else {
+        DownloadOutcome::Cancelled => "Download cancelled".to_string(),
+        DownloadOutcome::Failed(msg) => {
+            // Log the full error chain; the reply keeps the top-level message.
+            if let Err(e) = &result {
                 tracing::error!(url = %url, error = %format!("{e:#}"), "fluxer download failed");
-                format!("Download failed: {e}")
-            };
-            set_status(
-                http,
-                endpoints,
-                &settings.token,
-                channel_id,
-                placeholder.as_deref(),
-                &text,
-            )
-            .await;
+            }
+            format!("Download failed: {msg}")
         }
-    }
+    };
+    set_status(
+        http,
+        endpoints,
+        &settings.token,
+        channel_id,
+        placeholder.as_deref(),
+        &status_text,
+    )
+    .await;
 
     Ok(())
 }
