@@ -536,44 +536,24 @@ async fn handle_message(
     };
 
     let outcome = queue
-        .finish(db, &item_id, result.as_ref().map(Vec::len))
+        .finish(db, &queue_item, result.as_ref().map(Vec::len))
         .await;
     let paths = result.as_deref().unwrap_or_default();
 
-    match &outcome {
-        DownloadOutcome::Completed(_) => {
-            tracing::info!(
-                item_id = %item_id,
-                file_count = paths.len(),
-                url = %url,
-                "fluxer download succeeded"
-            );
-            post_result(
-                http,
-                settings,
-                endpoints,
-                channel_id,
-                placeholder.as_deref(),
-                paths,
-                caption.as_deref(),
-                guild_id.as_deref(),
-                &author,
-            )
-            .await;
-            return Ok(());
-        }
-        DownloadOutcome::Empty => {
-            tracing::warn!(url = %url, "fluxer download returned no files");
-        }
-        DownloadOutcome::Cancelled => {
-            tracing::warn!(item_id = %item_id, url = %url, "fluxer download cancelled");
-        }
-        DownloadOutcome::Failed(_) => {
-            // Log the full error chain; the reply keeps the top-level message.
-            if let Err(e) = &result {
-                tracing::error!(url = %url, error = %format!("{e:#}"), "fluxer download failed");
-            }
-        }
+    if matches!(outcome, DownloadOutcome::Completed(_)) {
+        post_result(
+            http,
+            settings,
+            endpoints,
+            channel_id,
+            placeholder.as_deref(),
+            paths,
+            caption.as_deref(),
+            guild_id.as_deref(),
+            &author,
+        )
+        .await;
+        return Ok(());
     }
     if let Some(status_text) = outcome.status_text() {
         set_status(
