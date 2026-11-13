@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { api, type Album, type MediaItem, type QueueItem, type TagWithCount } from '@/api'
+import { api, isActive, isChatSource, type Album, type MediaItem, type QueueItem, type TagWithCount } from '@/api'
 import { MD_UP } from '@/breakpoints'
 import MediaCard from '@/components/MediaCard.vue'
 import AlbumCard from '@/components/AlbumCard.vue'
@@ -52,8 +52,7 @@ async function pollQueue() {
     const items = await api<QueueItem[]>('/api/queue')
     const active = items.filter(
       (i) =>
-        !['discord', 'fluxer'].includes(i.source) &&
-        (i.status === 'pending' || i.status === 'downloading'),
+        !isChatSource(i.source) && isActive(i.status),
     )
     if (activeQueue.value.length > active.length) await load()
     activeQueue.value = active
