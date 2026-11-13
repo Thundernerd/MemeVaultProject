@@ -694,5 +694,27 @@ mod tests {
                 "grandchild {pid} is still running after cancel"
             );
         }
+
+        #[tokio::test]
+        async fn dropping_a_download_kills_the_whole_process_tree() {
+            let vault = TestVault::new();
+            let pidfile = fake_ytdlp(&vault);
+            let (_cancel_tx, cancel) = watch::channel(false);
+            let download = {
+                let (db, config) = (vault.db.clone(), vault.config.clone());
+                tokio::spawn(async move {
+                    run_ytdlp(&db, &config, "https://example.com/v", None, cancel, None).await
+                })
+            };
+            let pid = wait_for_pid(&pidfile, Duration::from_secs(5)).await;
+
+            download.abort();
+            let _ = download.await;
+
+            assert!(
+                gone_within(pid, Duration::from_secs(2)).await,
+                "grandchild {pid} is still running after the download was dropped"
+            );
+        }
     }
 }
