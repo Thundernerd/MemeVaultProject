@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RouterLink, RouterView, useRoute } from 'vue-router'
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { provideTheme } from '@/theme'
 import ThemeSwitcher from '@/components/ThemeSwitcher.vue'
 
@@ -8,7 +8,17 @@ provideTheme()
 const route = useRoute()
 const oidcEnabled = ref(false)
 const drawer = ref(false)
+const menuBtn = ref<HTMLButtonElement | null>(null)
 const version = ref('')
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key !== 'Escape' || !drawer.value) return
+  drawer.value = false
+  menuBtn.value?.focus()
+}
+
+onMounted(() => document.addEventListener('keydown', onKeydown))
+onUnmounted(() => document.removeEventListener('keydown', onKeydown))
 
 onMounted(async () => {
   try {
@@ -55,6 +65,7 @@ function isActive(href: string) {
           <ThemeSwitcher />
           <a v-if="oidcEnabled" href="/api/auth/logout" class="signout">Sign out</a>
           <button
+            ref="menuBtn"
             type="button"
             class="btn btn-sm btn-icon menu-btn"
             aria-label="Menu"
