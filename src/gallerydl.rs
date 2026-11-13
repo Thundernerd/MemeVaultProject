@@ -179,7 +179,10 @@ fn truncate_stderr_tail(lines: &[String]) -> String {
 
 fn collect_files(job_dir: &Path) -> anyhow::Result<Vec<GalleryDlFile>> {
     let mut media_paths: Vec<PathBuf> = Vec::new();
-    for entry in walkdir::WalkDir::new(job_dir).into_iter().filter_map(|e| e.ok()) {
+    for entry in walkdir::WalkDir::new(job_dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         let path = entry.path();
         if !path.is_file() {
             continue;
@@ -195,8 +198,18 @@ fn collect_files(job_dir: &Path) -> anyhow::Result<Vec<GalleryDlFile>> {
             .to_lowercase();
         if matches!(
             ext.as_str(),
-            "jpg" | "jpeg" | "png" | "gif" | "webp" | "avif" | "bmp" | "tiff"
-                | "mp4" | "webm" | "mkv" | "mov"
+            "jpg"
+                | "jpeg"
+                | "png"
+                | "gif"
+                | "webp"
+                | "avif"
+                | "bmp"
+                | "tiff"
+                | "mp4"
+                | "webm"
+                | "mkv"
+                | "mov"
         ) {
             media_paths.push(path.to_path_buf());
         }
@@ -205,10 +218,7 @@ fn collect_files(job_dir: &Path) -> anyhow::Result<Vec<GalleryDlFile>> {
 
     let mut results = Vec::new();
     for (i, src) in media_paths.into_iter().enumerate() {
-        let ext = src
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("jpg");
+        let ext = src.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
         let dest = job_dir.join(format!("image_{:03}.{ext}", i + 1));
         if src != dest {
             std::fs::rename(&src, &dest)?;

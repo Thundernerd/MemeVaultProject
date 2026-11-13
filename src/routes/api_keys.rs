@@ -27,7 +27,9 @@ pub async fn create(
         return Err(AppError::bad_request("name required"));
     }
     if body.permission != "read" && body.permission != "read_write" {
-        return Err(AppError::bad_request("permission must be read or read_write"));
+        return Err(AppError::bad_request(
+            "permission must be read or read_write",
+        ));
     }
     let key = state
         .db

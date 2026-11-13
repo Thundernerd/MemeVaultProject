@@ -45,11 +45,7 @@ impl QueueHandle {
 }
 
 /// Persist download progress updates to the queue item row.
-pub fn spawn_progress_persister(
-    db: Db,
-    item_id: String,
-    mut progress_rx: watch::Receiver<f64>,
-) {
+pub fn spawn_progress_persister(db: Db, item_id: String, mut progress_rx: watch::Receiver<f64>) {
     tokio::spawn(async move {
         let mut last = -1.0f64;
         loop {
@@ -193,15 +189,8 @@ async fn run_video(
     progress_tx: watch::Sender<f64>,
     cancel_rx: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
-    let result = ytdlp::run_ytdlp(
-        db,
-        config,
-        &item.url,
-        Some(progress_tx),
-        cancel_rx,
-        None,
-    )
-    .await?;
+    let result =
+        ytdlp::run_ytdlp(db, config, &item.url, Some(progress_tx), cancel_rx, None).await?;
 
     let meta = &result.metadata;
     let title = meta.get("title").and_then(|v| v.as_str());
@@ -215,21 +204,17 @@ async fn run_video(
         .get("duration")
         .and_then(|v| v.as_f64())
         .or(probe.duration);
-    let width = meta
-        .get("width")
-        .and_then(|v| v.as_i64())
-        .or(probe.width);
-    let height = meta
-        .get("height")
-        .and_then(|v| v.as_i64())
-        .or(probe.height);
+    let width = meta.get("width").and_then(|v| v.as_i64()).or(probe.width);
+    let height = meta.get("height").and_then(|v| v.as_i64()).or(probe.height);
     let format = result
         .file_path
         .extension()
         .and_then(|e| e.to_str())
         .map(|s| s.to_string())
         .or_else(|| Some("mp4".into()));
-    let file_size = std::fs::metadata(&result.file_path).ok().map(|m| m.len() as i64);
+    let file_size = std::fs::metadata(&result.file_path)
+        .ok()
+        .map(|m| m.len() as i64);
     let thumb = result
         .thumbnail_path
         .as_ref()
@@ -372,7 +357,9 @@ async fn run_gallery(
                     normalized.to_string_lossy().to_string(),
                     Some("mp4".to_string()),
                     file_size,
-                    probe.width.or_else(|| meta.get("width").and_then(|v| v.as_i64())),
+                    probe
+                        .width
+                        .or_else(|| meta.get("width").and_then(|v| v.as_i64())),
                     probe
                         .height
                         .or_else(|| meta.get("height").and_then(|v| v.as_i64())),
