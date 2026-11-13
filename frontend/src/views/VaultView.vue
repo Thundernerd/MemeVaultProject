@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api, type Album, type MediaItem, type QueueItem, type TagWithCount } from '@/api'
+import { MD_UP } from '@/breakpoints'
 import MediaCard from '@/components/MediaCard.vue'
 import AlbumCard from '@/components/AlbumCard.vue'
 import MediaModal from '@/components/MediaModal.vue'
@@ -60,7 +61,7 @@ async function pollQueue() {
 }
 
 onMounted(() => {
-  filtersOpen.value = window.matchMedia('(min-width: 768px)').matches
+  filtersOpen.value = window.matchMedia(MD_UP).matches
   load()
   pollQueue()
   timer = window.setInterval(pollQueue, 100)
