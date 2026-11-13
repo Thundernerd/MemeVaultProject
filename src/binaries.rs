@@ -77,6 +77,24 @@ impl Binary {
             .unwrap_or_else(|| self.default_path(config))
     }
 
+    /// Whether boot should auto-download this binary: there is no path
+    /// override and a file the managed download provides is missing.
+    /// Decided on the files, not on whether they run: a binary that exists
+    /// but fails `--version` would not run any better after re-fetching it
+    /// on every boot.
+    fn needs_download(self, db: &Db, config: &Config) -> bool {
+        if self.override_path(db).is_some() {
+            return false;
+        }
+        let missing = |path: &str| !Path::new(path).exists();
+        // ffprobe comes with ffmpeg's download; an install without it (one
+        // from before macOS fetched it, or whose ffprobe step failed) gets
+        // both again.
+        missing(&self.default_path(config))
+            || (self == Binary::Ffmpeg
+                && missing(&config.bin_dir().join(ffprobe_filename()).to_string_lossy()))
+    }
+
     /// Why this binary cannot be auto-downloaded on this host, or `None` if it can.
     pub fn auto_download_unsupported(self) -> Option<String> {
         (self == Binary::GalleryDl && host_gallerydl_asset().is_none()).then(|| {
@@ -488,19 +506,14 @@ pub async fn ensure_binaries(db: &Db, config: &Config) {
     std::fs::create_dir_all(config.bin_dir()).ok();
     for binary in Binary::ALL {
         let name = binary.name();
-        // Decide on the file, not on whether it runs: a binary that exists but
-        // fails `--version` is reported as missing, but re-fetching it on every
-        // boot would not make it run.
-        let path = binary.path(db, config);
-        let file_present = Path::new(&path).exists();
-        let has_override = binary.override_path(db).is_some();
+        let needs_download = binary.needs_download(db, config);
         if let Some(why) = binary.auto_download_unsupported() {
-            if !file_present && !has_override {
+            if needs_download {
                 tracing::info!("{why}");
             }
             continue;
         }
-        if !file_present && !has_override {
+        if needs_download {
             tracing::info!("downloading missing binary: {name}");
             match download_binary(db, config, binary).await {
                 Ok(_) => {
@@ -626,6 +639,29 @@ mod tests {
             version_of("sh", &["-c", "echo 1.2.3"]).await,
             Some("1.2.3".to_string())
         );
+    }
+
+    #[test]
+    fn ffmpeg_needs_download_until_both_ffmpeg_and_ffprobe_are_in_bin_dir() {
+        let vault = crate::test_support::TestVault::new();
+        let bin = vault.config.bin_dir();
+        std::fs::create_dir_all(&bin).unwrap();
+        assert!(Binary::Ffmpeg.needs_download(&vault.db, &vault.config));
+
+        // An install from before ffprobe was fetched on macOS, or one whose
+        // ffprobe step failed: ffmpeg alone is not enough.
+        std::fs::write(bin.join(ffmpeg_filename()), "").unwrap();
+        assert!(Binary::Ffmpeg.needs_download(&vault.db, &vault.config));
+
+        std::fs::write(bin.join(ffprobe_filename()), "").unwrap();
+        assert!(!Binary::Ffmpeg.needs_download(&vault.db, &vault.config));
+    }
+
+    #[test]
+    fn a_binary_with_a_path_override_never_needs_download() {
+        let vault = crate::test_support::TestVault::new();
+        vault.use_binary(Binary::Ffmpeg, "/nowhere/ffmpeg");
+        assert!(!Binary::Ffmpeg.needs_download(&vault.db, &vault.config));
     }
 
     #[test]
