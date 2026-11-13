@@ -1414,7 +1414,8 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
-    const STATUS_WIRE: [(QueueStatus, &str); 5] = [
+    /// The exact strings stored in `queue_items.status` and sent in API JSON.
+    const STATUS_STRINGS: [(QueueStatus, &str); 5] = [
         (QueueStatus::Pending, "pending"),
         (QueueStatus::Downloading, "downloading"),
         (QueueStatus::Completed, "completed"),
@@ -1425,7 +1426,7 @@ mod tests {
     #[test]
     fn queue_status_round_trips_through_json_and_sqlite() {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
-        for (status, wire) in STATUS_WIRE {
+        for (status, wire) in STATUS_STRINGS {
             assert_eq!(
                 serde_json::to_string(&status).unwrap(),
                 format!("\"{wire}\"")
