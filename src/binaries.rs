@@ -170,13 +170,17 @@ async fn version_of(path: &str, args: &[&str]) -> Option<String> {
     combined.lines().next().map(|s| s.trim().to_string())
 }
 
-pub async fn check_binary(db: &Db, config: &Config, name: &str) -> BinaryStatus {
-    let path = match name {
+fn binary_path(db: &Db, config: &Config, name: &str) -> String {
+    match name {
         "ytdlp" => get_ytdlp_path(db, config),
         "gallery-dl" => get_gallerydl_path(db, config),
         "ffmpeg" => get_ffmpeg_path(db, config),
         _ => String::new(),
-    };
+    }
+}
+
+pub async fn check_binary(db: &Db, config: &Config, name: &str) -> BinaryStatus {
+    let path = binary_path(db, config, name);
     let version = if Path::new(&path).exists() {
         match name {
             "ytdlp" => version_of(&path, &["--version"]).await,
@@ -378,7 +382,11 @@ async fn download_file(url: &str, dest: &Path) -> anyhow::Result<()> {
 pub async fn ensure_binaries(db: &Db, config: &Config) {
     std::fs::create_dir_all(config.bin_dir()).ok();
     for name in ["ytdlp", "gallery-dl", "ffmpeg"] {
-        let status = check_binary(db, config, name).await;
+        // Decide on the file, not on whether it runs: a binary that exists but
+        // fails `--version` is reported as missing, but re-fetching it on every
+        // boot would not make it run.
+        let path = binary_path(db, config, name);
+        let file_present = Path::new(&path).exists();
         let has_override = match name {
             "ytdlp" => db
                 .with_conn(|c| Ok(db::get_setting(c, "ytdlp_bin")))
@@ -401,14 +409,14 @@ pub async fn ensure_binaries(db: &Db, config: &Config) {
             _ => false,
         };
         if name == "gallery-dl" && host_gallerydl_asset().is_none() {
-            if !status.exists && !has_override {
+            if !file_present && !has_override {
                 tracing::info!(
                     "gallery-dl has no upstream build for this platform; install it on PATH or set its path in Settings"
                 );
             }
             continue;
         }
-        if !status.exists && !has_override {
+        if !file_present && !has_override {
             tracing::info!("downloading missing binary: {name}");
             match download_binary(db, config, name).await {
                 Ok(_) => {
