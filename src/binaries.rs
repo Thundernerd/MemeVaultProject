@@ -497,11 +497,12 @@ async fn download_file(url: &str, dest: &Path) -> anyhow::Result<()> {
     let resp = http_client()?.get(url).send().await?.error_for_status()?;
     let bytes = resp.bytes().await?;
     let partial = dest.with_extension("partial");
-    let written = match tokio::fs::write(&partial, &bytes).await {
-        Ok(()) => tokio::fs::rename(&partial, dest).await,
-        Err(e) => Err(e),
-    };
-    if let Err(e) = written {
+    let saved = async {
+        tokio::fs::write(&partial, &bytes).await?;
+        tokio::fs::rename(&partial, dest).await
+    }
+    .await;
+    if let Err(e) = saved {
         // Best effort: the original error is the one worth reporting.
         let _ = tokio::fs::remove_file(&partial).await;
         return Err(e.into());
@@ -770,6 +771,25 @@ mod tests {
         assert_eq!(ffmpeg_archive("freebsd", "x86_64"), linux64);
     }
 
+    #[test]
+    fn ffmpeg_archive_adds_evermeets_ffprobe_zip_only_on_macos() {
+        // evermeet.cx's ffmpeg zip holds only ffmpeg; ffprobe is its own zip.
+        let ffprobe = Some(FfmpegSource::EvermeetInfo(
+            "https://evermeet.cx/ffmpeg/info/ffprobe/release",
+        ));
+        assert_eq!(ffmpeg_archive("macos", "aarch64").ffprobe_source, ffprobe);
+        assert_eq!(ffmpeg_archive("macos", "x86_64").ffprobe_source, ffprobe);
+        // The other archives already ship ffprobe.
+        for (os, arch) in [
+            ("linux", "x86_64"),
+            ("linux", "aarch64"),
+            ("windows", "x86_64"),
+            ("freebsd", "x86_64"),
+        ] {
+            assert_eq!(ffmpeg_archive(os, arch).ffprobe_source, None, "{os}/{arch}");
+        }
+    }
+
     /// Serves `body` once over plain HTTP on a local port and returns its URL.
     async fn serve_once(body: &'static [u8]) -> String {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -800,7 +820,8 @@ mod tests {
     #[tokio::test]
     async fn download_file_removes_its_partial_file_when_the_rename_fails() {
         let dir = tempfile::tempdir().unwrap();
-        // A non-empty directory at `dest` makes the final rename fail on every platform.
+        // Renaming a file onto a directory fails on every platform; the occupant
+        // keeps it failing even where an empty directory could be replaced.
         let dest = dir.path().join("yt-dlp");
         std::fs::create_dir(&dest).unwrap();
         std::fs::write(dest.join("occupant"), b"x").unwrap();
@@ -811,7 +832,7 @@ mod tests {
         let err = result.expect_err("download_file succeeded onto a directory");
         assert!(
             err.downcast_ref::<std::io::Error>().is_some(),
-            "expected the rename's io error, got: {err:#}"
+            "expected an io error, got: {err:#}"
         );
         let leftovers: Vec<_> = std::fs::read_dir(dir.path())
             .unwrap()
@@ -819,24 +840,5 @@ mod tests {
             .filter(|name| name != "yt-dlp")
             .collect();
         assert!(leftovers.is_empty(), "left behind: {leftovers:?}");
-    }
-
-    #[test]
-    fn ffmpeg_archive_adds_evermeets_ffprobe_zip_only_on_macos() {
-        // evermeet.cx's ffmpeg zip holds only ffmpeg; ffprobe is its own zip.
-        let ffprobe = Some(FfmpegSource::EvermeetInfo(
-            "https://evermeet.cx/ffmpeg/info/ffprobe/release",
-        ));
-        assert_eq!(ffmpeg_archive("macos", "aarch64").ffprobe_source, ffprobe);
-        assert_eq!(ffmpeg_archive("macos", "x86_64").ffprobe_source, ffprobe);
-        // The other archives already ship ffprobe.
-        for (os, arch) in [
-            ("linux", "x86_64"),
-            ("linux", "aarch64"),
-            ("windows", "x86_64"),
-            ("freebsd", "x86_64"),
-        ] {
-            assert_eq!(ffmpeg_archive(os, arch).ffprobe_source, None, "{os}/{arch}");
-        }
     }
 }
