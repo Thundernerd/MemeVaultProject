@@ -15,6 +15,16 @@ jobs:
       - name: Test
         run: cargo test --locked
 
+  # Process-tree cleanup has a Windows-only implementation (Job Objects).
+  test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test
+        run: cargo test --locked
+
   fmt:
     runs-on: ubuntu-latest
     steps:
