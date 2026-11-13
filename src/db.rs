@@ -302,6 +302,60 @@ pub fn get_env_overridden_keys() -> Vec<String> {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+/// Lifecycle state of a queue item. Stored in `queue_items.status` and sent
+/// over the API as the lowercase variant name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum QueueStatus {
+    Pending,
+    Downloading,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+impl QueueStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Downloading => "downloading",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+impl std::str::FromStr for QueueStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(Self::Pending),
+            "downloading" => Ok(Self::Downloading),
+            "completed" => Ok(Self::Completed),
+            "failed" => Ok(Self::Failed),
+            "cancelled" => Ok(Self::Cancelled),
+            other => Err(format!("unknown queue status {other:?}")),
+        }
+    }
+}
+
+impl rusqlite::types::ToSql for QueueStatus {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        Ok(self.as_str().into())
+    }
+}
+
+impl rusqlite::types::FromSql for QueueStatus {
+    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        value
+            .as_str()?
+            .parse()
+            .map_err(|e: String| rusqlite::types::FromSqlError::Other(e.into()))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueueItem {
     pub id: String,
@@ -1338,6 +1392,36 @@ pub fn is_share_expired(expires_at: &Option<String>) -> bool {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    const STATUS_WIRE: [(QueueStatus, &str); 5] = [
+        (QueueStatus::Pending, "pending"),
+        (QueueStatus::Downloading, "downloading"),
+        (QueueStatus::Completed, "completed"),
+        (QueueStatus::Failed, "failed"),
+        (QueueStatus::Cancelled, "cancelled"),
+    ];
+
+    #[test]
+    fn queue_status_round_trips_through_json_and_sqlite() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        for (status, wire) in STATUS_WIRE {
+            assert_eq!(serde_json::to_string(&status).unwrap(), format!("\"{wire}\""));
+            assert_eq!(serde_json::from_str::<QueueStatus>(&format!("\"{wire}\"")).unwrap(), status);
+
+            let stored: String = conn.query_row("SELECT ?", [status], |r| r.get(0)).unwrap();
+            assert_eq!(stored, wire);
+            let read: QueueStatus = conn.query_row("SELECT ?", [wire], |r| r.get(0)).unwrap();
+            assert_eq!(read, status);
+        }
+    }
+
+    #[test]
+    fn queue_status_rejects_unknown_strings() {
+        assert!(serde_json::from_str::<QueueStatus>("\"done\"").is_err());
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let read: rusqlite::Result<QueueStatus> = conn.query_row("SELECT 'done'", [], |r| r.get(0));
+        assert!(read.is_err());
+    }
 
     #[test]
     fn schema_roundtrip_and_settings() {
