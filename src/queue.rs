@@ -44,23 +44,62 @@ impl QueueHandle {
         }
     }
 
-    /// End a download: drop its cancel signal, classify its result and write
-    /// that outcome to its queue item row.
+    /// End a download: drop its cancel signal, classify its result, write
+    /// that outcome to its queue item row and log it. This is the one place a
+    /// download's outcome is logged, for the worker and the bots alike.
     pub async fn finish(
         &self,
         db: &Db,
-        item_id: &str,
+        item: &db::QueueItem,
         result: Result<usize, &anyhow::Error>,
     ) -> DownloadOutcome {
-        self.unregister(item_id).await;
+        self.unregister(&item.id).await;
         let outcome = DownloadOutcome::from_result(result);
-        finish_queue_item(db, item_id, &outcome);
+        finish_queue_item(db, &item.id, &outcome);
+        log_outcome(item, &outcome, result.err());
         outcome
     }
 }
 
+/// Log how a download ended. A failure logs `error`'s full chain.
+fn log_outcome(item: &db::QueueItem, outcome: &DownloadOutcome, error: Option<&anyhow::Error>) {
+    let source = item.source.as_str();
+    match outcome {
+        DownloadOutcome::Completed(file_count) => tracing::info!(
+            source,
+            item_id = %item.id,
+            url = %item.url,
+            downloader = %item.downloader,
+            file_count,
+            "download completed"
+        ),
+        DownloadOutcome::Empty => tracing::warn!(
+            source,
+            item_id = %item.id,
+            url = %item.url,
+            downloader = %item.downloader,
+            "download returned no files"
+        ),
+        DownloadOutcome::Cancelled => tracing::warn!(
+            source,
+            item_id = %item.id,
+            url = %item.url,
+            downloader = %item.downloader,
+            "download cancelled"
+        ),
+        DownloadOutcome::Failed(message) => tracing::error!(
+            source,
+            item_id = %item.id,
+            url = %item.url,
+            downloader = %item.downloader,
+            error = %error.map_or_else(|| message.clone(), |e| format!("{e:#}")),
+            "download failed"
+        ),
+    }
+}
+
 /// How a finished download ended, decided once for the queue row, the
-/// worker's log and the bot replies.
+/// outcome log and the bot replies.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DownloadOutcome {
     /// The download produced this many files (at least one).
@@ -205,43 +244,7 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
         run_video(db, config, &item, progress_tx, cancel_rx).await
     };
 
-    let outcome = handle.finish(db, &item.id, result.as_ref().copied()).await;
-
-    match outcome {
-        DownloadOutcome::Completed(file_count) => {
-            tracing::info!(
-                item_id = %item.id,
-                url = %item.url,
-                downloader = %item.downloader,
-                file_count,
-                "queue item completed"
-            );
-        }
-        DownloadOutcome::Empty => {
-            tracing::warn!(
-                item_id = %item.id,
-                url = %item.url,
-                downloader = %item.downloader,
-                "queue item produced no files"
-            );
-        }
-        DownloadOutcome::Cancelled => {
-            tracing::warn!(
-                item_id = %item.id,
-                url = %item.url,
-                "queue item cancelled"
-            );
-        }
-        DownloadOutcome::Failed(msg) => {
-            tracing::error!(
-                item_id = %item.id,
-                url = %item.url,
-                downloader = %item.downloader,
-                error = %msg,
-                "queue item failed"
-            );
-        }
-    }
+    handle.finish(db, &item, result.as_ref().copied()).await;
 
     Ok(())
 }
@@ -676,7 +679,9 @@ mod tests {
         queue.register(&id, cancel_tx).await;
 
         let error = anyhow::anyhow!("yt-dlp exited with status 1");
-        let outcome = queue.finish(&vault.db, &id, Err(&error)).await;
+        let outcome = queue
+            .finish(&vault.db, &row(&vault, &id), Err(&error))
+            .await;
 
         assert_eq!(
             outcome,
