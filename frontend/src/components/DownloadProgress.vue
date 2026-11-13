@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { isActive, type QueueStatus } from '@/api'
 
 const props = defineProps<{
-  status: string
+  status: QueueStatus
   progress: number
 }>()
 
-const active = computed(() => props.status === 'pending' || props.status === 'downloading')
+const active = computed(() => isActive(props.status))
 const waiting = computed(() => props.status === 'pending')
 const indeterminate = computed(
   () => props.status === 'downloading' && props.progress < 1,
