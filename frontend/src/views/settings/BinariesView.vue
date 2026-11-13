@@ -4,6 +4,7 @@ import { api } from '@/api'
 import { useSettings } from './useSettings'
 import SaveRow from './SaveRow.vue'
 import ErrorTag from './ErrorTag.vue'
+import { messageOf } from './useActionError'
 
 interface BinaryStatus {
   name: string
@@ -28,9 +29,14 @@ async function download(name: string) {
   try {
     const res = await api<BinaryStatus>(`/api/binaries/${encodeURIComponent(name)}`, { method: 'POST' })
     if (!res.exists) notes.value[name] = 'Downloaded, but the binary cannot run on this system'
+  } catch (e) {
+    notes.value[name] = `Download failed: ${messageOf(e)}`
+  }
+  try {
     await loadBins()
   } catch (e) {
-    notes.value[name] = `Download failed: ${e instanceof Error ? e.message : String(e)}`
+    // Keep the download's own note if there is one; otherwise say the refresh failed.
+    notes.value[name] ||= `Reload failed: ${messageOf(e)}`
   } finally {
     busy.value = ''
   }

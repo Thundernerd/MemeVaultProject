@@ -26,6 +26,6 @@ export function useActionError(reload: () => Promise<void>) {
   return { error, attempt }
 }
 
-function messageOf(e: unknown) {
+export function messageOf(e: unknown) {
   return e instanceof Error ? e.message : String(e)
 }
