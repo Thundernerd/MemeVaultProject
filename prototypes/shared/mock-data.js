@@ -247,6 +247,8 @@
   // Statuses the backend writes: pending, downloading, completed, failed,
   // cancelled. Sources: web, api, discord, fluxer. Progress is 0-100;
   // DownloadProgress.vue shows "Starting…" below 1 and "Processing…" at 99+.
+  // The vault leaves out discord and fluxer rows (see activeQueue below), so
+  // every progress label also has a web or api row.
   // [url, downloader, status, progress, error, minutesAgo, done?, source, source_label]
   var QUEUE_DEFS = [
     ['https://www.youtube.com/watch?v=pending00001', 'ytdlp', 'pending', 0, null, 1, false, 'web', null],
@@ -255,6 +257,7 @@
     ['https://www.youtube.com/watch?v=halfway00004', 'ytdlp', 'downloading', 47.3, null, 4, false, 'web', null],
     ['https://www.tiktok.com/@someone/video/7300000000000000099', 'ytdlp', 'downloading', 99.2, null, 5, false, 'discord', 'Discord'],
     ['https://twitter.com/someone/status/1790000000000000011', 'gallery-dl', 'downloading', 12.5, null, 6, false, 'fluxer', 'Fluxer'],
+    ['https://www.reddit.com/r/memes/comments/processing7', 'ytdlp', 'downloading', 99.6, null, 7, false, 'api', 'Extra tool'],
     ['https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'ytdlp', 'completed', 100, null, 30, true, 'web', null],
     ['https://twitter.com/memes/status/1790000000000000001', 'gallery-dl', 'completed', 100, null, 200, true, 'discord', 'Discord'],
     ['https://www.reddit.com/gallery/catsalbum01', 'gallery-dl', 'completed', 100, null, 300, true, 'api', 'iOS Shortcut'],
@@ -402,9 +405,18 @@
     newApiKey: newApiKey,
     states: states,
     thumbnail: thumbnail,
-    /** The queue items the vault shows as in-progress cards. */
-    activeQueue: function () {
-      return queue.filter(function (q) { return q.status === 'pending' || q.status === 'downloading' })
+    /**
+     * The queue items the vault shows as in-progress cards: pending and
+     * downloading items, minus Discord and Fluxer downloads, which go to the
+     * chat platform and never land in the vault (VaultView.vue `pollQueue`).
+     * Pass a style's live copy of the queue to filter that instead of
+     * `MOCK.queue`.
+     */
+    activeQueue: function (items) {
+      return (items || queue).filter(function (q) {
+        return q.source !== 'discord' && q.source !== 'fluxer' &&
+          (q.status === 'pending' || q.status === 'downloading')
+      })
     },
     /**
      * The share URL MediaModal.vue shows: `${location.origin}/share/<token>`.

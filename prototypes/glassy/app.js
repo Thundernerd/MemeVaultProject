@@ -365,9 +365,8 @@
     }
 
     // MOCK.activeQueue() over the live copy, so Queue download, Retry and Cancel
-    // show up here. SCREENS.md asks for every active item; the real VaultView
-    // also hides Discord and Fluxer sources.
-    var active = db.queue.filter(function (q) { return q.status === 'pending' || q.status === 'downloading' })
+    // show up here.
+    var active = M.activeQueue(db.queue)
     if (active.length) {
       var dl = h('div', { class: 'grid' })
       active.forEach(function (q) {

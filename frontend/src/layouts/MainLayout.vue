@@ -4,7 +4,7 @@ import { onMounted, ref } from 'vue'
 import { provideTheme } from '@/theme'
 import ThemeSwitcher from '@/components/ThemeSwitcher.vue'
 
-const { theme } = provideTheme()
+provideTheme()
 const route = useRoute()
 const oidcEnabled = ref(false)
 const drawer = ref(false)
@@ -33,61 +33,56 @@ function isActive(href: string) {
 
 <template>
   <div class="h-full flex flex-col">
-    <header class="fixed top-0 left-0 right-0 h-16 bg-surface-1/70 backdrop-blur-md border-b border-border z-50">
-      <div class="max-w-5xl mx-auto h-full flex items-center gap-6 px-6">
-        <div class="flex items-center gap-2.5 shrink-0">
-          <img
-            src="/safe.png"
-            alt="MVP"
-            class="w-8 h-8 shrink-0"
-            :class="theme === 'dark' ? 'invert mix-blend-screen' : 'mix-blend-multiply'"
-          />
-          <div class="flex flex-col leading-none gap-0.5">
-            <span class="text-base font-bold text-text-primary tracking-tight">MVP</span>
-            <span v-if="version" class="text-[10px] text-text-muted">v{{ version }}</span>
-          </div>
+    <header class="header">
+      <div class="header-inner">
+        <div class="logo">
+          <span class="logo-mark">MVP</span>
+          <span v-if="version" class="logo-ver">v{{ version }}</span>
         </div>
-        <nav class="hidden md:flex items-center gap-1">
+        <nav class="nav" aria-label="Main">
           <RouterLink
             v-for="l in links"
             :key="l.href"
             :to="l.href"
-            class="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            :class="isActive(l.href)
-              ? 'bg-accent-subtle text-accent'
-              : 'text-text-secondary hover:bg-surface-2 hover:text-text-primary'"
+            class="nav-link"
+            :class="{ active: isActive(l.href) }"
+            :aria-current="isActive(l.href) ? 'page' : undefined"
           >
             {{ l.label }}
           </RouterLink>
         </nav>
-        <div class="ml-auto flex items-center gap-2">
+        <div class="header-tools">
           <ThemeSwitcher />
-          <a
-            v-if="oidcEnabled"
-            href="/api/auth/logout"
-            class="hidden md:block px-4 py-2 rounded-lg text-sm font-medium text-text-muted hover:bg-surface-2"
-          >Sign out</a>
-          <button class="md:hidden p-2 text-text-secondary" @click="drawer = !drawer" aria-label="Menu">☰</button>
+          <a v-if="oidcEnabled" href="/api/auth/logout" class="signout">Sign out</a>
+          <button
+            type="button"
+            class="btn btn-sm btn-icon menu-btn"
+            aria-label="Menu"
+            aria-controls="drawer"
+            :aria-expanded="drawer"
+            @click="drawer = !drawer"
+          >{{ drawer ? '✕' : '☰' }}</button>
         </div>
       </div>
     </header>
 
-    <div v-if="drawer" class="fixed inset-0 z-40 md:hidden">
-      <div class="absolute inset-0 bg-black/50" @click="drawer = false" />
-      <nav class="absolute top-16 left-0 right-0 bg-surface-1 border-b border-border p-4 flex flex-col gap-1">
+    <div v-if="drawer" id="drawer" class="drawer">
+      <div class="drawer-backdrop" @click="drawer = false" />
+      <nav class="drawer-panel" aria-label="Main">
         <RouterLink
           v-for="l in links"
           :key="l.href"
           :to="l.href"
-          class="px-4 py-3 rounded-lg text-sm font-medium"
-          :class="isActive(l.href) ? 'bg-accent-subtle text-accent' : 'text-text-secondary'"
+          class="nav-link"
+          :class="{ active: isActive(l.href) }"
+          :aria-current="isActive(l.href) ? 'page' : undefined"
           @click="drawer = false"
         >{{ l.label }}</RouterLink>
       </nav>
     </div>
 
-    <main class="flex-1 overflow-y-auto pt-16">
-      <div class="max-w-5xl mx-auto px-6 py-6">
+    <main class="flex-1 overflow-y-auto pt-[calc(var(--header-h)+var(--bw))]">
+      <div class="main-column">
         <RouterView />
       </div>
     </main>
