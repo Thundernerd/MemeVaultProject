@@ -23,7 +23,7 @@ cd frontend && npm install && npm run dev
 
 Open http://localhost:5173
 
-Type-check the frontend (CI runs this too; `npm run build` does not):
+Type-check the frontend without building (`npm run build` also runs this check, so CI and Docker builds fail on type errors):
 
 ```bash
 cd frontend && npm run typecheck
