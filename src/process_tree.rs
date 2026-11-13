@@ -24,7 +24,8 @@ use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 use tokio::sync::watch;
 
 /// The error a download or conversion stops with when its cancel signal
-/// fires. It displays as `cancelled`, the text stored on the queue row.
+/// fires. [`crate::queue::DownloadOutcome::from_result`] finds it anywhere in
+/// an error's chain, so it survives `.context(...)`.
 #[derive(Debug, thiserror::Error)]
 #[error("cancelled")]
 pub struct Cancelled;
