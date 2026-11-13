@@ -497,8 +497,16 @@ async fn download_file(url: &str, dest: &Path) -> anyhow::Result<()> {
     let resp = http_client()?.get(url).send().await?.error_for_status()?;
     let bytes = resp.bytes().await?;
     let partial = dest.with_extension("partial");
-    tokio::fs::write(&partial, &bytes).await?;
-    tokio::fs::rename(&partial, dest).await?;
+    let saved = async {
+        tokio::fs::write(&partial, &bytes).await?;
+        tokio::fs::rename(&partial, dest).await
+    }
+    .await;
+    if let Err(e) = saved {
+        // Best effort: the original error is the one worth reporting.
+        let _ = tokio::fs::remove_file(&partial).await;
+        return Err(e.into());
+    }
     Ok(())
 }
 
@@ -830,5 +838,57 @@ mod tests {
         ] {
             assert_eq!(ffmpeg_archive(os, arch).ffprobe_source, None, "{os}/{arch}");
         }
+    }
+
+    /// Serves `body` once over plain HTTP on a local port and returns its URL.
+    async fn serve_once(body: &'static [u8]) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buf = [0u8; 1024];
+            while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = stream.read(&mut buf).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buf[..n]);
+            }
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            stream.write_all(head.as_bytes()).await.unwrap();
+            stream.write_all(body).await.unwrap();
+            stream.shutdown().await.ok();
+        });
+        format!("http://{addr}/binary")
+    }
+
+    #[tokio::test]
+    async fn download_file_removes_its_partial_file_when_the_rename_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        // Renaming a file onto a directory fails on every platform; the occupant
+        // keeps it failing even where an empty directory could be replaced.
+        let dest = dir.path().join("yt-dlp");
+        std::fs::create_dir(&dest).unwrap();
+        std::fs::write(dest.join("occupant"), b"x").unwrap();
+        let url = serve_once(b"binary bytes").await;
+
+        let result = download_file(&url, &dest).await;
+
+        let err = result.expect_err("download_file succeeded onto a directory");
+        assert!(
+            err.downcast_ref::<std::io::Error>().is_some(),
+            "expected an io error, got: {err:#}"
+        );
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .filter(|name| name != "yt-dlp")
+            .collect();
+        assert!(leftovers.is_empty(), "left behind: {leftovers:?}");
     }
 }
