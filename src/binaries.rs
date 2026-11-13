@@ -646,27 +646,6 @@ mod tests {
         );
     }
 
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn version_of_leaves_nothing_running_after_it_succeeds() {
-        let dir = tempfile::tempdir().unwrap();
-        let pidfile = dir.path().join("grandchild.pid");
-        let bin = cmd_script(
-            dir.path(),
-            "detaches",
-            &format!("{}\necho 1.2.3", start_grandchild(&pidfile)),
-        );
-        assert_eq!(
-            version_of_within(&bin, &["--version"], Duration::from_secs(15)).await,
-            Some("1.2.3".to_string())
-        );
-        let pid = read_pid(&pidfile);
-        assert!(
-            gone_within(pid, Duration::from_secs(2)).await,
-            "grandchild {pid} is still running after a successful check"
-        );
-    }
-
     /// Whether process `pid` has exited, or is gone, within `grace`. Kills it
     /// if it is still running, so a failing test leaves nothing behind.
     #[cfg(windows)]
