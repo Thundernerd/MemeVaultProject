@@ -607,13 +607,13 @@ mod tests {
         );
     }
 
+    // The grandchild inherits the check's stdout and stderr and keeps them
+    // open, so they reach EOF only once it is killed.
     #[cfg(unix)]
     #[tokio::test]
     async fn version_of_returns_the_version_while_a_grandchild_holds_its_pipes() {
         let dir = tempfile::tempdir().unwrap();
         let pidfile = dir.path().join("grandchild.pid");
-        // The grandchild inherits the check's stdout and stderr and keeps
-        // them open, so they reach EOF only once it is killed.
         let bin = script(
             dir.path(),
             "holds_pipes",
