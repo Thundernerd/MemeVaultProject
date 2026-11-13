@@ -24,8 +24,8 @@ use crate::state::AppState;
 use axum::extract::Request;
 use axum::http::{header, StatusCode};
 use axum::middleware::{self, Next};
-use axum::routing::any;
 use axum::response::{IntoResponse, Redirect, Response};
+use axum::routing::any;
 use axum::Router;
 use std::path::Path;
 use std::sync::Arc;
@@ -41,8 +41,7 @@ async fn main() -> anyhow::Result<()> {
 
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new(&config.log_level)),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.log_level)),
         )
         .init();
 
@@ -93,10 +92,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let app = app_router(routes::api_router(oidc.clone()), &config.static_dir)
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            oidc_gate,
-        ))
+        .layer(middleware::from_fn_with_state(state.clone(), oidc_gate))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
@@ -158,7 +154,12 @@ async fn oidc_gate(
         )
             .into_response();
     }
-    let callback = urlencoding::encode(req.uri().path_and_query().map(|p| p.as_str()).unwrap_or("/"));
+    let callback = urlencoding::encode(
+        req.uri()
+            .path_and_query()
+            .map(|p| p.as_str())
+            .unwrap_or("/"),
+    );
     Redirect::temporary(&format!("/auth/login?callbackUrl={callback}")).into_response()
 }
 
@@ -210,7 +211,11 @@ mod tests {
         assert_ne!(body, INDEX);
 
         for path in ["/api", "/api/"] {
-            assert_eq!(get(app.clone(), path).await.0, StatusCode::NOT_FOUND, "{path}");
+            assert_eq!(
+                get(app.clone(), path).await.0,
+                StatusCode::NOT_FOUND,
+                "{path}"
+            );
         }
 
         assert_eq!(get(app, "/api/ping").await, (StatusCode::OK, "pong".into()));

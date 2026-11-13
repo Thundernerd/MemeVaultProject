@@ -15,6 +15,16 @@ jobs:
       - name: Test
         run: cargo test --locked
 
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --check
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

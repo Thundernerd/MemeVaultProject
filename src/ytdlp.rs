@@ -251,8 +251,7 @@ static FORMAT_COUNT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"Downloading (\d+) format\(s\)").unwrap());
 static DESTINATION_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\[download\]\s+Destination:\s+(.+)").unwrap());
-static PERCENT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\[download\]\s+([\d.]+)%").unwrap());
+static PERCENT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\[download\]\s+([\d.]+)%").unwrap());
 static FRAGMENT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)frag(?:ment)?s?\s+(\d+)\s*/\s*(\d+)").unwrap());
 static POSTPROCESS_RE: Lazy<Regex> = Lazy::new(|| {
@@ -399,7 +398,8 @@ fn is_sidecar_filename(path: &str) -> bool {
         .unwrap_or("");
     matches!(
         ext,
-        "jpg" | "jpeg"
+        "jpg"
+            | "jpeg"
             | "png"
             | "webp"
             | "gif"
@@ -453,10 +453,7 @@ fn finalize_job_dir(job_dir: &Path) -> anyhow::Result<YtdlpResult> {
     let video = video
         .or(audio)
         .ok_or_else(|| anyhow::anyhow!("no media file found in job dir"))?;
-    let ext = video
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("mp4");
+    let ext = video.extension().and_then(|e| e.to_str()).unwrap_or("mp4");
     let final_video = job_dir.join(format!("video.{ext}"));
     if video != final_video {
         std::fs::rename(&video, &final_video)?;
@@ -619,31 +616,27 @@ mod tests {
     #[test]
     fn progress_falls_back_to_fragments_when_size_unknown() {
         let mut p = DownloadProgress::new();
-        let pct = p
-            .on_line("[download] Downloading fragment 30/120")
-            .unwrap();
+        let pct = p.on_line("[download] Downloading fragment 30/120").unwrap();
         assert!((pct - 20.75).abs() < 0.01); // 25% of 83
     }
 
     #[test]
     fn progress_skips_thumbnail_and_splits_audio_video() {
         let mut p = DownloadProgress::new();
-        assert!(p.on_line("[info] Downloading 2 format(s): 303+251").is_none());
         assert!(p
-            .on_line("[download] Destination: clip.webp")
+            .on_line("[info] Downloading 2 format(s): 303+251")
             .is_none());
+        assert!(p.on_line("[download] Destination: clip.webp").is_none());
         assert!(p.on_line("[mv] 100 100 NA NA NA").is_none());
-        assert!(p
-            .on_line("[download] Destination: clip.f303.mp4")
-            .is_none());
+        assert!(p.on_line("[download] Destination: clip.f303.mp4").is_none());
         let video = p.on_line("[mv] 100 100 NA NA NA").unwrap();
         assert!((video - 41.5).abs() < 0.01); // first of two parts at 100% → 83/2
-        assert!(p
-            .on_line("[download] Destination: clip.f251.m4a")
-            .is_none());
+        assert!(p.on_line("[download] Destination: clip.f251.m4a").is_none());
         let audio_half = p.on_line("[mv] 50 100 NA NA NA").unwrap();
         assert!((audio_half - 62.25).abs() < 0.01); // 41.5 + 50% of second span
-        let merge = p.on_line("[Merger] Merging formats into \"clip.mp4\"").unwrap();
+        let merge = p
+            .on_line("[Merger] Merging formats into \"clip.mp4\"")
+            .unwrap();
         assert_eq!(merge, 85.0);
     }
 

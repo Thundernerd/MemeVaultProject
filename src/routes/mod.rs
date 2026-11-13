@@ -54,10 +54,7 @@ pub fn api_router(oidc: Option<Arc<OidcState>>) -> Router<AppState> {
             "/api/media/{id}/share",
             get(media::list_shares).post(media::create_share),
         )
-        .route(
-            "/api/media/{id}/share/{token}",
-            delete(media::delete_share),
-        )
+        .route("/api/media/{id}/share/{token}", delete(media::delete_share))
         // Albums
         .route("/api/albums", get(albums::list))
         .route("/api/albums/{id}", delete(albums::delete))
@@ -78,7 +75,9 @@ pub fn api_router(oidc: Option<Arc<OidcState>>) -> Router<AppState> {
         .route("/api/binaries/{name}", post(binaries::download))
         .route(
             "/api/cookies/{tool}",
-            get(cookies::get).post(cookies::upload).delete(cookies::delete),
+            get(cookies::get)
+                .post(cookies::upload)
+                .delete(cookies::delete),
         )
         // Public share API
         .route("/api/share/{token}", get(share::meta))
