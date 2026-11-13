@@ -1,24 +1,47 @@
-//! A child process together with everything it starts.
+//! Running a child process together with everything it starts.
 //!
 //! Killing a child kills only that process. A wrapper script's grandchildren,
 //! or the Python a PyInstaller onefile bootloader runs, keep running.
-//! [`ProcessTree`] starts the child in a group of its own (a process group on
-//! Unix, a Job Object on Windows) so the whole tree can be killed at once.
+//! [`output_within`] starts the child in a group of its own (a process group
+//! on Unix, a Job Object on Windows) so the whole tree can be killed at once.
+//!
+//! A descendant that leaves the group on purpose (`setsid` or `setpgid` on
+//! Unix, breakaway on Windows) is out of reach.
 
+use std::process::{Output, Stdio};
+use std::time::Duration;
+use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 
-/// Everything a spawned child started. Dropping it kills the whole tree,
-/// unless [`ProcessTree::finished`] was called first.
-pub struct ProcessTree {
+/// Runs `cmd` and collects its output, like [`Command::output`], but gives
+/// up after `timeout`. On timeout, or when the returned future is dropped,
+/// the child and everything it started are killed. `None` if `cmd` cannot be
+/// spawned, its output cannot be read, or it does not finish in time.
+pub async fn output_within(cmd: &mut Command, timeout: Duration) -> Option<Output> {
+    cmd.stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        // `ProcessTree` kills the group; this kills the child itself if the
+        // group could not be set up.
+        .kill_on_drop(true);
+    let mut tree = ProcessTree::spawn(cmd).ok()?;
+    tokio::time::timeout(timeout, tree.output()).await.ok()?
+}
+
+/// A child and everything it starts. Dropping it before the child has been
+/// waited on kills them all.
+struct ProcessTree {
+    child: Child,
+    /// The child's process group, until the child has been waited on: after
+    /// that, its id may belong to an unrelated process.
     #[cfg(unix)]
     pgid: Option<libc::pid_t>,
+    /// `None` if the job could not be set up; then only the child is killed.
     #[cfg(windows)]
-    job: Option<windows::Job>,
+    job: Option<job::Job>,
 }
 
 impl ProcessTree {
-    /// Spawns `cmd` in a group of its own.
-    pub fn spawn(cmd: &mut Command) -> std::io::Result<(Child, ProcessTree)> {
+    fn spawn(cmd: &mut Command) -> std::io::Result<ProcessTree> {
         #[cfg(unix)]
         {
             // The child leads a new process group whose id is its pid, and
@@ -26,26 +49,41 @@ impl ProcessTree {
             cmd.process_group(0);
             let child = cmd.spawn()?;
             let pgid = child.id().map(|pid| pid as libc::pid_t);
-            Ok((child, ProcessTree { pgid }))
+            Ok(ProcessTree { child, pgid })
         }
         #[cfg(windows)]
         {
             let child = cmd.spawn()?;
-            // Anything the child starts after this joins the job. If the job
-            // cannot be set up, only the child itself can be killed.
-            let job = child.raw_handle().and_then(windows::Job::kill_on_close);
-            Ok((child, ProcessTree { job }))
-        }
-        #[cfg(not(any(unix, windows)))]
-        {
-            Ok((cmd.spawn()?, ProcessTree {}))
+            // Anything the child starts after this joins the job.
+            let job = child.raw_handle().and_then(job::Job::kill_on_close);
+            Ok(ProcessTree { child, job })
         }
     }
 
-    /// The child has exited and been waited on. Leaves anything it left
-    /// behind running: on Unix its process group id may already belong to
-    /// another process.
-    pub fn finished(mut self) {
+    /// Reads the child's stdout and stderr to the end, then waits for it.
+    async fn output(&mut self) -> Option<Output> {
+        let mut stdout_pipe = self.child.stdout.take()?;
+        let mut stderr_pipe = self.child.stderr.take()?;
+        let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+        let (stdout_read, stderr_read) = tokio::join!(
+            stdout_pipe.read_to_end(&mut stdout),
+            stderr_pipe.read_to_end(&mut stderr)
+        );
+        stdout_read.ok()?;
+        stderr_read.ok()?;
+        // Wait only once both pipes are closed. Until `wait` returns the child
+        // is unreaped, so dropping `self` can still kill the group by its id.
+        let status = self.child.wait().await.ok()?;
+        self.leave_running();
+        Some(Output {
+            status,
+            stdout,
+            stderr,
+        })
+    }
+
+    /// Stops dropping `self` from killing what the child left behind.
+    fn leave_running(&mut self) {
         #[cfg(unix)]
         {
             self.pgid = None;
@@ -58,11 +96,13 @@ impl ProcessTree {
 }
 
 impl Drop for ProcessTree {
+    // Runs before `child` is dropped, so the group dies while its leader is
+    // still unreaped.
     fn drop(&mut self) {
         #[cfg(unix)]
         if let Some(pgid) = self.pgid.take() {
-            // SAFETY: plain syscall. The group leader has not been waited on
-            // yet, so the group id cannot have been reused.
+            // SAFETY: no memory is involved. The leader has not been waited
+            // on, so `pgid` still names this child's group and no other.
             unsafe { libc::killpg(pgid, libc::SIGKILL) };
         }
         #[cfg(windows)]
@@ -74,7 +114,7 @@ impl Drop for ProcessTree {
 }
 
 #[cfg(windows)]
-mod windows {
+mod job {
     use std::os::windows::io::RawHandle;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::System::JobObjects::{
@@ -86,9 +126,8 @@ mod windows {
     /// A Job Object that kills its processes when it is closed.
     pub struct Job(HANDLE);
 
-    // SAFETY: a job handle may be used and closed from any thread.
+    // SAFETY: a job handle is a kernel handle, usable and closable from any thread.
     unsafe impl Send for Job {}
-    unsafe impl Sync for Job {}
 
     impl Job {
         /// Puts `process` in a new job that kills it, and everything it
