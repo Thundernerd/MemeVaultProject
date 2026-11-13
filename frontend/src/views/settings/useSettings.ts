@@ -1,5 +1,5 @@
 import { onMounted, reactive, ref } from 'vue'
-import { api } from '@/api'
+import { api, errorMessage } from '@/api'
 
 type Settings = Record<string, string> & { _overridden_by_env?: string[] }
 
@@ -33,7 +33,7 @@ export function useSettings() {
       }
       saved.value = true
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Save failed'
+      error.value = errorMessage(e, 'Save failed')
     }
   }
 

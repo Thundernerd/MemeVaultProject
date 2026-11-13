@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { errorMessage } from '@/api'
 
 /**
  * The error tag for a settings tab whose buttons act straight away (upload, delete, create, revoke).
@@ -26,6 +27,5 @@ export function useActionError(reload: () => Promise<void>) {
   return { error, attempt }
 }
 
-export function messageOf(e: unknown) {
-  return e instanceof Error ? e.message : String(e)
-}
+/** Falls back to the thrown value itself, so a non-`Error` rejection still says something. */
+export const messageOf = (e: unknown) => errorMessage(e, String(e))

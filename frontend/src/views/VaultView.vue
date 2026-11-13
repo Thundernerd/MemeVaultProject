@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { api, isActive, isChatSource, type Album, type MediaItem, type QueueItem, type TagWithCount } from '@/api'
+import { api, errorMessage, isActive, isChatSource, type Album, type MediaItem, type QueueItem, type TagWithCount } from '@/api'
 import { MD_UP } from '@/breakpoints'
 import MediaCard from '@/components/MediaCard.vue'
 import AlbumCard from '@/components/AlbumCard.vue'
@@ -41,7 +41,7 @@ async function load() {
     tags.value = t
     error.value = ''
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load'
+    error.value = errorMessage(e, 'Failed to load')
   } finally {
     loading.value = false
   }
