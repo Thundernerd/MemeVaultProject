@@ -538,7 +538,7 @@ async fn handle_message(
 
     let outcome = DownloadOutcome::from_result(result.as_ref().map(Vec::len));
     finish_queue_item(db, &item_id, &outcome);
-    let paths = result.unwrap_or_default();
+    let paths = result.as_deref().unwrap_or_default();
 
     let status_text = match outcome {
         DownloadOutcome::Completed(_) => {
@@ -554,7 +554,7 @@ async fn handle_message(
                 endpoints,
                 channel_id,
                 placeholder.as_deref(),
-                &paths,
+                paths,
                 caption.as_deref(),
                 guild_id.as_deref(),
                 &author,
@@ -568,7 +568,10 @@ async fn handle_message(
         }
         DownloadOutcome::Cancelled => "Download cancelled".to_string(),
         DownloadOutcome::Failed(msg) => {
-            tracing::error!(url = %url, error = %msg, "fluxer download failed");
+            // Log the full error chain; the reply keeps the top-level message.
+            if let Err(e) = &result {
+                tracing::error!(url = %url, error = %format!("{e:#}"), "fluxer download failed");
+            }
             format!("Download failed: {msg}")
         }
     };
