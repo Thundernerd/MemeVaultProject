@@ -108,19 +108,22 @@ impl ProcessTree {
         self.child.stderr.take()
     }
 
-    /// Reads the child's stdout and stderr to the end, waits for the child,
-    /// then kills anything it left running.
+    /// Reads the child's stdout and stderr to the end while waiting for the
+    /// child. Once the child exits, anything it left running is killed, so a
+    /// descendant that still holds the pipes cannot keep them from reaching
+    /// the end.
     async fn output(&mut self) -> Option<Output> {
         let mut stdout_pipe = self.take_stdout()?;
         let mut stderr_pipe = self.take_stderr()?;
         let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
-        let (stdout_read, stderr_read) = tokio::join!(
+        let (stdout_read, stderr_read, status) = tokio::join!(
             stdout_pipe.read_to_end(&mut stdout),
-            stderr_pipe.read_to_end(&mut stderr)
+            stderr_pipe.read_to_end(&mut stderr),
+            self.wait()
         );
         stdout_read.ok()?;
         stderr_read.ok()?;
-        let status = self.wait().await.ok()?;
+        let status = status.ok()?;
         Some(Output {
             status,
             stdout,
