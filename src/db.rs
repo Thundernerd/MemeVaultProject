@@ -340,15 +340,27 @@ impl QueueStatus {
 }
 
 impl std::str::FromStr for QueueStatus {
-    type Err = String;
+    type Err = UnknownQueueStatus;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Self::ALL
             .into_iter()
             .find(|status| status.as_str() == s)
-            .ok_or_else(|| format!("unknown queue status {s:?}"))
+            .ok_or_else(|| UnknownQueueStatus(s.to_string()))
     }
 }
+
+/// A string that is not one of [`QueueStatus`]'s values.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownQueueStatus(pub String);
+
+impl std::fmt::Display for UnknownQueueStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown queue status {:?}", self.0)
+    }
+}
+
+impl std::error::Error for UnknownQueueStatus {}
 
 impl rusqlite::types::ToSql for QueueStatus {
     fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
@@ -360,8 +372,8 @@ impl rusqlite::types::FromSql for QueueStatus {
     fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
         value
             .as_str()?
-            .parse()
-            .map_err(|e: String| rusqlite::types::FromSqlError::Other(e.into()))
+            .parse::<Self>()
+            .map_err(|e| rusqlite::types::FromSqlError::Other(Box::new(e)))
     }
 }
 
