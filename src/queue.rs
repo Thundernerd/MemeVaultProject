@@ -44,21 +44,45 @@ impl QueueHandle {
     }
 }
 
-/// Write the end of a download to its queue item row. `outcome` is the
-/// number of files the download produced, or the error it stopped with.
-pub fn finish_queue_item(db: &Db, item_id: &str, outcome: Result<usize, &anyhow::Error>) {
-    let error_text;
-    let (status, progress, error) = match outcome {
-        Ok(0) => (QueueStatus::Failed, None, Some("No files downloaded")),
-        Ok(_) => (QueueStatus::Completed, Some(100.0), None),
-        Err(e) => {
-            error_text = e.to_string();
-            if error_text.contains("cancelled") {
-                (QueueStatus::Cancelled, None, Some("cancelled"))
-            } else {
-                (QueueStatus::Failed, None, Some(error_text.as_str()))
+/// How a finished download ended, decided once for the queue row, the
+/// worker's log and the bot replies.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DownloadOutcome {
+    /// The download produced this many files (at least one).
+    Completed(usize),
+    /// The download succeeded but produced no files.
+    Empty,
+    /// The download was stopped by a cancel signal.
+    Cancelled,
+    /// The download failed with this error message.
+    Failed(String),
+}
+
+impl DownloadOutcome {
+    /// Classify a download's result: its file count, or the error it stopped with.
+    pub fn from_result(result: Result<usize, &anyhow::Error>) -> Self {
+        match result {
+            Ok(0) => Self::Empty,
+            Ok(file_count) => Self::Completed(file_count),
+            Err(e) => {
+                let message = e.to_string();
+                if message.contains("cancelled") {
+                    Self::Cancelled
+                } else {
+                    Self::Failed(message)
+                }
             }
         }
+    }
+}
+
+/// Write the end of a download to its queue item row.
+pub fn finish_queue_item(db: &Db, item_id: &str, outcome: &DownloadOutcome) {
+    let (status, progress, error) = match outcome {
+        DownloadOutcome::Completed(_) => (QueueStatus::Completed, Some(100.0), None),
+        DownloadOutcome::Empty => (QueueStatus::Failed, None, Some("No files downloaded")),
+        DownloadOutcome::Cancelled => (QueueStatus::Cancelled, None, Some("cancelled")),
+        DownloadOutcome::Failed(message) => (QueueStatus::Failed, None, Some(message.as_str())),
     };
     let completed_at = chrono::Utc::now().to_rfc3339();
     let _ = db.with_conn(|c| {
@@ -163,18 +187,11 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
 
     handle.unregister(&item.id).await;
 
-    finish_queue_item(db, &item.id, result.as_ref().copied());
+    let outcome = DownloadOutcome::from_result(result.as_ref().copied());
+    finish_queue_item(db, &item.id, &outcome);
 
-    match result {
-        Ok(0) => {
-            tracing::warn!(
-                item_id = %item.id,
-                url = %item.url,
-                downloader = %item.downloader,
-                "queue item produced no files"
-            );
-        }
-        Ok(file_count) => {
+    match outcome {
+        DownloadOutcome::Completed(file_count) => {
             tracing::info!(
                 item_id = %item.id,
                 url = %item.url,
@@ -183,23 +200,29 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
                 "queue item completed"
             );
         }
-        Err(e) => {
-            let msg = e.to_string();
-            if msg.contains("cancelled") {
-                tracing::warn!(
-                    item_id = %item.id,
-                    url = %item.url,
-                    "queue item cancelled"
-                );
-            } else {
-                tracing::error!(
-                    item_id = %item.id,
-                    url = %item.url,
-                    downloader = %item.downloader,
-                    error = %msg,
-                    "queue item failed"
-                );
-            }
+        DownloadOutcome::Empty => {
+            tracing::warn!(
+                item_id = %item.id,
+                url = %item.url,
+                downloader = %item.downloader,
+                "queue item produced no files"
+            );
+        }
+        DownloadOutcome::Cancelled => {
+            tracing::warn!(
+                item_id = %item.id,
+                url = %item.url,
+                "queue item cancelled"
+            );
+        }
+        DownloadOutcome::Failed(msg) => {
+            tracing::error!(
+                item_id = %item.id,
+                url = %item.url,
+                downloader = %item.downloader,
+                error = %msg,
+                "queue item failed"
+            );
         }
     }
 
@@ -453,6 +476,37 @@ mod tests {
     use super::*;
     use crate::test_support::TestVault;
 
+    #[test]
+    fn a_download_with_files_is_completed() {
+        assert_eq!(
+            DownloadOutcome::from_result(Ok(3)),
+            DownloadOutcome::Completed(3)
+        );
+    }
+
+    #[test]
+    fn a_download_with_no_files_is_empty() {
+        assert_eq!(DownloadOutcome::from_result(Ok(0)), DownloadOutcome::Empty);
+    }
+
+    #[test]
+    fn a_download_stopped_by_the_cancel_signal_is_cancelled() {
+        let error = anyhow::anyhow!("cancelled");
+        assert_eq!(
+            DownloadOutcome::from_result(Err(&error)),
+            DownloadOutcome::Cancelled
+        );
+    }
+
+    #[test]
+    fn any_other_error_is_a_failure_with_its_message() {
+        let error = anyhow::anyhow!("yt-dlp exited with status 1");
+        assert_eq!(
+            DownloadOutcome::from_result(Err(&error)),
+            DownloadOutcome::Failed("yt-dlp exited with status 1".to_string())
+        );
+    }
+
     /// A queue item mid-download, at 42 % progress.
     fn downloading_item(vault: &TestVault) -> String {
         vault
@@ -492,7 +546,7 @@ mod tests {
         let vault = TestVault::new();
         let id = downloading_item(&vault);
 
-        finish_queue_item(&vault.db, &id, Ok(2));
+        finish_queue_item(&vault.db, &id, &DownloadOutcome::Completed(2));
 
         let item = row(&vault, &id);
         assert_eq!(item.status, QueueStatus::Completed);
@@ -506,7 +560,7 @@ mod tests {
         let vault = TestVault::new();
         let id = downloading_item(&vault);
 
-        finish_queue_item(&vault.db, &id, Ok(0));
+        finish_queue_item(&vault.db, &id, &DownloadOutcome::Empty);
 
         let item = row(&vault, &id);
         assert_eq!(item.status, QueueStatus::Failed);
@@ -520,8 +574,7 @@ mod tests {
         let vault = TestVault::new();
         let id = downloading_item(&vault);
 
-        let error = anyhow::anyhow!("cancelled");
-        finish_queue_item(&vault.db, &id, Err(&error));
+        finish_queue_item(&vault.db, &id, &DownloadOutcome::Cancelled);
 
         let item = row(&vault, &id);
         assert_eq!(item.status, QueueStatus::Cancelled);
@@ -535,8 +588,11 @@ mod tests {
         let vault = TestVault::new();
         let id = downloading_item(&vault);
 
-        let error = anyhow::anyhow!("yt-dlp exited with status 1");
-        finish_queue_item(&vault.db, &id, Err(&error));
+        finish_queue_item(
+            &vault.db,
+            &id,
+            &DownloadOutcome::Failed("yt-dlp exited with status 1".to_string()),
+        );
 
         let item = row(&vault, &id);
         assert_eq!(item.status, QueueStatus::Failed);
