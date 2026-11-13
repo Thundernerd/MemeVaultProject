@@ -4,7 +4,7 @@ use crate::binaries;
 use crate::config::Config;
 use crate::cookies;
 use crate::db::{self, Db};
-use crate::process_tree::ProcessTree;
+use crate::process_tree::{Cancelled, ProcessTree};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -130,7 +130,7 @@ pub async fn run_gallery_dl(
     let status = status?;
     if !status.success() {
         if *cancel.borrow() {
-            anyhow::bail!("cancelled");
+            return Err(Cancelled.into());
         }
         let stderr_tail = truncate_stderr_tail(&stderr_tail);
         tracing::error!(
@@ -244,6 +244,7 @@ mod tests {
     mod cancellation {
         use crate::binaries::Binary;
         use crate::gallerydl::run_gallery_dl;
+        use crate::process_tree::Cancelled;
         use crate::test_support::{gone_within, wait_for_pid, TestVault};
         use std::time::Duration;
         use tokio::sync::watch;
@@ -267,7 +268,10 @@ mod tests {
                 .await
                 .expect("download still running 5 s after cancel")
                 .unwrap();
-            assert_eq!(result.unwrap_err().to_string(), "cancelled");
+            assert!(
+                result.unwrap_err().is::<Cancelled>(),
+                "a cancelled download should stop with a Cancelled error"
+            );
             assert!(
                 gone_within(pid, Duration::from_secs(2)).await,
                 "grandchild {pid} is still running after cancel"
