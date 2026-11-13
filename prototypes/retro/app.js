@@ -272,7 +272,7 @@
           h('a', { class: 'btn', href: '#/vault' }, 'Retry')))
         return
       }
-      var active = activeQueue()
+      var active = M.activeQueue(S.queue)
       if (state !== 'empty' && active.length) {
         downloads.appendChild(h('div', { class: 'grid' }, active.map(function (q) {
           return h('div', { class: 'card pending' }, [
@@ -298,7 +298,7 @@
     return win('C:\\MemeVault\\Vault', { icon: 'vault', menu: ['File', 'Edit', 'View', 'Favorites', 'Help'],
       status: [
         h('span', null, state ? 'Demo state: ' + state : S.media.length + ' items, ' + S.albums.length + ' albums'),
-        h('span', null, activeQueue().length + ' downloading'),
+        h('span', null, M.activeQueue(S.queue).length + ' downloading'),
       ],
     }, [
       h('div', { class: 'page-head' }, [
@@ -349,7 +349,7 @@
     var counts = h('span')
     function repaint() {
       clear(body)
-      counts.textContent = S.queue.length + ' items, ' + activeQueue().length + ' active'
+      counts.textContent = S.queue.length + ' items, ' + allActiveQueue().length + ' active'
       if (state === 'loading') { body.appendChild(statePanel('loading', M.states.queue.loading)); return }
       if (state === 'error') {
         body.appendChild(statePanel('error', M.states.queue.error, h('a', { class: 'btn', href: '#/queue' }, 'Retry')))
@@ -1099,7 +1099,7 @@
       bar.appendChild(h('a', { class: 'btn task', href: current.href, 'aria-pressed': 'true' }, [icon(current.icon), h('span', null, current.label)]))
     }
     bar.appendChild(h('div', { class: 'tray' }, [
-      h('span', { title: 'Active downloads' }, '⇩ ' + activeQueue().length),
+      h('span', { title: 'Active downloads' }, '⇩ ' + allActiveQueue().length),
       h('span', { id: 'clock' }),
     ]))
     tick()
@@ -1114,7 +1114,10 @@
   }
   setInterval(tick, 15000)
 
-  function activeQueue() {
+  // Every active row, chat sources included, for the Queue window and the
+  // tray. The vault's progress cards use M.activeQueue(S.queue), which leaves
+  // out Discord and Fluxer downloads.
+  function allActiveQueue() {
     return S.queue.filter(function (q) { return q.status === 'pending' || q.status === 'downloading' })
   }
 
