@@ -8,7 +8,9 @@
 //! it directly so cancelling them kills everything they started.
 //! On Windows the child starts suspended and joins its job before it runs,
 //! so nothing it starts, however early, escapes the job. If the job cannot
-//! be set up, `taskkill /T` kills the tree instead.
+//! be set up, `taskkill /T` kills the tree instead, and once the child
+//! exits normally its descendants are found and killed through their
+//! parent pids.
 //!
 //! A descendant that leaves the group on purpose (`setsid` or `setpgid` on
 //! Unix, breakaway on Windows) is out of reach.
@@ -52,14 +54,17 @@ pub struct ProcessTree {
 #[cfg(windows)]
 enum Group {
     /// Closing the job kills every process in it.
-    Job(job::Job),
+    Job(win32::Job),
     /// The job could not be set up (a warning is logged at spawn).
     /// `taskkill /T` kills the child and its descendants, found through
     /// their parent pids, but only while the child is unreaped and so its
     /// pid still names it. A descendant whose parent has already exited
     /// is out of reach, and an unrelated orphan whose dead parent had the
     /// child's pid is killed too. Killing blocks the calling thread while
-    /// taskkill runs.
+    /// taskkill runs. When the child exits by itself, [`ProcessTree::wait`]
+    /// kills what it left running instead (see
+    /// [`win32::wait_then_kill_descendants`]), as taskkill cannot walk the
+    /// tree of an exited process.
     Taskkill,
 }
 
@@ -81,7 +86,7 @@ impl ProcessTree {
         }
         #[cfg(windows)]
         {
-            ProcessTree::spawn_in_job(cmd, job::Job::kill_on_close)
+            ProcessTree::spawn_in_job(cmd, win32::Job::kill_on_close)
         }
     }
 
@@ -91,11 +96,11 @@ impl ProcessTree {
     #[cfg(windows)]
     fn spawn_in_job(
         cmd: &mut Command,
-        new_job: impl FnOnce(RawHandle) -> std::io::Result<job::Job>,
+        new_job: impl FnOnce(RawHandle) -> std::io::Result<win32::Job>,
     ) -> std::io::Result<ProcessTree> {
         // The child starts suspended and is put in the job before any of
         // its code runs, so everything it starts joins the job too.
-        cmd.creation_flags(job::CREATE_SUSPENDED);
+        cmd.creation_flags(win32::CREATE_SUSPENDED);
         let mut child = cmd.spawn()?;
         let job = match child.raw_handle() {
             Some(handle) => new_job(handle),
@@ -116,7 +121,7 @@ impl ProcessTree {
         let resumed = child
             .id()
             .ok_or_else(|| std::io::Error::other("the child has no pid"))
-            .and_then(job::resume_main_thread);
+            .and_then(win32::resume_main_thread);
         if let Err(err) = resumed {
             tracing::warn!(
                 program = ?cmd.as_std().get_program(),
@@ -192,15 +197,55 @@ impl ProcessTree {
             }
             self.kill_remaining();
         }
+        // Without a job, the child's descendants are found through their
+        // parent pids, so they must be killed before the child is reaped and
+        // its pid may be reused.
+        #[cfg(windows)]
+        if matches!(self.group, Some(Group::Taskkill)) {
+            self.kill_descendants_once_exited().await;
+        }
         let status = self.child.wait().await?;
         // A job is held by its handle, not an id, so it can be closed after
         // the child is reaped. Closing it earlier could kill a child that has
-        // closed its pipes but not yet exited. Without a job, nothing is
-        // left to kill: taskkill needs the child's pid, which may now name
-        // an unrelated process.
+        // closed its pipes but not yet exited. Without a job there is
+        // nothing left to do: what the child left running was killed above,
+        // and its pid may now name an unrelated process.
         #[cfg(windows)]
         self.kill_remaining();
         Ok(status)
+    }
+
+    /// Without a job: blocks until the child has exited, leaving it
+    /// unreaped, then kills its descendants (see
+    /// [`win32::wait_then_kill_descendants`]). Logs a warning if it cannot.
+    #[cfg(windows)]
+    async fn kill_descendants_once_exited(&mut self) {
+        use std::os::windows::io::BorrowedHandle;
+        // Both are `None` once the child has been reaped.
+        let (Some(handle), Some(pid)) = (self.child.raw_handle(), self.child.id()) else {
+            return;
+        };
+        // SAFETY: the child is unreaped, so its handle is open, and it stays
+        // open while it is borrowed here. The blocking task gets a handle of
+        // its own, which stays valid even if this future is dropped and the
+        // child with it.
+        let process = unsafe { BorrowedHandle::borrow_raw(handle) }.try_clone_to_owned();
+        let process = match process {
+            Ok(process) => process,
+            Err(err) => {
+                tracing::warn!(pid, "could not kill what the child left running: {err}");
+                return;
+            }
+        };
+        let killed =
+            tokio::task::spawn_blocking(move || win32::wait_then_kill_descendants(process, pid))
+                .await
+                .unwrap_or_else(|e| Err(std::io::Error::other(e)));
+        match killed {
+            // Nothing is left for `kill` or `Drop` to kill.
+            Ok(()) => self.group = None,
+            Err(err) => tracing::warn!(pid, "could not kill what the child left running: {err}"),
+        }
     }
 
     /// Kills the child and everything it started. [`ProcessTree::wait`]
@@ -276,7 +321,7 @@ fn taskkill_tree(pid: u32) {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .creation_flags(job::CREATE_NO_WINDOW)
+        .creation_flags(win32::CREATE_NO_WINDOW)
         .status();
     match killed {
         // Not found: the child exited before it could be killed.
@@ -321,20 +366,31 @@ impl Drop for ProcessTree {
     }
 }
 
+/// The Win32 calls behind [`ProcessTree`] on Windows: its Job Object,
+/// resuming its suspended child, and finding and killing descendants
+/// when there is no job.
 #[cfg(windows)]
-mod job {
+mod win32 {
     use std::io;
     use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
-    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, FILETIME, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0,
+    };
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, Thread32First, Thread32Next,
+        PROCESSENTRY32W, TH32CS_SNAPPROCESS, TH32CS_SNAPTHREAD, THREADENTRY32,
     };
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
         SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
-    use windows_sys::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
+    use windows_sys::Win32::System::SystemInformation::GetSystemTimeAsFileTime;
+    use windows_sys::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, OpenThread, ResumeThread, TerminateProcess,
+        WaitForSingleObject, INFINITE, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+        THREAD_SUSPEND_RESUME,
+    };
 
     pub use windows_sys::Win32::System::Threading::{CREATE_NO_WINDOW, CREATE_SUSPENDED};
 
@@ -342,17 +398,11 @@ mod job {
     /// [`CREATE_SUSPENDED`]. std and tokio keep the thread's handle to
     /// themselves, so it is found by walking a snapshot of all threads.
     pub fn resume_main_thread(pid: u32) -> io::Result<()> {
-        // SAFETY: no pointers are passed; the result is checked below.
-        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
-        if snapshot == INVALID_HANDLE_VALUE {
-            return Err(io::Error::last_os_error());
-        }
-        // SAFETY: `snapshot` is a valid handle that nothing else owns.
-        let snapshot = unsafe { OwnedHandle::from_raw_handle(snapshot as RawHandle) };
+        let snapshot = toolhelp_snapshot(TH32CS_SNAPTHREAD)?;
+        let snapshot = snapshot.as_raw_handle() as HANDLE;
         // SAFETY: an all-zero THREADENTRY32 is valid; dwSize is set below.
         let mut entry: THREADENTRY32 = unsafe { std::mem::zeroed() };
         entry.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
-        let snapshot = snapshot.as_raw_handle() as HANDLE;
         // SAFETY: `entry` is a THREADENTRY32 with its size set, outliving the call.
         if unsafe { Thread32First(snapshot, &mut entry) } == 0 {
             return Err(io::Error::last_os_error());
@@ -371,6 +421,17 @@ mod job {
         ))
     }
 
+    /// A snapshot of the system's threads or processes, as `flags` selects.
+    fn toolhelp_snapshot(flags: u32) -> io::Result<OwnedHandle> {
+        // SAFETY: no pointers are passed; the result is checked below.
+        let snapshot = unsafe { CreateToolhelp32Snapshot(flags, 0) };
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: `snapshot` is a valid handle that nothing else owns.
+        Ok(unsafe { OwnedHandle::from_raw_handle(snapshot as RawHandle) })
+    }
+
     fn resume_thread(tid: u32) -> io::Result<()> {
         // SAFETY: no pointers are passed; the result is checked below.
         let thread = unsafe { OpenThread(THREAD_SUSPEND_RESUME, 0, tid) };
@@ -384,6 +445,176 @@ mod job {
             return Err(io::Error::last_os_error());
         }
         Ok(())
+    }
+
+    /// How long to wait for a killed descendant to exit before looking for
+    /// what it started. It is not killed again if it takes longer.
+    const EXIT_GRACE_MS: u32 = 1000;
+
+    /// The child, or a process found to descend from it. Its handle stays
+    /// open until every descendant has been killed, so its pid cannot be
+    /// reused while it is still looked up as a parent pid.
+    struct Descendant {
+        pid: u32,
+        created: u64,
+        process: OwnedHandle,
+    }
+
+    /// A process as a snapshot lists it.
+    struct ProcessEntry {
+        pid: u32,
+        parent: u32,
+    }
+
+    /// Blocks until `process`, the child with pid `pid`, has exited, then
+    /// kills its descendants.
+    ///
+    /// A descendant is found through its parent pid, which is reused once
+    /// that parent is gone. So each one must have been created no earlier
+    /// than its parent, or it is an older, unrelated process whose own
+    /// parent happened to have the same pid. Creation times have clock-tick
+    /// resolution, so a descendant may share its parent's; the cost is that
+    /// such an unrelated process, created in the same tick as the parent
+    /// whose pid its parent had, would be killed. A descendant whose parent
+    /// exited before the child did is out of reach: nothing links it to
+    /// the child any more.
+    pub fn wait_then_kill_descendants(process: OwnedHandle, pid: u32) -> io::Result<()> {
+        let handle = process.as_raw_handle() as HANDLE;
+        // SAFETY: `handle` is open while `process` is, which `tree` holds.
+        if unsafe { WaitForSingleObject(handle, INFINITE) } != WAIT_OBJECT_0 {
+            return Err(io::Error::last_os_error());
+        }
+        let mut tree = vec![Descendant {
+            pid,
+            created: creation_time(handle)?,
+            process,
+        }];
+        // A descendant can start a process after a snapshot is taken and
+        // before it is killed, so snapshot again until one finds nothing new.
+        while kill_new_descendants(&mut tree)? > 0 {}
+        Ok(())
+    }
+
+    /// Kills the descendants of `tree` that a new snapshot lists and `tree`
+    /// does not hold yet, adds them to `tree`, and waits for them to exit.
+    /// Returns how many it found.
+    fn kill_new_descendants(tree: &mut Vec<Descendant>) -> io::Result<usize> {
+        // Read before the snapshot, on the clock creation times come from:
+        // whatever was created after this is not the process the snapshot
+        // listed, but one that has reused its pid since.
+        let taken = now();
+        let processes = process_snapshot()?;
+        let known = tree.len();
+        let mut next = 0;
+        while next < tree.len() {
+            let (parent, parent_created) = (tree[next].pid, tree[next].created);
+            next += 1;
+            for entry in processes
+                .iter()
+                .filter(|entry| entry.parent == parent && entry.pid != parent)
+            {
+                if tree.iter().any(|known| known.pid == entry.pid) {
+                    continue;
+                }
+                // Without access to it, it can be neither checked nor killed.
+                let Some(process) = open_process(entry.pid) else {
+                    continue;
+                };
+                let handle = process.as_raw_handle() as HANDLE;
+                let Ok(created) = creation_time(handle) else {
+                    continue;
+                };
+                if created < parent_created || created >= taken {
+                    continue;
+                }
+                // SAFETY: `handle` is open with PROCESS_TERMINATE.
+                unsafe { TerminateProcess(handle, 1) };
+                // Failing means it has exited already, or cannot be killed;
+                // either way, what it started is still looked for.
+                tree.push(Descendant {
+                    pid: entry.pid,
+                    created,
+                    process,
+                });
+            }
+        }
+        for killed in &tree[known..] {
+            // SAFETY: `tree` holds the handle open throughout.
+            unsafe { WaitForSingleObject(killed.process.as_raw_handle() as HANDLE, EXIT_GRACE_MS) };
+        }
+        Ok(tree.len() - known)
+    }
+
+    /// Every process the system is running.
+    fn process_snapshot() -> io::Result<Vec<ProcessEntry>> {
+        let snapshot = toolhelp_snapshot(TH32CS_SNAPPROCESS)?;
+        let snapshot = snapshot.as_raw_handle() as HANDLE;
+        // SAFETY: an all-zero PROCESSENTRY32W is valid; dwSize is set below.
+        let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        // SAFETY: `entry` is a PROCESSENTRY32W with its size set, outliving the call.
+        if unsafe { Process32FirstW(snapshot, &mut entry) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let mut processes = Vec::new();
+        let mut more = true;
+        while more {
+            processes.push(ProcessEntry {
+                pid: entry.th32ProcessID,
+                parent: entry.th32ParentProcessID,
+            });
+            // SAFETY: as for Process32FirstW.
+            more = unsafe { Process32NextW(snapshot, &mut entry) } != 0;
+        }
+        Ok(processes)
+    }
+
+    /// Opens process `pid` to check its creation time and kill it. `None`
+    /// if it is gone or may not be opened.
+    fn open_process(pid: u32) -> Option<OwnedHandle> {
+        // SAFETY: no pointers are passed; the result is checked below.
+        let handle = unsafe {
+            OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                0,
+                pid,
+            )
+        };
+        // SAFETY: a non-null result is a valid handle that nothing else owns.
+        (!handle.is_null()).then(|| unsafe { OwnedHandle::from_raw_handle(handle as RawHandle) })
+    }
+
+    /// When `process` was created, as a [`filetime`].
+    fn creation_time(process: HANDLE) -> io::Result<u64> {
+        let zero = FILETIME {
+            dwLowDateTime: 0,
+            dwHighDateTime: 0,
+        };
+        let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+        // SAFETY: `process` is open with at least
+        // PROCESS_QUERY_LIMITED_INFORMATION, and each FILETIME outlives the call.
+        if unsafe { GetProcessTimes(process, &mut created, &mut exited, &mut kernel, &mut user) }
+            == 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(filetime(created))
+    }
+
+    /// The system time, on the clock creation times are read from.
+    fn now() -> u64 {
+        let mut time = FILETIME {
+            dwLowDateTime: 0,
+            dwHighDateTime: 0,
+        };
+        // SAFETY: `time` is a FILETIME that outlives the call.
+        unsafe { GetSystemTimeAsFileTime(&mut time) };
+        filetime(time)
+    }
+
+    /// `time` as one number of 100 ns intervals since 1601, so times compare.
+    fn filetime(time: FILETIME) -> u64 {
+        (u64::from(time.dwHighDateTime) << 32) | u64::from(time.dwLowDateTime)
     }
 
     /// A Job Object that kills its processes when it is closed.
@@ -439,7 +670,9 @@ mod job {
 #[cfg(all(test, windows))]
 mod tests {
     use super::ProcessTree;
-    use crate::test_support::{cmd_script, gone_within, wait_for_pid};
+    use crate::test_support::{
+        cmd_script, gone_within, record_pid, wait_for_pid, wait_for_pidfile,
+    };
     use std::path::{Path, PathBuf};
     use std::process::Stdio;
     use std::time::Duration;
@@ -448,19 +681,23 @@ mod tests {
 
     /// Spawns, with no job, a script that starts a PowerShell grandchild
     /// holding the script's stdout for 30 s, like the Python a PyInstaller
-    /// onefile bootloader runs. Returns the tree and the file the grandchild
-    /// writes its pid to. Unlike `test_support::start_grandchild`, the
-    /// grandchild keeps stdout, so the tree is gone only once it reaches EOF.
-    fn spawn_tree_without_job(dir: &Path) -> (ProcessTree, PathBuf) {
+    /// onefile bootloader runs, then runs `then`. Returns the tree and the
+    /// file the grandchild writes its pid to. Unlike
+    /// `test_support::start_grandchild`, the grandchild keeps stdout, so the
+    /// tree is gone only once it reaches EOF.
+    fn spawn_tree_without_job(
+        dir: &Path,
+        then: impl FnOnce(&Path) -> String,
+    ) -> (ProcessTree, PathBuf) {
         let pidfile = dir.join("grandchild.pid");
         let bin = cmd_script(
             dir,
             "wrapper",
             &format!(
                 "start /b powershell -NoProfile -NonInteractive -Command \
-                 \"Set-Content -Path '{}' -Value $PID; Start-Sleep 30\"\n\
-                 ping -n 30 127.0.0.1 >nul",
-                pidfile.display()
+                 \"{}; Start-Sleep 30\"\n{}",
+                record_pid(&pidfile),
+                then(&pidfile)
             ),
         );
         let mut cmd = Command::new(bin);
@@ -470,10 +707,15 @@ mod tests {
         (ProcessTree::spawn_without_job(&mut cmd).unwrap(), pidfile)
     }
 
+    /// Script lines that keep the wrapper running for 30 s.
+    fn keep_running(_: &Path) -> String {
+        "ping -n 30 127.0.0.1 >nul".into()
+    }
+
     #[tokio::test]
     async fn kill_without_a_job_kills_the_whole_tree() {
         let dir = tempfile::tempdir().unwrap();
-        let (mut tree, pidfile) = spawn_tree_without_job(dir.path());
+        let (mut tree, pidfile) = spawn_tree_without_job(dir.path(), keep_running);
         let mut stdout = tree.take_stdout().unwrap();
         // Long enough for PowerShell to start on a cold CI runner.
         let pid = wait_for_pid(&pidfile, Duration::from_secs(15)).await;
@@ -495,9 +737,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn wait_without_a_job_kills_what_the_child_left_running() {
+        let dir = tempfile::tempdir().unwrap();
+        // The wrapper exits once the grandchild has recorded its pid,
+        // leaving it running.
+        let (mut tree, pidfile) = spawn_tree_without_job(dir.path(), wait_for_pidfile);
+        let mut stdout = tree.take_stdout().unwrap();
+
+        // Long enough for PowerShell to start on a cold CI runner.
+        tokio::time::timeout(Duration::from_secs(20), tree.wait())
+            .await
+            .expect("the wrapper did not exit")
+            .unwrap();
+        let pid = wait_for_pid(&pidfile, Duration::from_secs(1)).await;
+
+        tokio::time::timeout(Duration::from_secs(5), stdout.read_to_end(&mut Vec::new()))
+            .await
+            .expect("stdout still open 5 s after the wrapper exited")
+            .unwrap();
+        assert!(
+            gone_within(pid, Duration::from_secs(2)).await,
+            "grandchild {pid} is still running after wait"
+        );
+    }
+
+    #[tokio::test]
     async fn dropping_without_a_job_kills_the_whole_tree() {
         let dir = tempfile::tempdir().unwrap();
-        let (tree, pidfile) = spawn_tree_without_job(dir.path());
+        let (tree, pidfile) = spawn_tree_without_job(dir.path(), keep_running);
         let pid = wait_for_pid(&pidfile, Duration::from_secs(15)).await;
 
         drop(tree);
