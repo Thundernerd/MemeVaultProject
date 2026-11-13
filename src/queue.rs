@@ -28,7 +28,7 @@ impl QueueHandle {
         map.insert(id.to_string(), tx);
     }
 
-    pub async fn unregister(&self, id: &str) {
+    async fn unregister(&self, id: &str) {
         let mut map = self.cancel_map.lock().await;
         map.remove(id);
     }
@@ -42,6 +42,20 @@ impl QueueHandle {
         } else {
             false
         }
+    }
+
+    /// End a download: drop its cancel signal, classify its result and write
+    /// that outcome to its queue item row.
+    pub async fn finish(
+        &self,
+        db: &Db,
+        item_id: &str,
+        result: Result<usize, &anyhow::Error>,
+    ) -> DownloadOutcome {
+        self.unregister(item_id).await;
+        let outcome = DownloadOutcome::from_result(result);
+        finish_queue_item(db, item_id, &outcome);
+        outcome
     }
 }
 
@@ -69,10 +83,21 @@ impl DownloadOutcome {
             Err(e) => Self::Failed(e.to_string()),
         }
     }
+
+    /// The reply a bot posts for a download that ended without files to
+    /// post; `None` for a completed download, which posts its files instead.
+    pub fn status_text(&self) -> Option<String> {
+        match self {
+            Self::Completed(_) => None,
+            Self::Empty => Some("No files downloaded".to_string()),
+            Self::Cancelled => Some("Download cancelled".to_string()),
+            Self::Failed(message) => Some(format!("Download failed: {message}")),
+        }
+    }
 }
 
 /// Write the end of a download to its queue item row.
-pub fn finish_queue_item(db: &Db, item_id: &str, outcome: &DownloadOutcome) {
+fn finish_queue_item(db: &Db, item_id: &str, outcome: &DownloadOutcome) {
     let (status, progress, error) = match outcome {
         DownloadOutcome::Completed(_) => (QueueStatus::Completed, Some(100.0), None),
         DownloadOutcome::Empty => (QueueStatus::Failed, None, Some("No files downloaded")),
@@ -180,10 +205,7 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
         run_video(db, config, &item, progress_tx, cancel_rx).await
     };
 
-    handle.unregister(&item.id).await;
-
-    let outcome = DownloadOutcome::from_result(result.as_ref().copied());
-    finish_queue_item(db, &item.id, &outcome);
+    let outcome = handle.finish(db, &item.id, result.as_ref().copied()).await;
 
     match outcome {
         DownloadOutcome::Completed(file_count) => {
@@ -520,6 +542,37 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_completed_download_has_no_status_reply() {
+        assert_eq!(DownloadOutcome::Completed(2).status_text(), None);
+    }
+
+    #[test]
+    fn an_empty_download_replies_no_files_downloaded() {
+        assert_eq!(
+            DownloadOutcome::Empty.status_text().as_deref(),
+            Some("No files downloaded")
+        );
+    }
+
+    #[test]
+    fn a_cancelled_download_replies_download_cancelled() {
+        assert_eq!(
+            DownloadOutcome::Cancelled.status_text().as_deref(),
+            Some("Download cancelled")
+        );
+    }
+
+    #[test]
+    fn a_failed_download_replies_with_its_error() {
+        assert_eq!(
+            DownloadOutcome::Failed("yt-dlp exited with status 1".to_string())
+                .status_text()
+                .as_deref(),
+            Some("Download failed: yt-dlp exited with status 1")
+        );
+    }
+
     /// A queue item mid-download, at 42 % progress.
     fn downloading_item(vault: &TestVault) -> String {
         vault
@@ -612,5 +665,27 @@ mod tests {
         assert_eq!(item.progress, 42.0);
         assert_eq!(item.error.as_deref(), Some("yt-dlp exited with status 1"));
         assert!(item.completed_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn finishing_a_download_unregisters_it_and_writes_its_outcome() {
+        let vault = TestVault::new();
+        let id = downloading_item(&vault);
+        let queue = QueueHandle::new();
+        let (cancel_tx, _cancel_rx) = watch::channel(false);
+        queue.register(&id, cancel_tx).await;
+
+        let error = anyhow::anyhow!("yt-dlp exited with status 1");
+        let outcome = queue.finish(&vault.db, &id, Err(&error)).await;
+
+        assert_eq!(
+            outcome,
+            DownloadOutcome::Failed("yt-dlp exited with status 1".to_string())
+        );
+        let item = row(&vault, &id);
+        assert_eq!(item.status, QueueStatus::Failed);
+        assert_eq!(item.error.as_deref(), Some("yt-dlp exited with status 1"));
+        assert!(item.completed_at.is_some());
+        assert!(!queue.cancel(&id).await);
     }
 }
