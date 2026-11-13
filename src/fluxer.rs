@@ -471,13 +471,14 @@ async fn handle_message(
     } else {
         "ytdlp"
     };
+    let source = db::QueueSource::Fluxer;
     let queue_item = db.with_conn(|c| {
         Ok(db::insert_queue_item(
             c,
             &url,
             downloader,
-            db::QueueSource::Fluxer,
-            Some("Fluxer"),
+            source,
+            source.chat_bot_label(),
             false,
         )?)
     })?;

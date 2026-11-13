@@ -412,13 +412,14 @@ async fn run_bot(
                 "ytdlp"
             };
 
+            let source = db::QueueSource::Discord;
             let queue_item = match self.db.with_conn(|c| {
                 Ok(db::insert_queue_item(
                     c,
                     &url,
                     downloader,
-                    db::QueueSource::Discord,
-                    Some("Discord"),
+                    source,
+                    source.chat_bot_label(),
                     false,
                 )?)
             }) {
