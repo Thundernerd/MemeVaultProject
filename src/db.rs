@@ -395,71 +395,22 @@ impl QueueStatus {
     }
 }
 
-/// Where a queue item was submitted from. Stored in `queue_items.source` and
-/// sent over the API as the lowercase variant name. Mirrors the frontend's
-/// `QueueSource` type (`frontend/src/api.ts`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum QueueSource {
-    Web,
-    Api,
-    Discord,
-    Fluxer,
+sql_string_enum! {
+    /// Where a queue item was submitted from. Stored in `queue_items.source` and
+    /// sent over the API as the lowercase variant name. Mirrors the frontend's
+    /// `QueueSource` type (`frontend/src/api.ts`).
+    pub enum QueueSource / UnknownQueueSource ("queue source") {
+        Web => "web",
+        Api => "api",
+        Discord => "discord",
+        Fluxer => "fluxer",
+    }
 }
 
 impl QueueSource {
-    const ALL: [Self; 4] = [Self::Web, Self::Api, Self::Discord, Self::Fluxer];
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Web => "web",
-            Self::Api => "api",
-            Self::Discord => "discord",
-            Self::Fluxer => "fluxer",
-        }
-    }
-
     /// Whether a chat bot downloads the item itself, outside the vault worker.
     pub fn is_chat_bot(self) -> bool {
         matches!(self, Self::Discord | Self::Fluxer)
-    }
-}
-
-impl std::str::FromStr for QueueSource {
-    type Err = UnknownQueueSource;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::ALL
-            .into_iter()
-            .find(|source| source.as_str() == s)
-            .ok_or_else(|| UnknownQueueSource(s.to_string()))
-    }
-}
-
-/// A string that is not one of [`QueueSource`]'s values.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnknownQueueSource(pub String);
-
-impl std::fmt::Display for UnknownQueueSource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "unknown queue source {:?}", self.0)
-    }
-}
-
-impl std::error::Error for UnknownQueueSource {}
-
-impl rusqlite::types::ToSql for QueueSource {
-    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
-        Ok(self.as_str().into())
-    }
-}
-
-impl rusqlite::types::FromSql for QueueSource {
-    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
-        value
-            .as_str()?
-            .parse::<Self>()
-            .map_err(|e| rusqlite::types::FromSqlError::Other(Box::new(e)))
     }
 }
 
