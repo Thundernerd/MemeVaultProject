@@ -3,7 +3,7 @@
 use crate::config::Config;
 use crate::db::{self, Db, QueueStatus};
 use crate::gallerydl;
-use crate::queue::{finish_queue_item, spawn_progress_persister, QueueHandle};
+use crate::queue::{finish_queue_item, spawn_progress_persister, DownloadOutcome, QueueHandle};
 use crate::state::{AppState, DiscordControl};
 use crate::ytdlp;
 use serenity::all::*;
@@ -482,10 +482,12 @@ async fn run_bot(
 
             self.queue.unregister(&item_id).await;
 
-            finish_queue_item(&self.db, &item_id, result.as_ref().map(Vec::len));
+            let outcome = DownloadOutcome::from_result(result.as_ref().map(Vec::len));
+            finish_queue_item(&self.db, &item_id, &outcome);
+            let paths = result.unwrap_or_default();
 
-            match result {
-                Ok(paths) if !paths.is_empty() => {
+            match outcome {
+                DownloadOutcome::Completed(_) => {
                     tracing::info!(
                         item_id = %item_id,
                         file_count = paths.len(),
@@ -563,19 +565,17 @@ async fn run_bot(
                         }
                     }
                 }
-                Ok(_) => {
+                DownloadOutcome::Empty => {
                     tracing::warn!(url = %url, "discord download returned no files");
                     edit_status(&ctx, &cmd, "No files downloaded").await;
                 }
-                Err(e) => {
-                    let msg = e.to_string();
-                    if msg.contains("cancelled") {
-                        tracing::warn!(item_id = %item_id, url = %url, "discord download cancelled");
-                        edit_status(&ctx, &cmd, "Download cancelled").await;
-                    } else {
-                        tracing::error!(url = %url, error = %format!("{e:#}"), "discord download failed");
-                        edit_status(&ctx, &cmd, format!("Download failed: {e}")).await;
-                    }
+                DownloadOutcome::Cancelled => {
+                    tracing::warn!(item_id = %item_id, url = %url, "discord download cancelled");
+                    edit_status(&ctx, &cmd, "Download cancelled").await;
+                }
+                DownloadOutcome::Failed(msg) => {
+                    tracing::error!(url = %url, error = %msg, "discord download failed");
+                    edit_status(&ctx, &cmd, format!("Download failed: {msg}")).await;
                 }
             }
         }
