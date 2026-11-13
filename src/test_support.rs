@@ -87,13 +87,31 @@ pub fn cmd_script(dir: &Path, name: &str, body: &str) -> String {
 /// `pidfile`. `start /b` gives the script no way to learn the pid itself.
 #[cfg(windows)]
 pub fn start_grandchild(pidfile: &Path) -> String {
-    let pid = pidfile.display();
     format!(
         "start /b powershell -NoProfile -NonInteractive -Command \
-         \"Set-Content -Path '{pid}' -Value $PID; Start-Sleep 30\" >nul 2>&1\n\
-         :wait\n\
-         if not exist \"{pid}\" (ping -n 2 127.0.0.1 >nul & goto wait)"
+         \"{}; Start-Sleep 30\" >nul 2>&1\n{}",
+        record_pid(pidfile),
+        wait_for_pidfile(pidfile)
     )
+}
+
+/// PowerShell that writes its pid to `pidfile` whole: the file appears
+/// only once the pid and its newline are in it, so a script that waits for
+/// the file, then exits, cannot have its grandchild killed mid-write.
+#[cfg(windows)]
+pub fn record_pid(pidfile: &Path) -> String {
+    let pid = pidfile.display();
+    format!(
+        "Set-Content -Path '{pid}.tmp' -Value $PID; \
+         Move-Item -Path '{pid}.tmp' -Destination '{pid}'"
+    )
+}
+
+/// Script lines that wait until `pidfile` exists.
+#[cfg(windows)]
+pub fn wait_for_pidfile(pidfile: &Path) -> String {
+    let pid = pidfile.display();
+    format!(":wait\nif not exist \"{pid}\" (ping -n 2 127.0.0.1 >nul & goto wait)")
 }
 
 /// Whether process `pid` has exited, or is gone, within `grace`. Kills it
