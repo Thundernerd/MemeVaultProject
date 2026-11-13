@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '@/api'
+import SaveRow from './SaveRow.vue'
 
 interface ApiKeyRow {
   id: string
@@ -38,29 +39,35 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="flex flex-col gap-4 max-w-xl">
-    <p class="text-xs text-text-muted">
+  <div class="stack-lg">
+    <p class="help">
       The key name is shown as a badge on queue items submitted via
-      <code class="text-text-secondary">POST /api/v1/submit</code>.
-      Pass <code class="text-text-secondary">includeInRandom: true</code> to add the item to random selection when it finishes.
+      <code>POST /api/v1/submit</code>.
+      Pass <code>includeInRandom: true</code> to add the item to random selection when it finishes.
     </p>
-    <form class="flex flex-col gap-2" @submit.prevent="create">
-      <input v-model="name" required placeholder="Key name (e.g. Extra tool)" class="bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm" />
-      <select v-model="permission" class="bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm">
+    <form class="settings-form" @submit.prevent="create">
+      <input v-model="name" required placeholder="Key name (e.g. Extra tool)" class="input" />
+      <select v-model="permission" class="select">
         <option value="read">read</option>
         <option value="read_write">read_write</option>
       </select>
-      <button type="submit" class="self-start bg-accent text-white px-4 py-2 rounded-lg text-sm">Create key</button>
+      <SaveRow label="Create key" />
     </form>
-    <div v-if="created?.key" class="bg-accent-subtle border border-accent rounded-xl p-3 text-sm">
-      New key (copy now): <code class="break-all">{{ created.key }}</code>
+    <div v-if="created?.key" class="reveal">
+      <p class="label">New key (copy now)</p>
+      <code class="reveal-key">{{ created.key }}</code>
     </div>
-    <div v-for="k in keys" :key="k.id" class="bg-surface-1 border border-border rounded-xl p-3 flex items-center gap-3 text-sm">
-      <div class="flex-1">
-        <p class="font-medium">{{ k.name }}</p>
-        <p class="text-xs text-text-muted">{{ k.permission }} · {{ k.created_at }}</p>
+    <div class="cards">
+      <div v-for="k in keys" :key="k.id" class="panel">
+        <div class="flex-1 min-w-0 flex flex-col gap-1">
+          <p class="key-name truncate">{{ k.name }}</p>
+          <p class="mono-sm text-text-muted">
+            <span class="pill label" :class="k.permission === 'read' ? 'pill-off' : 'pill-ok'">{{ k.permission }}</span>
+            {{ k.created_at }}
+          </p>
+        </div>
+        <button type="button" class="btn btn-sm btn-danger" @click="revoke(k.id)">Revoke</button>
       </div>
-      <button class="text-xs text-rose-400" @click="revoke(k.id)">Revoke</button>
     </div>
   </div>
 </template>

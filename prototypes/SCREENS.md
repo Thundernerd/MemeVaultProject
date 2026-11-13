@@ -30,7 +30,9 @@ Mirrors `views/VaultView.vue`, `components/MediaCard.vue`, `components/AlbumCard
   unselected), and the "match: any" / "match: all" toggle.
 - **Active downloads:** dashed placeholder cards for `MOCK.activeQueue()`, each with
   the URL and a progress bar: "Waiting" (pending), "Starting…" (indeterminate,
-  progress < 1), a percentage, and "Processing…" (progress ≥ 99).
+  progress < 1), a percentage, and "Processing…" (progress ≥ 99). Discord and Fluxer
+  downloads are left out: they go to the chat platform, not the vault, so they show
+  only on the Queue screen.
 - **Media cards** (`MOCK.media`): square thumbnail (`MOCK.thumbnail(item)`, `null`
   means a video with no thumbnail), title or the type when untitled, a type badge.
   Cover long titles, untitled items and every aspect ratio.

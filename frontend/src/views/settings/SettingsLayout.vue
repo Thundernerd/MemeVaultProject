@@ -15,18 +15,18 @@ const tabs = [
 
 <template>
   <div class="flex flex-col gap-6 pb-12">
-    <h1 class="text-2xl font-bold">Settings</h1>
-    <nav class="flex gap-1 border-b border-border overflow-x-auto">
+    <h1>Settings</h1>
+    <nav class="tabs" aria-label="Settings">
       <RouterLink
         v-for="t in tabs"
         :key="t.href"
         :to="t.href"
-        class="px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap"
-        :class="route.path === t.href
-          ? 'border-accent text-text-primary'
-          : 'border-transparent text-text-secondary hover:text-text-primary'"
+        class="tab"
+        :class="{ active: route.path === t.href }"
       >{{ t.label }}</RouterLink>
     </nav>
-    <RouterView />
+    <div class="tab-body">
+      <RouterView />
+    </div>
   </div>
 </template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useSettings } from './useSettings'
+import SaveRow from './SaveRow.vue'
 
 const { settings, save, saved, error } = useSettings()
 
@@ -18,8 +19,8 @@ const command = () =>
 </script>
 
 <template>
-  <form class="flex flex-col gap-4 max-w-xl" @submit.prevent="save(keys)">
-    <label class="flex items-center gap-2 text-sm">
+  <form class="settings-form" @submit.prevent="save(keys)">
+    <label class="check">
       <input
         type="checkbox"
         :checked="settings.fluxer_enabled === 'true'"
@@ -27,25 +28,25 @@ const command = () =>
       />
       Enable Fluxer bot
     </label>
-    <label class="flex flex-col gap-1 text-sm">
-      <span>Bot token</span>
-      <input v-model="settings.fluxer_bot_token" type="password" placeholder="&lt;application_id&gt;.&lt;secret&gt;" class="bg-surface-2 border border-border rounded-lg px-3 py-2" />
+    <label class="field">
+      <span class="label">Bot token</span>
+      <input v-model="settings.fluxer_bot_token" type="password" placeholder="&lt;application_id&gt;.&lt;secret&gt;" class="input" />
     </label>
-    <label class="flex flex-col gap-1 text-sm">
-      <span>Instance URL</span>
-      <input v-model="settings.fluxer_instance_url" placeholder="https://fluxer.app" class="bg-surface-2 border border-border rounded-lg px-3 py-2" />
+    <label class="field">
+      <span class="label">Instance URL</span>
+      <input v-model="settings.fluxer_instance_url" placeholder="https://fluxer.app" class="input" />
     </label>
-    <div class="flex gap-4">
-      <label class="flex flex-col gap-1 text-sm flex-1">
-        <span>Command prefix</span>
-        <input v-model="settings.fluxer_command_prefix" placeholder="!" class="bg-surface-2 border border-border rounded-lg px-3 py-2" />
+    <div class="two-col">
+      <label class="field">
+        <span class="label">Command prefix</span>
+        <input v-model="settings.fluxer_command_prefix" placeholder="!" class="input" />
       </label>
-      <label class="flex flex-col gap-1 text-sm flex-1">
-        <span>Command name</span>
-        <input v-model="settings.fluxer_command_name" placeholder="get" class="bg-surface-2 border border-border rounded-lg px-3 py-2" />
+      <label class="field">
+        <span class="label">Command name</span>
+        <input v-model="settings.fluxer_command_name" placeholder="get" class="input" />
       </label>
     </div>
-    <label class="flex items-center gap-2 text-sm">
+    <label class="check">
       <input
         type="checkbox"
         :checked="settings.fluxer_post_as_user === 'true'"
@@ -53,7 +54,7 @@ const command = () =>
       />
       Post downloads as the command sender
     </label>
-    <label class="flex items-center gap-2 text-sm">
+    <label class="check">
       <input
         type="checkbox"
         :checked="settings.fluxer_delete_command_message !== 'false'"
@@ -61,7 +62,7 @@ const command = () =>
       />
       Delete the sender's command message
     </label>
-    <p class="text-xs text-text-muted">
+    <p class="help">
       Fluxer bots do not have slash commands, so users invoke the bot with a message like
       <code>{{ command() }} &lt;url&gt;</code>. Add <code>image</code> for image sites
       (<code>{{ command() }} image &lt;url&gt;</code>) and any trailing text as a caption.
@@ -71,8 +72,6 @@ const command = () =>
       but are still webhook messages (not real user messages). Deleting the sender's command
       message requires the bot to hold <strong>Manage Messages</strong>; it is skipped in DMs.
     </p>
-    <button type="submit" class="self-start bg-accent text-white px-4 py-2 rounded-lg text-sm">Save</button>
-    <p v-if="saved" class="text-xs text-green-400">Saved</p>
-    <p v-if="error" class="text-xs text-rose-400">{{ error }}</p>
+    <SaveRow :saved="saved" :error="error" />
   </form>
 </template>

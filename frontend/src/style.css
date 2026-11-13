@@ -6,6 +6,11 @@
  * Role tokens keep the names the app already uses; the style-only tokens after
  * them are extra to this look. Attribute names ([data-theme], [data-accent])
  * match theme.ts, so saved mvp-theme / mvp-accent values keep working.
+ *
+ * Classes used by more than one component live here in @layer components.
+ * Classes for a single component's own parts (e.g. the dropzone in
+ * AddUrlModal.vue) go in that component's <style scoped>; scoped CSS is
+ * unlayered, so it wins over both these classes and Tailwind utilities.
  */
 
 /* ------------------------------------------------------------ role tokens */
@@ -71,6 +76,8 @@
   --bw: 3px;                 /* border width */
   --bw-thin: 2px;
   --lift: 4px;               /* hard shadow offset */
+  --header-h: 68px;          /* app header, excluding its --bw bottom border */
+  --shell-max: 72rem;        /* width of the header and main column */
   --font-display: "Arial Black", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-body: "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -161,7 +168,7 @@
   .btn:hover { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--shadow); }
   .btn:active { transform: translate(var(--lift), var(--lift)); box-shadow: 0 0 0 var(--shadow); }
   .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: var(--lift) var(--lift) 0 var(--shadow); }
-  .btn:focus-visible, .chip:focus-visible {
+  .btn:focus-visible, .chip:focus-visible, .nav-link:focus-visible, .card:focus-visible {
     outline: var(--bw) dashed var(--accent); outline-offset: 3px;
   }
 
@@ -174,7 +181,7 @@
   .btn-sm:active { transform: translate(3px, 3px); }
   .btn-sm:disabled { box-shadow: 3px 3px 0 var(--shadow); }
   .btn-block { width: 100%; }
-  .btn-icon { width: 40px; padding: 0; }
+  .btn-icon { width: 40px; padding: 0; font-size: 1rem; }  /* after .btn-sm, so glyphs keep their size */
 
   /* inputs */
 
@@ -199,8 +206,15 @@
   .check input[type="radio"]:checked::after { width: 8px; height: 8px; border: 0; background: var(--on-accent); transform: none; }
   .check input:focus-visible { outline: var(--bw) dashed var(--accent); outline-offset: 3px; }
 
+  /* Smaller input for inline forms (e.g. "Add tag" next to a .btn-sm). */
+  .input-sm { width: 160px; min-height: 32px; padding: 4px 8px; border-width: var(--bw-thin); }
+  @media (max-width: 767px) {
+    .input-sm { flex: 1 1 120px; width: auto; }
+  }
+
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field > .label { color: var(--text-secondary); }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
 
   /* chips and badges */
 
@@ -212,8 +226,12 @@
   .chip:hover { color: var(--text-primary); box-shadow: 2px 2px 0 var(--shadow); }
   .chip.on { background: var(--accent); color: var(--on-accent); box-shadow: 2px 2px 0 var(--shadow); }
 
-  /* Pair with .label and a background (e.g. bg-accent, or a per-source colour). */
+  /* Pair with .label and a background (e.g. bg-accent, or a .badge-<source> colour). */
   .badge { flex: none; padding: 2px 6px; border: var(--bw-thin) solid var(--border); color: #fff; font-size: 0.62rem; }
+  /* Per-source brand colours (queue items from Discord, Fluxer or the API). */
+  .badge-discord { background: #5865f2; }
+  .badge-fluxer { background: #7c3aed; }
+  .badge-api { background: #0d9488; }
 
   /* progress */
 
@@ -232,6 +250,35 @@
     .progress-track.indeterminate .progress-fill { animation: none; width: 100%; opacity: 0.5; }
   }
 
+  /* page heading: display h1 with its tools pushed right (stacked on mobile) */
+
+  .page-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; }
+  .page-head .tools { margin-left: auto; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  @media (max-width: 767px) {
+    .page-head .tools { margin-left: 0; width: 100%; }
+  }
+
+  /* modals: .modal > .modal-backdrop + .modal-box (add .modal-wide for edge-to-edge media) */
+
+  .modal { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .modal-backdrop { position: absolute; inset: 0; background: var(--overlay); }
+  .modal-box {
+    position: relative; width: 100%; max-width: 30rem; max-height: calc(100dvh - 32px); overflow-y: auto;
+    display: flex; flex-direction: column; gap: 16px; padding: 20px;
+    background: var(--surface-1); border: var(--bw) solid var(--border); box-shadow: 10px 10px 0 var(--accent);
+  }
+  /* Wide variant: media sits edge to edge, content goes in .modal-body. */
+  .modal-wide { max-width: 48rem; padding: 0; gap: 0; }
+  .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .modal-head h2 { font-size: 1.6rem; }
+  .modal-body { display: flex; flex-direction: column; gap: 18px; padding: 20px; }
+  .modal-foot { display: flex; justify-content: flex-end; padding-top: 16px; border-top: var(--bw) solid var(--border); }
+  @media (max-width: 767px) {
+    .modal { padding: 8px; align-items: flex-start; }
+    .modal-box { max-height: calc(100dvh - 16px); box-shadow: 6px 6px 0 var(--accent); }
+    .modal-wide { max-width: none; }
+  }
+
   /* empty / loading / error states */
 
   .state {
@@ -242,25 +289,192 @@
   .state-text { font-family: var(--font-display); font-size: clamp(1.1rem, 4vw, 1.6rem); text-transform: uppercase; line-height: 1.1; }
   .state-empty { border-style: dashed; box-shadow: none; background: transparent; justify-content: center; padding: 56px 20px; text-align: center; flex-direction: column; }
   .state-loading .state-tag { background: var(--pop-3); animation: brutal-blink 0.8s steps(2) infinite; }
-  .state-error { background: var(--danger); color: #fff; border-color: var(--border); }
+  .state-error { background: var(--danger); color: var(--on-danger); border-color: var(--border); }
   .state-error .state-tag { background: #fff; color: #0a0a0a; border-color: #0a0a0a; }
   @media (prefers-reduced-motion: reduce) {
     .state-loading .state-tag { animation: none; }
+  }
+
+  /* shell: header, nav, theme switcher, mobile drawer (layouts/MainLayout.vue) */
+
+  .header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    background: var(--surface-1);
+    border-bottom: var(--bw) solid var(--border);
+  }
+  .header-inner {
+    max-width: var(--shell-max); margin: 0 auto; height: var(--header-h);
+    display: flex; align-items: center; gap: 20px; padding: 0 16px;
+  }
+  .logo {
+    display: flex; align-items: stretch; flex: none;
+    border: var(--bw) solid var(--border); box-shadow: 3px 3px 0 var(--shadow);
+  }
+  .logo-mark {
+    background: var(--text-primary); color: var(--surface-1);
+    font-family: var(--font-display); font-size: 1.15rem; padding: 4px 8px; letter-spacing: -0.02em;
+  }
+  .logo-ver {
+    display: flex; align-items: center; padding: 0 6px;
+    background: var(--pop-1); color: var(--on-pop); border-left: var(--bw) solid var(--border);
+    font-family: var(--font-mono); font-size: 0.65rem; font-weight: 800;
+  }
+
+  .nav { display: flex; gap: 8px; }
+  .nav-link {
+    padding: 8px 14px; border: var(--bw) solid transparent; text-decoration: none;
+    font-family: var(--font-mono); font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-secondary);
+  }
+  .nav-link:hover { border-color: var(--border); color: var(--text-primary); }
+  .nav-link.active { background: var(--accent); color: var(--on-accent); border-color: var(--border); box-shadow: 3px 3px 0 var(--shadow); }
+
+  .header-tools { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .theme-switch { display: flex; align-items: center; gap: 8px; }
+  .swatches { display: flex; gap: 4px; }
+  /* Each swatch carries its own data-accent, so var(--accent) is that accent's colour. */
+  .swatch { width: 20px; height: 20px; padding: 0; background: var(--accent); border: var(--bw-thin) solid var(--border); cursor: pointer; }
+  .swatch[aria-pressed="true"] { outline: var(--bw) solid var(--border); outline-offset: 2px; }
+  .swatch:focus-visible { outline: var(--bw) dashed var(--border); outline-offset: 2px; }
+  .signout {
+    font-family: var(--font-mono); font-size: 0.75rem; font-weight: 800; text-transform: uppercase;
+    color: var(--text-muted); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 2px;
+  }
+  .menu-btn { display: none; }
+
+  .drawer { position: fixed; inset: 0; z-index: 40; }
+  .drawer-backdrop { position: absolute; inset: 0; background: var(--overlay); }
+  .drawer-panel {
+    position: absolute; top: calc(var(--header-h) + var(--bw)); left: 0; right: 0;
+    background: var(--surface-1); border-bottom: var(--bw) solid var(--border);
+    display: flex; flex-direction: column;
+  }
+  .drawer-panel .nav-link { padding: 16px; border: 0; border-bottom: var(--bw-thin) solid var(--border); font-size: 1rem; box-shadow: none; }
+  .drawer-panel .nav-link.active { border-left: 10px solid var(--border); }
+
+  /* <main> scrolls under the fixed header; this is its centred column. */
+  .main-column { max-width: var(--shell-max); margin: 0 auto; padding: 28px 16px 96px; }
+
+  @media (max-width: 767px) {
+    .nav, .signout { display: none; }
+    .menu-btn { display: inline-flex; }
+    .header-inner { gap: 10px; }
+    .swatch { width: 18px; height: 18px; }
+  }
+  @media (min-width: 768px) { .drawer { display: none; } }
+}
+
+/* -------------------------------------------------------------- screens */
+
+@layer components {
+  /* vault (views/VaultView.vue, MediaCard.vue, AlbumCard.vue) */
+
+  .btn-on { background: var(--accent-subtle); border-color: var(--accent); color: var(--text-primary); }
+  .count { min-width: 22px; height: 22px; padding: 0 5px; background: var(--accent); color: var(--on-accent); border: var(--bw-thin) solid var(--border); font-size: 0.7rem; line-height: 18px; text-align: center; }
+  .chip-mode { border-style: dashed; background: transparent; color: var(--text-muted); text-transform: uppercase; }
+
+  .filters {
+    display: flex; flex-direction: column; gap: 12px; padding: 14px;
+    border: var(--bw) solid var(--border); background: var(--surface-2);
+  }
+
+  .vault-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+  @media (min-width: 640px) { .vault-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (min-width: 768px) { .vault-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; } }
+
+  /* A download still in the queue: dashed placeholder with a big down arrow. */
+  .pending-card {
+    aspect-ratio: 1; min-width: 0; padding: 12px;
+    display: flex; flex-direction: column; justify-content: flex-end; gap: 10px;
+    border: var(--bw) dashed var(--border); background: var(--surface-2);
+  }
+  .pending-card::before { content: "↓"; font-family: var(--font-display); font-size: 3rem; line-height: 1; color: var(--text-muted); align-self: center; margin: auto 0; }
+  .pending-url { order: -1; font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-secondary); }
+
+  /* Media cards are stickers: tilted, thick outline, hard shadow; they snap
+     straight and press down on hover. */
+  .card {
+    position: relative; display: flex; flex-direction: column; min-width: 0; padding: 0; text-align: left;
+    border: var(--bw) solid var(--border); background: var(--surface-1); color: var(--text-primary);
+    box-shadow: 6px 6px 0 var(--shadow); cursor: pointer;
+    transform: rotate(var(--tilt, 0deg));
+    transition: transform 100ms ease-out, box-shadow 100ms ease-out;
+  }
+  .vault-grid > .card:nth-child(4n+1) { --tilt: -1.2deg; }
+  .vault-grid > .card:nth-child(4n+2) { --tilt: 0.8deg; }
+  .vault-grid > .card:nth-child(4n+3) { --tilt: -0.5deg; }
+  .vault-grid > .card:nth-child(4n)   { --tilt: 1.3deg; }
+  .card:hover { transform: rotate(0deg) translate(3px, 3px); box-shadow: 3px 3px 0 var(--shadow); }
+  .card:active { transform: translate(6px, 6px); box-shadow: 0 0 0 var(--shadow); }
+  @media (prefers-reduced-motion: reduce) {
+    .card, .card:hover, .card:active { transform: none; transition: none; }
+  }
+
+  .card-thumb { display: block; aspect-ratio: 1; background: var(--surface-3); border-bottom: var(--bw) solid var(--border); overflow: hidden; }
+  .card-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .no-thumb {
+    display: grid; place-items: center; height: 100%; padding: 8px; text-align: center; color: var(--text-muted);
+    background-image: repeating-linear-gradient(45deg, transparent 0 10px, color-mix(in srgb, var(--text-primary) 10%, transparent) 10px 12px);
+  }
+  .card-caption { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; font-weight: 800; font-size: 0.85rem; min-height: 40px; justify-content: center; }
+  .card-sub { color: var(--text-muted); font-size: 0.65rem; }
+  .sticker {
+    position: absolute; top: -10px; right: -8px; padding: 3px 7px;
+    border: var(--bw-thin) solid var(--border); background: var(--surface-1); color: var(--text-primary); transform: rotate(6deg);
+    box-shadow: 2px 2px 0 var(--shadow);
+  }
+  .card-video .sticker { background: var(--pop-1); color: var(--on-pop); }
+  .card-image .sticker { background: var(--pop-3); color: var(--on-pop); }
+  .card-album .sticker { background: var(--pop-2); color: var(--on-pop); }
+  /* Albums read as a stack of posters. */
+  .card-album { box-shadow: 6px 6px 0 -1px var(--surface-1), 6px 6px 0 2px var(--border), 12px 12px 0 2px var(--shadow); }
+  .card-album:hover { box-shadow: 3px 3px 0 -1px var(--surface-1), 3px 3px 0 2px var(--border), 6px 6px 0 2px var(--shadow); }
+  .card-album:active { box-shadow: 0 0 0 -1px var(--surface-1), 0 0 0 2px var(--border), 0 0 0 2px var(--shadow); }
+}
+
+/* ------------------------------------------------------------- settings */
+
+@layer components {
+  .tabs { display: flex; overflow-x: auto; border: var(--bw) solid var(--border); background: var(--surface-1); scrollbar-width: thin; }
+  .tab {
+    flex: none; padding: 10px 16px; text-decoration: none; border-right: var(--bw) solid var(--border);
+    font-family: var(--font-mono); font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-secondary);
+  }
+  .tab:last-child { border-right: 0; }
+  .tab:hover { background: var(--surface-2); color: var(--text-primary); }
+  .tab.active { background: var(--accent); color: var(--on-accent); }
+  .tab:focus-visible { outline: var(--bw) dashed var(--accent); outline-offset: -6px; }
+  .tab-body { max-width: 40rem; }
+
+  .settings-form { display: flex; flex-direction: column; gap: 18px; padding: 20px; border: var(--bw) solid var(--border); background: var(--surface-1); box-shadow: 6px 6px 0 var(--shadow); }
+  .save-row { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+  .save-ok { padding: 4px 8px; background: var(--ok); color: var(--on-ok); border: var(--bw-thin) solid var(--border); transform: rotate(-2deg); }
+  .save-error { padding: 4px 8px; background: var(--danger); color: var(--on-danger); border: var(--bw-thin) solid var(--border); }
+  .env-badge { margin-left: 8px; padding: 1px 5px; background: var(--pop-2); color: var(--on-pop); border: var(--bw-thin) solid var(--border); }
+  .help { font-size: 0.85rem; color: var(--text-secondary); padding: 10px 12px; border-left: 6px solid var(--border); background: var(--surface-2); }
+  .help code { background: var(--surface-1); padding: 1px 4px; border: 1px solid var(--border); }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .stack-lg { display: flex; flex-direction: column; gap: 22px; }
+  .cards { display: flex; flex-direction: column; gap: 14px; }
+  .panel { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: var(--bw) solid var(--border); background: var(--surface-1); box-shadow: 4px 4px 0 var(--shadow); }
+  .panel.stack { flex-direction: column; align-items: stretch; }
+  .panel-missing { border-style: dashed; }
+  .mono-sm { font-family: var(--font-mono); font-size: 0.75rem; }
+  .pill { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; padding: 1px 6px; border: var(--bw-thin) solid var(--border); margin-right: 4px; }
+  .pill-ok { background: var(--ok); color: var(--on-ok); }
+  .pill-off { background: var(--surface-3); color: var(--text-primary); }
+  .file-btn { position: relative; }
+  .file-btn:focus-within { outline: var(--bw) dashed var(--accent); outline-offset: 3px; }
+  .reveal { display: flex; flex-direction: column; gap: 8px; padding: 14px; background: var(--pop-1); color: var(--on-pop); border: var(--bw) solid var(--border); box-shadow: 6px 6px 0 var(--shadow); transform: rotate(-0.6deg); }
+  .reveal-key { font-size: 1rem; font-weight: 800; word-break: break-all; padding: 6px 8px; background: #fff; border: var(--bw-thin) solid #0a0a0a; }
+  .key-name { font-weight: 800; }
+
+  @media (max-width: 767px) {
+    .settings-form { padding: 14px; }
+    .two-col { grid-template-columns: 1fr; }
+    .panel:not(.stack) { flex-wrap: wrap; }
   }
 }
 
 @keyframes brutal-slide { from { transform: translateX(-110%); } to { transform: translateX(300%); } }
 @keyframes brutal-blink { 50% { opacity: 0.2; } }
-
-/*
- * Legacy indeterminate bar, still used by components/DownloadProgress.vue.
- * Remove once that component moves to .progress-track.indeterminate.
- */
-@keyframes mv-progress-indeterminate {
-  0% { transform: translateX(-120%); }
-  100% { transform: translateX(320%); }
-}
-
-.mv-progress-indeterminate {
-  animation: mv-progress-indeterminate 1.2s ease-in-out infinite;
-}
