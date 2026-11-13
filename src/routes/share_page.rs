@@ -279,6 +279,78 @@ mod tests {
         );
     }
 
+    /// The theme and accent names are copied out of style.css (the source of
+    /// truth: its `[data-theme="…"]` / `[data-accent="…"]` token blocks) into
+    /// THEMES / ACCENTS in theme.ts and the pre-paint scripts of share.html and
+    /// the app's index.html. A name missing from a copy makes a viewer who saved
+    /// it fall back to the default.
+    #[test]
+    fn theme_and_accent_name_lists_match_the_app_stylesheet() {
+        const APP: &str = include_str!("../../frontend/src/style.css");
+        const THEME_TS: &str = include_str!("../../frontend/src/theme.ts");
+        const SHARE: &str = include_str!("../../templates/share.html");
+        const INDEX: &str = include_str!("../../frontend/index.html");
+        let themes = css_names(APP, "data-theme");
+        let accents = css_names(APP, "data-accent");
+        assert!(!themes.is_empty(), "no [data-theme] blocks in style.css");
+        assert!(!accents.is_empty(), "no [data-accent] blocks in style.css");
+
+        let ts = |name| ts_list(THEME_TS, name);
+        let share = |var| script_list(SHARE, "templates/share.html", var);
+        let index = |var| script_list(INDEX, "frontend/index.html", var);
+        let copies = [
+            ("THEMES in frontend/src/theme.ts", ts("THEMES"), &themes),
+            ("ACCENTS in frontend/src/theme.ts", ts("ACCENTS"), &accents),
+            ("themes in templates/share.html", share("theme"), &themes),
+            ("accents in templates/share.html", share("accent"), &accents),
+            ("themes in frontend/index.html", index("theme"), &themes),
+            ("accents in frontend/index.html", index("accent"), &accents),
+        ];
+        for (copy, names, expected) in copies {
+            assert_eq!(&names, expected, "{copy} differ from the style.css blocks");
+        }
+    }
+
+    /// Sorted names `x` of the `[attr="x"]` token blocks in `css`.
+    fn css_names(css: &str, attr: &str) -> Vec<String> {
+        let selector = Regex::new(&format!(r#"^\[{attr}="([^"]+)"\]$"#)).unwrap();
+        let mut names: Vec<String> = token_blocks(css)
+            .keys()
+            .filter_map(|s| Some(selector.captures(s)?[1].to_string()))
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// Sorted string literals of `[…]` (a JS array literal) found by the
+    /// regex `before` + `\[([^\]]*)\]` + `after`; panics if there isn't exactly one.
+    fn js_array(src: &str, file: &str, before: &str, after: &str) -> Vec<String> {
+        let array = Regex::new(&format!(r"{before}\[([^\]]*)\]{after}")).unwrap();
+        let found: Vec<_> = array.captures_iter(src).collect();
+        let [one] = found.as_slice() else {
+            let n = found.len();
+            panic!("{file}: expected one `{before}[…]{after}` array, found {n}");
+        };
+        let literal = Regex::new(r#"'([^']*)'|"([^"]*)""#).unwrap();
+        let mut names: Vec<String> = literal
+            .captures_iter(&one[1])
+            .map(|c| c.get(1).or(c.get(2)).unwrap().as_str().to_string())
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// The names in theme.ts's `export const <name> = [ … ]`.
+    fn ts_list(ts: &str, name: &str) -> Vec<String> {
+        let before = format!(r"export const {name}\s*=\s*");
+        js_array(ts, "frontend/src/theme.ts", &before, "")
+    }
+
+    /// The names in a pre-paint script's `[ … ].indexOf(<var>)` allow-list.
+    fn script_list(html: &str, file: &str, var: &str) -> Vec<String> {
+        js_array(html, file, "", &format!(r"\.indexOf\({var}\)"))
+    }
+
     /// Custom property name → value, with whitespace in values collapsed.
     type Tokens = BTreeMap<String, String>;
 

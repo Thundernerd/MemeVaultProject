@@ -1,7 +1,9 @@
 import { computed, inject, provide, ref, type InjectionKey, type Ref } from 'vue'
 
 // The pre-paint snippets in frontend/index.html and templates/share.html copy
-// these lists and the storage keys; keep them in sync.
+// these lists and the storage keys; keep them in sync. The lists are checked
+// against style.css by theme_and_accent_name_lists_match_the_app_stylesheet in
+// src/routes/share_page.rs.
 export const THEMES = ['dark', 'light'] as const
 export const ACCENTS = ['blue', 'purple', 'green', 'orange', 'rose'] as const
 
