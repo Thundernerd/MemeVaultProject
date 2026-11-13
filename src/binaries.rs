@@ -6,57 +6,123 @@ use serde::Serialize;
 use std::path::Path;
 use std::process::Stdio;
 
+/// A binary MemeVault manages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Binary {
+    YtDlp,
+    GalleryDl,
+    Ffmpeg,
+}
+
+impl Binary {
+    pub const ALL: [Binary; 3] = [Binary::YtDlp, Binary::GalleryDl, Binary::Ffmpeg];
+
+    /// The name the API and the Binaries tab use for this binary.
+    pub fn name(self) -> &'static str {
+        match self {
+            Binary::YtDlp => "ytdlp",
+            Binary::GalleryDl => "gallery-dl",
+            Binary::Ffmpeg => "ffmpeg",
+        }
+    }
+
+    /// The setting that holds the user's path override.
+    fn setting_key(self) -> &'static str {
+        match self {
+            Binary::YtDlp => "ytdlp_bin",
+            Binary::GalleryDl => "gallerydl_bin",
+            Binary::Ffmpeg => "ffmpeg_bin",
+        }
+    }
+
+    /// The arguments that make the binary print its version.
+    fn version_args(self) -> &'static [&'static str] {
+        match self {
+            Binary::YtDlp | Binary::GalleryDl => &["--version"],
+            Binary::Ffmpeg => &["-version"],
+        }
+    }
+
+    /// The user's path override, if one is set.
+    fn override_path(self, db: &Db) -> Option<String> {
+        db.with_conn(|c| Ok(db::get_setting(c, self.setting_key())))
+            .ok()
+            .flatten()
+            .filter(|s| !s.is_empty())
+    }
+
+    /// Where the binary is when the user has not overridden its path.
+    fn default_path(self, config: &Config) -> String {
+        let file = match self {
+            Binary::YtDlp => ytdlp_filename(),
+            Binary::GalleryDl => match host_gallerydl_asset() {
+                Some(asset) => asset,
+                // No upstream build for this host: use the user's own install.
+                None => {
+                    return which::which("gallery-dl")
+                        .map(|p| p.to_string_lossy().into())
+                        .unwrap_or_else(|_| "gallery-dl".into())
+                }
+            },
+            Binary::Ffmpeg => ffmpeg_filename(),
+        };
+        config.bin_dir().join(file).to_string_lossy().into()
+    }
+
+    /// The path the binary is run from.
+    pub fn path(self, db: &Db, config: &Config) -> String {
+        self.override_path(db)
+            .unwrap_or_else(|| self.default_path(config))
+    }
+
+    /// Why this binary cannot be auto-downloaded on this host, or `None` if it can.
+    pub fn auto_download_unsupported(self) -> Option<String> {
+        (self == Binary::GalleryDl && host_gallerydl_asset().is_none()).then(|| {
+            format!(
+                "gallery-dl publishes no build for {}/{}; install gallery-dl on PATH or set its path in Settings",
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            )
+        })
+    }
+}
+
+impl std::str::FromStr for Binary {
+    type Err = UnknownBinary;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
+        Binary::ALL
+            .into_iter()
+            .find(|b| b.name() == name)
+            .ok_or(UnknownBinary)
+    }
+}
+
+/// A name that is not one of [`Binary::ALL`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnknownBinary;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct BinaryStatus {
     pub name: String,
     pub path: String,
+    /// Whether the binary runs and reports a version, not merely whether the
+    /// file is there: one that cannot run is shown as missing. The field keeps
+    /// its name because the frontend reads it.
     pub exists: bool,
     pub version: Option<String>,
 }
 
 pub fn get_ytdlp_path(db: &Db, config: &Config) -> String {
-    let override_path = db
-        .with_conn(|c| Ok(db::get_setting(c, "ytdlp_bin")))
-        .ok()
-        .flatten()
-        .filter(|s| !s.is_empty());
-    override_path.unwrap_or_else(|| {
-        config
-            .bin_dir()
-            .join(ytdlp_filename())
-            .to_string_lossy()
-            .into()
-    })
+    Binary::YtDlp.path(db, config)
 }
 
 pub fn get_gallerydl_path(db: &Db, config: &Config) -> String {
-    let override_path = db
-        .with_conn(|c| Ok(db::get_setting(c, "gallerydl_bin")))
-        .ok()
-        .flatten()
-        .filter(|s| !s.is_empty());
-    override_path.unwrap_or_else(|| match host_gallerydl_asset() {
-        Some(asset) => config.bin_dir().join(asset).to_string_lossy().into(),
-        // No upstream build for this host: use the user's own install.
-        None => which::which("gallery-dl")
-            .map(|p| p.to_string_lossy().into())
-            .unwrap_or_else(|_| "gallery-dl".into()),
-    })
+    Binary::GalleryDl.path(db, config)
 }
 
 pub fn get_ffmpeg_path(db: &Db, config: &Config) -> String {
-    let override_path = db
-        .with_conn(|c| Ok(db::get_setting(c, "ffmpeg_bin")))
-        .ok()
-        .flatten()
-        .filter(|s| !s.is_empty());
-    override_path.unwrap_or_else(|| {
-        config
-            .bin_dir()
-            .join(ffmpeg_filename())
-            .to_string_lossy()
-            .into()
-    })
+    Binary::Ffmpeg.path(db, config)
 }
 
 pub fn get_ffprobe_path(db: &Db, config: &Config) -> String {
@@ -110,17 +176,6 @@ fn host_gallerydl_asset() -> Option<&'static str> {
     gallerydl_asset(std::env::consts::OS, std::env::consts::ARCH)
 }
 
-/// Why `name` cannot be auto-downloaded on this host, or `None` if it can.
-pub fn auto_download_unsupported(name: &str) -> Option<String> {
-    (name == "gallery-dl" && host_gallerydl_asset().is_none()).then(|| {
-        format!(
-            "gallery-dl publishes no build for {}/{}; install gallery-dl on PATH or set its path in Settings",
-            std::env::consts::OS,
-            std::env::consts::ARCH
-        )
-    })
-}
-
 fn ffmpeg_filename() -> &'static str {
     #[cfg(target_os = "windows")]
     {
@@ -168,28 +223,14 @@ async fn version_of(path: &str, args: &[&str]) -> Option<String> {
     combined.lines().next().map(|s| s.trim().to_string())
 }
 
-fn binary_path(db: &Db, config: &Config, name: &str) -> String {
-    match name {
-        "ytdlp" => get_ytdlp_path(db, config),
-        "gallery-dl" => get_gallerydl_path(db, config),
-        "ffmpeg" => get_ffmpeg_path(db, config),
-        _ => String::new(),
-    }
-}
-
-pub async fn check_binary(db: &Db, config: &Config, name: &str) -> BinaryStatus {
-    let path = binary_path(db, config, name);
-    let version = match name {
-        "ytdlp" => version_of(&path, &["--version"]).await,
-        "gallery-dl" => version_of(&path, &["--version"]).await,
-        "ffmpeg" => version_of(&path, &["-version"]).await,
-        _ => None,
-    };
+pub async fn check_binary(db: &Db, config: &Config, binary: Binary) -> BinaryStatus {
+    let path = binary.path(db, config);
+    let version = version_of(&path, binary.version_args()).await;
     // A binary that cannot run is as good as missing, so the Binaries tab
     // shows "missing" rather than "installed".
     let exists = version.is_some();
     BinaryStatus {
-        name: name.to_string(),
+        name: binary.name().to_string(),
         path,
         exists,
         version,
@@ -199,16 +240,15 @@ pub async fn check_binary(db: &Db, config: &Config, name: &str) -> BinaryStatus 
 pub async fn download_binary(
     db: &Db,
     config: &Config,
-    name: &str,
+    binary: Binary,
 ) -> anyhow::Result<BinaryStatus> {
     std::fs::create_dir_all(config.bin_dir())?;
-    match name {
-        "ytdlp" => download_ytdlp(config).await?,
-        "gallery-dl" => download_gallerydl(config).await?,
-        "ffmpeg" => download_ffmpeg(config).await?,
-        _ => anyhow::bail!("unknown binary: {name}"),
+    match binary {
+        Binary::YtDlp => download_ytdlp(config).await?,
+        Binary::GalleryDl => download_gallerydl(config).await?,
+        Binary::Ffmpeg => download_ffmpeg(config).await?,
     }
-    Ok(check_binary(db, config, name).await)
+    Ok(check_binary(db, config, binary).await)
 }
 
 async fn download_ytdlp(config: &Config) -> anyhow::Result<()> {
@@ -228,7 +268,9 @@ async fn download_ytdlp(config: &Config) -> anyhow::Result<()> {
 
 async fn download_gallerydl(config: &Config) -> anyhow::Result<()> {
     let asset = host_gallerydl_asset().ok_or_else(|| {
-        anyhow::anyhow!(auto_download_unsupported("gallery-dl").unwrap_or_default())
+        anyhow::anyhow!(Binary::GalleryDl
+            .auto_download_unsupported()
+            .unwrap_or_default())
     })?;
     // Codeberg/Forgejo has no GitHub-style /releases/latest/download/{asset}
     // shortcut — resolve the latest tag via the API, then download by tag.
@@ -375,34 +417,15 @@ async fn download_file(url: &str, dest: &Path) -> anyhow::Result<()> {
 
 pub async fn ensure_binaries(db: &Db, config: &Config) {
     std::fs::create_dir_all(config.bin_dir()).ok();
-    for name in ["ytdlp", "gallery-dl", "ffmpeg"] {
+    for binary in Binary::ALL {
+        let name = binary.name();
         // Decide on the file, not on whether it runs: a binary that exists but
         // fails `--version` is reported as missing, but re-fetching it on every
         // boot would not make it run.
-        let path = binary_path(db, config, name);
+        let path = binary.path(db, config);
         let file_present = Path::new(&path).exists();
-        let has_override = match name {
-            "ytdlp" => db
-                .with_conn(|c| Ok(db::get_setting(c, "ytdlp_bin")))
-                .ok()
-                .flatten()
-                .filter(|s| !s.is_empty())
-                .is_some(),
-            "gallery-dl" => db
-                .with_conn(|c| Ok(db::get_setting(c, "gallerydl_bin")))
-                .ok()
-                .flatten()
-                .filter(|s| !s.is_empty())
-                .is_some(),
-            "ffmpeg" => db
-                .with_conn(|c| Ok(db::get_setting(c, "ffmpeg_bin")))
-                .ok()
-                .flatten()
-                .filter(|s| !s.is_empty())
-                .is_some(),
-            _ => false,
-        };
-        if let Some(why) = auto_download_unsupported(name) {
+        let has_override = binary.override_path(db).is_some();
+        if let Some(why) = binary.auto_download_unsupported() {
             if !file_present && !has_override {
                 tracing::info!("{why}");
             }
@@ -410,7 +433,7 @@ pub async fn ensure_binaries(db: &Db, config: &Config) {
         }
         if !file_present && !has_override {
             tracing::info!("downloading missing binary: {name}");
-            match download_binary(db, config, name).await {
+            match download_binary(db, config, binary).await {
                 Ok(_) => {
                     tracing::info!("downloaded binary: {name}");
                 }
