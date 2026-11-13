@@ -14,8 +14,9 @@ use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 
 /// Runs `cmd` and collects its output, like [`Command::output`], but gives
-/// up after `timeout`. On timeout, or when the returned future is dropped,
-/// the child and everything it started are killed. `None` if `cmd` cannot be
+/// up after `timeout`. Once the child exits, anything it started that is
+/// still running is killed; on timeout, or when the returned future is
+/// dropped, the child is killed too. `None` if `cmd` cannot be
 /// spawned, its output cannot be read, or it does not finish in time.
 pub async fn output_within(cmd: &mut Command, timeout: Duration) -> Option<Output> {
     cmd.stdout(Stdio::piped())
@@ -27,12 +28,13 @@ pub async fn output_within(cmd: &mut Command, timeout: Duration) -> Option<Outpu
     tokio::time::timeout(timeout, tree.output()).await.ok()?
 }
 
-/// A child and everything it starts. Dropping it before the child has been
-/// waited on kills them all.
+/// A child and everything it starts. Dropping it kills whatever of them is
+/// still running.
 struct ProcessTree {
     child: Child,
-    /// The child's process group, until the child has been waited on: after
-    /// that, its id may belong to an unrelated process.
+    /// The child's process group, until the group has been killed. The
+    /// child is reaped only after that: once it is, the id may belong to an
+    /// unrelated process.
     #[cfg(unix)]
     pgid: Option<libc::pid_t>,
     /// `None` if the job could not be set up; then only the child is killed.
@@ -60,7 +62,8 @@ impl ProcessTree {
         }
     }
 
-    /// Reads the child's stdout and stderr to the end, then waits for it.
+    /// Reads the child's stdout and stderr to the end, waits for the child,
+    /// then kills anything it left running.
     async fn output(&mut self) -> Option<Output> {
         let mut stdout_pipe = self.child.stdout.take()?;
         let mut stderr_pipe = self.child.stderr.take()?;
@@ -71,10 +74,24 @@ impl ProcessTree {
         );
         stdout_read.ok()?;
         stderr_read.ok()?;
-        // Wait only once both pipes are closed. Until `wait` returns the child
-        // is unreaped, so dropping `self` can still kill the group by its id.
+        // Kill the group once the child has exited, but before it is reaped:
+        // until then its pid, and so the group id, cannot be reused.
+        #[cfg(unix)]
+        {
+            if let Some(pid) = self.pgid {
+                tokio::task::spawn_blocking(move || wait_unreaped(pid))
+                    .await
+                    .ok()?
+                    .ok()?;
+            }
+            self.kill();
+        }
         let status = self.child.wait().await.ok()?;
-        self.leave_running();
+        // A job is held by its handle, not an id, so it can be closed after
+        // the child is reaped. Closing it earlier could kill a child that has
+        // closed its pipes but not yet exited.
+        #[cfg(windows)]
+        self.kill();
         Some(Output {
             status,
             stdout,
@@ -82,23 +99,8 @@ impl ProcessTree {
         })
     }
 
-    /// Stops dropping `self` from killing what the child left behind.
-    fn leave_running(&mut self) {
-        #[cfg(unix)]
-        {
-            self.pgid = None;
-        }
-        #[cfg(windows)]
-        if let Some(job) = self.job.take() {
-            job.release();
-        }
-    }
-}
-
-impl Drop for ProcessTree {
-    // Runs before `child` is dropped, so the group dies while its leader is
-    // still unreaped.
-    fn drop(&mut self) {
+    /// Kills everything left in the group. Only the first call does anything.
+    fn kill(&mut self) {
         #[cfg(unix)]
         if let Some(pgid) = self.pgid.take() {
             // SAFETY: no memory is involved. The leader has not been waited
@@ -110,6 +112,41 @@ impl Drop for ProcessTree {
             // Closing the job kills every process in it.
             self.job.take();
         }
+    }
+}
+
+/// Blocks until the child `pid` has exited, leaving it unreaped (a zombie) so
+/// its pid and process group id stay reserved.
+#[cfg(unix)]
+fn wait_unreaped(pid: libc::pid_t) -> std::io::Result<()> {
+    loop {
+        // SAFETY: an all-zero siginfo_t is valid.
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        // SAFETY: `info` is a valid siginfo_t that outlives the call. WNOWAIT
+        // leaves the child waitable, so `Child::wait` still reaps it.
+        let ret = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                pid as libc::id_t,
+                &mut info,
+                libc::WEXITED | libc::WNOWAIT,
+            )
+        };
+        if ret == 0 {
+            return Ok(());
+        }
+        let err = std::io::Error::last_os_error();
+        if err.kind() != std::io::ErrorKind::Interrupted {
+            return Err(err);
+        }
+    }
+}
+
+impl Drop for ProcessTree {
+    // Runs before `child` is dropped, so the group dies while its leader is
+    // still unreaped.
+    fn drop(&mut self) {
+        self.kill();
     }
 }
 
@@ -143,11 +180,6 @@ mod job {
                 // SAFETY: `process` is the live child's handle, borrowed only for this call.
                 && unsafe { AssignProcessToJobObject(job.0, process as HANDLE) } != 0)
                 .then_some(job)
-        }
-
-        /// Closes the job without killing what is left in it.
-        pub fn release(self) {
-            self.set_limit_flags(0);
         }
 
         fn set_limit_flags(&self, flags: u32) -> bool {

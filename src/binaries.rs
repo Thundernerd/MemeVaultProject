@@ -517,6 +517,55 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
+    async fn version_of_leaves_nothing_running_after_it_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("grandchild.pid");
+        let bin = script(
+            dir.path(),
+            "detaches",
+            &format!(
+                "sleep 30 >/dev/null 2>&1 &\necho $! > '{}'\necho 1.2.3",
+                pidfile.display()
+            ),
+        );
+        assert_eq!(
+            version_of_within(&bin, &["--version"], Duration::from_secs(5)).await,
+            Some("1.2.3".to_string())
+        );
+        let pid: libc::pid_t = std::fs::read_to_string(&pidfile)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert!(
+            gone_within(pid, Duration::from_secs(2)).await,
+            "grandchild {pid} is still running after a successful check"
+        );
+    }
+
+    /// Whether `pid` stops existing within `grace`. An orphan is reaped by
+    /// init, which may take a moment. Kills `pid` if it is still running, so
+    /// a failing test leaves nothing behind.
+    #[cfg(unix)]
+    async fn gone_within(pid: libc::pid_t, grace: Duration) -> bool {
+        let deadline = std::time::Instant::now() + grace;
+        loop {
+            // SAFETY: signal 0 only checks whether the process exists.
+            let alive = unsafe { libc::kill(pid, 0) } == 0;
+            if !alive {
+                return std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
+            }
+            if std::time::Instant::now() > deadline {
+                // SAFETY: signal-only syscall on the pid the script recorded.
+                unsafe { libc::kill(pid, libc::SIGKILL) };
+                return false;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
     async fn version_of_resolves_a_bare_name_on_path() {
         assert_eq!(
             version_of("sh", &["-c", "echo 1.2.3"]).await,
