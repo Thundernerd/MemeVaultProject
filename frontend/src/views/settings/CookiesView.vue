@@ -21,7 +21,7 @@ async function load() {
   gallerydl.value = await api<CookieStatus>('/api/cookies/gallerydl')
 }
 
-const { error, attempt } = useActionError(load)
+const { error, attempt, initialLoad } = useActionError(load)
 
 async function upload(tool: CookieTool, e: Event) {
   const input = e.target as HTMLInputElement
@@ -42,7 +42,7 @@ function cookieStatus(tool: CookieTool) {
   return tool === 'ytdlp' ? ytdlp.value : gallerydl.value
 }
 
-onMounted(load)
+onMounted(initialLoad)
 </script>
 
 <template>
