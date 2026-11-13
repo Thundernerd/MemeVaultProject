@@ -490,29 +490,11 @@ mod tests {
             version_of_within(&bin, &["--version"], Duration::from_millis(500)).await,
             None
         );
-        let pid: libc::pid_t = std::fs::read_to_string(&pidfile)
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap();
-
-        // The orphaned grandchild is reaped by init, which may take a moment.
-        let deadline = std::time::Instant::now() + Duration::from_secs(2);
-        let gone = loop {
-            // SAFETY: signal 0 only checks whether the process exists.
-            let alive = unsafe { libc::kill(pid, 0) } == 0;
-            if !alive {
-                break std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
-            }
-            if std::time::Instant::now() > deadline {
-                // Do not leave the leaked process behind after the test.
-                // SAFETY: signal-only syscall on the pid the script recorded.
-                unsafe { libc::kill(pid, libc::SIGKILL) };
-                break false;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        };
-        assert!(gone, "grandchild {pid} is still running after the timeout");
+        let pid = read_pid(&pidfile);
+        assert!(
+            gone_within(pid, Duration::from_secs(2)).await,
+            "grandchild {pid} is still running after the timeout"
+        );
     }
 
     #[cfg(unix)]
@@ -532,15 +514,21 @@ mod tests {
             version_of_within(&bin, &["--version"], Duration::from_secs(5)).await,
             Some("1.2.3".to_string())
         );
-        let pid: libc::pid_t = std::fs::read_to_string(&pidfile)
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap();
+        let pid = read_pid(&pidfile);
         assert!(
             gone_within(pid, Duration::from_secs(2)).await,
             "grandchild {pid} is still running after a successful check"
         );
+    }
+
+    /// The pid a test script wrote to `pidfile`.
+    #[cfg(unix)]
+    fn read_pid(pidfile: &Path) -> libc::pid_t {
+        std::fs::read_to_string(pidfile)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap()
     }
 
     /// Whether `pid` stops existing within `grace`. An orphan is reaped by
