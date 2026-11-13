@@ -3,7 +3,7 @@
 use crate::config::Config;
 use crate::db::{self, Db, QueueStatus};
 use crate::gallerydl;
-use crate::queue::{spawn_progress_persister, QueueHandle};
+use crate::queue::{finish_queue_item, spawn_progress_persister, QueueHandle};
 use crate::state::{AppState, DiscordControl};
 use crate::ytdlp;
 use serenity::all::*;
@@ -290,26 +290,6 @@ async fn edit_status(ctx: &Context, cmd: &CommandInteraction, content: impl Into
         .await;
 }
 
-fn finalize_discord_queue(db: &Db, item_id: &str, status: QueueStatus, error: Option<&str>) {
-    let completed = chrono::Utc::now().to_rfc3339();
-    let progress = if status == QueueStatus::Completed {
-        Some(100.0)
-    } else {
-        None
-    };
-    let _ = db.with_conn(|c| {
-        db::update_queue_item(
-            c,
-            item_id,
-            Some(status),
-            progress,
-            Some(error),
-            Some(Some(&completed)),
-        )?;
-        Ok(())
-    });
-}
-
 async fn run_bot(
     token: String,
     command_name: String,
@@ -502,33 +482,7 @@ async fn run_bot(
 
             self.queue.unregister(&item_id).await;
 
-            match &result {
-                Ok(paths) if !paths.is_empty() => {
-                    finalize_discord_queue(&self.db, &item_id, QueueStatus::Completed, None);
-                }
-                Ok(_) => {
-                    finalize_discord_queue(
-                        &self.db,
-                        &item_id,
-                        QueueStatus::Failed,
-                        Some("No files downloaded"),
-                    );
-                }
-                Err(e) => {
-                    let msg = e.to_string();
-                    let cancelled = msg.contains("cancelled");
-                    if cancelled {
-                        finalize_discord_queue(
-                            &self.db,
-                            &item_id,
-                            QueueStatus::Cancelled,
-                            Some("cancelled"),
-                        );
-                    } else {
-                        finalize_discord_queue(&self.db, &item_id, QueueStatus::Failed, Some(&msg));
-                    }
-                }
-            }
+            finish_queue_item(&self.db, &item_id, result.as_ref().map(Vec::len));
 
             match result {
                 Ok(paths) if !paths.is_empty() => {
