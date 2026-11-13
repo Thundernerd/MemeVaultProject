@@ -38,7 +38,7 @@ pub async fn run_gallery_dl(
     });
     std::fs::create_dir_all(&job_dir)?;
 
-    let bin = binaries::get_gallerydl_path(db, config);
+    let bin = binaries::Binary::GalleryDl.path(db, config);
     let extra = db
         .with_conn(|c| Ok(db::get_setting(c, "gallerydl_extra_args")))?
         .unwrap_or_default();

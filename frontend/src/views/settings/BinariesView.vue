@@ -3,6 +3,8 @@ import { onMounted, ref } from 'vue'
 import { api } from '@/api'
 import { useSettings } from './useSettings'
 import SaveRow from './SaveRow.vue'
+import ErrorTag from './ErrorTag.vue'
+import { messageOf } from './useActionError'
 
 interface BinaryStatus {
   name: string
@@ -13,19 +15,31 @@ interface BinaryStatus {
 
 const { settings, save, isOverridden, saved, error } = useSettings()
 const binaries = ref<Record<string, BinaryStatus>>({})
-const busy = ref('')
+/** Binaries with a download in flight, so each panel's button tracks its own download. */
+const busy = ref(new Set<string>())
+/** Per-binary feedback from the last "Download / update" click, keyed by binary name. */
+const downloadNotes = ref<Record<string, string>>({})
 
 async function loadBins() {
   binaries.value = await api('/api/binaries')
 }
 
 async function download(name: string) {
-  busy.value = name
+  busy.value.add(name)
+  downloadNotes.value[name] = ''
   try {
-    await api(`/api/binaries/${encodeURIComponent(name)}`, { method: 'POST' })
+    const res = await api<BinaryStatus>(`/api/binaries/${encodeURIComponent(name)}`, { method: 'POST' })
+    if (!res.exists) downloadNotes.value[name] = 'Downloaded, but the binary cannot run on this system'
+  } catch (e) {
+    downloadNotes.value[name] = `Download failed: ${messageOf(e)}`
+  }
+  try {
     await loadBins()
+  } catch (e) {
+    // Keep the download's own note if there is one; otherwise say the refresh failed.
+    downloadNotes.value[name] ||= `Reload failed: ${messageOf(e)}`
   } finally {
-    busy.value = ''
+    busy.value.delete(name)
   }
 }
 
@@ -58,13 +72,14 @@ onMounted(loadBins)
           <p class="min-w-0">
             <span class="pill label" :class="b.exists ? 'pill-ok' : 'pill-off'" :title="b.version || undefined">{{ b.exists ? (b.version || 'installed') : 'missing' }}</span>
           </p>
+          <ErrorTag :message="downloadNotes[b.name] ?? ''" class="self-start" />
         </div>
         <button
           type="button"
           class="btn btn-sm"
-          :disabled="busy === b.name"
+          :disabled="busy.has(b.name)"
           @click="download(b.name)"
-        >{{ busy === b.name ? '…' : 'Download / update' }}</button>
+        >{{ busy.has(b.name) ? '…' : 'Download / update' }}</button>
       </div>
     </div>
   </div>
