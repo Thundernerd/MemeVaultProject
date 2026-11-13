@@ -369,12 +369,12 @@ mod tests {
                 found.push(one_capture(
                     src,
                     &format!("{file} script fallback"),
-                    &format!(r"\b{var} = '([^']+)'"),
+                    &format!(r"\b{var}\s*=\s*'([^']+)'"),
                 ));
                 found.push(one_capture(
                     src,
                     &format!("{file} script catch"),
-                    &format!(r"setAttribute\('{attr}',\s*'([^']+)'\)"),
+                    &format!(r"catch\s*\(\w*\)\s*\{{[^}}]*?setAttribute\('{attr}',\s*'([^']+)'\)"),
                 ));
             }
             found
@@ -419,15 +419,10 @@ mod tests {
     /// Sorted string literals of `[…]` (a JS array literal) found by the
     /// regex `before` + `\[([^\]]*)\]` + `after`; panics if there isn't exactly one.
     fn js_array(src: &str, file: &str, before: &str, after: &str) -> Vec<String> {
-        let array = Regex::new(&format!(r"{before}\[([^\]]*)\]{after}")).unwrap();
-        let found: Vec<_> = array.captures_iter(src).collect();
-        let [one] = found.as_slice() else {
-            let n = found.len();
-            panic!("{file}: expected one `{before}[…]{after}` array, found {n}");
-        };
+        let (_, array) = one_capture(src, file, &format!(r"{before}\[([^\]]*)\]{after}"));
         let literal = Regex::new(r#"'([^']*)'|"([^"]*)""#).unwrap();
         let mut names: Vec<String> = literal
-            .captures_iter(&one[1])
+            .captures_iter(&array)
             .map(|c| c.get(1).or(c.get(2)).unwrap().as_str().to_string())
             .collect();
         names.sort();
