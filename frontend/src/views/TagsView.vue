@@ -56,7 +56,7 @@ onMounted(load)
         <span class="state-tag label">error</span>
         <p class="state-text">{{ error }}</p>
       </div>
-      <!-- Tags from the last successful load stay listed under the error, as on the Queue. -->
+      <!-- Tags from the last successful load stay listed under the error until a reload succeeds. -->
       <div v-else-if="!loaded" class="state state-loading" role="status">
         <span class="state-tag label">loading</span>
         <p class="state-text">Loading…</p>
