@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '@/api'
+import { useActionError } from './useActionError'
 import SaveRow from './SaveRow.vue'
 
 interface ApiKeyRow {
@@ -21,18 +22,22 @@ async function load() {
   keys.value = await api('/api/api-keys')
 }
 
+const { error, attempt } = useActionError(load)
+
 async function create() {
-  created.value = await api('/api/api-keys', {
-    method: 'POST',
-    body: JSON.stringify({ name: name.value, permission: permission.value }),
+  // Hide the last key so it isn't shown next to a failed create as if it were the new one.
+  created.value = null
+  await attempt('Create failed', async () => {
+    created.value = await api('/api/api-keys', {
+      method: 'POST',
+      body: JSON.stringify({ name: name.value, permission: permission.value }),
+    })
+    name.value = ''
   })
-  name.value = ''
-  await load()
 }
 
 async function revoke(id: string) {
-  await api(`/api/api-keys/${id}`, { method: 'DELETE' })
-  await load()
+  await attempt('Revoke failed', () => api(`/api/api-keys/${id}`, { method: 'DELETE' }))
 }
 
 onMounted(load)
@@ -51,7 +56,7 @@ onMounted(load)
         <option value="read">read</option>
         <option value="read_write">read_write</option>
       </select>
-      <SaveRow label="Create key" />
+      <SaveRow label="Create key" :error="error" />
     </form>
     <div v-if="created?.key" class="reveal">
       <p class="label">New key (copy now)</p>

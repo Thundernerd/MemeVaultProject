@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { api } from '@/api'
+import { useActionError } from './useActionError'
+import ErrorTag from './ErrorTag.vue'
 
 type CookieTool = 'ytdlp' | 'gallerydl'
 const tools: CookieTool[] = ['ytdlp', 'gallerydl']
@@ -14,22 +17,25 @@ const ytdlp = ref<CookieStatus | null>(null)
 const gallerydl = ref<CookieStatus | null>(null)
 
 async function load() {
-  ytdlp.value = await fetch('/api/cookies/ytdlp').then((r) => r.json())
-  gallerydl.value = await fetch('/api/cookies/gallerydl').then((r) => r.json())
+  ytdlp.value = await api<CookieStatus>('/api/cookies/ytdlp')
+  gallerydl.value = await api<CookieStatus>('/api/cookies/gallerydl')
 }
+
+const { error, attempt } = useActionError(load)
 
 async function upload(tool: CookieTool, e: Event) {
   const input = e.target as HTMLInputElement
-  if (!input.files?.[0]) return
+  const file = input.files?.[0]
+  if (!file) return
+  // Reset so picking the same file again (a retry) fires another change event.
+  input.value = ''
   const fd = new FormData()
-  fd.append('file', input.files[0])
-  await fetch(`/api/cookies/${tool}`, { method: 'POST', body: fd })
-  await load()
+  fd.append('file', file)
+  await attempt('Upload failed', () => api(`/api/cookies/${tool}`, { method: 'POST', body: fd }))
 }
 
 async function remove(tool: CookieTool) {
-  await fetch(`/api/cookies/${tool}`, { method: 'DELETE' })
-  await load()
+  await attempt('Delete failed', () => api(`/api/cookies/${tool}`, { method: 'DELETE' }))
 }
 
 function cookieStatus(tool: CookieTool) {
@@ -41,6 +47,7 @@ onMounted(load)
 
 <template>
   <div class="cards">
+    <ErrorTag :message="error" class="self-start" />
     <div
       v-for="tool in tools"
       :key="tool"
