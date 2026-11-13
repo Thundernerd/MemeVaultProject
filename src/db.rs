@@ -302,78 +302,96 @@ pub fn get_env_overridden_keys() -> Vec<String> {
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-/// Lifecycle state of a queue item. Stored in `queue_items.status` and sent
-/// over the API as the lowercase variant name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum QueueStatus {
-    Pending,
-    Downloading,
-    Completed,
-    Failed,
-    Cancelled,
+/// Declares a fieldless enum whose values are stored in SQLite and sent over
+/// the API as fixed strings. Each `Variant => "wire"` pair is the single source
+/// of that variant's string: the macro generates the enum (with its serde
+/// derives), `ALL`, `as_str`, `FromStr`, a `$err` error type whose message is
+/// `unknown <noun> "<value>"`, and the rusqlite `ToSql`/`FromSql` impls.
+/// Behaviour methods go in a separate, hand-written `impl` block.
+macro_rules! sql_string_enum {
+    (@one $variant:ident) => {
+        1
+    };
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $name:ident / $err:ident ($noun:literal) {
+            $($variant:ident => $wire:literal),+ $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+        $vis enum $name {
+            $(#[serde(rename = $wire)] $variant,)+
+        }
+
+        impl $name {
+            const ALL: [Self; 0 $(+ sql_string_enum!(@one $variant))+] = [$(Self::$variant),+];
+
+            pub fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $wire,)+
+                }
+            }
+        }
+
+        impl std::str::FromStr for $name {
+            type Err = $err;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                Self::ALL
+                    .into_iter()
+                    .find(|value| value.as_str() == s)
+                    .ok_or_else(|| $err(s.to_string()))
+            }
+        }
+
+        #[doc = concat!("A string that is not one of [`", stringify!($name), "`]'s values.")]
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        $vis struct $err(pub String);
+
+        impl std::fmt::Display for $err {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, concat!("unknown ", $noun, " {:?}"), self.0)
+            }
+        }
+
+        impl std::error::Error for $err {}
+
+        impl rusqlite::types::ToSql for $name {
+            fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+                Ok(self.as_str().into())
+            }
+        }
+
+        impl rusqlite::types::FromSql for $name {
+            fn column_result(
+                value: rusqlite::types::ValueRef<'_>,
+            ) -> rusqlite::types::FromSqlResult<Self> {
+                value
+                    .as_str()?
+                    .parse::<Self>()
+                    .map_err(|e| rusqlite::types::FromSqlError::Other(Box::new(e)))
+            }
+        }
+    };
+}
+
+sql_string_enum! {
+    /// Lifecycle state of a queue item. Stored in `queue_items.status` and sent
+    /// over the API as the lowercase variant name.
+    pub enum QueueStatus / UnknownQueueStatus ("queue status") {
+        Pending => "pending",
+        Downloading => "downloading",
+        Completed => "completed",
+        Failed => "failed",
+        Cancelled => "cancelled",
+    }
 }
 
 impl QueueStatus {
-    const ALL: [Self; 5] = [
-        Self::Pending,
-        Self::Downloading,
-        Self::Completed,
-        Self::Failed,
-        Self::Cancelled,
-    ];
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Pending => "pending",
-            Self::Downloading => "downloading",
-            Self::Completed => "completed",
-            Self::Failed => "failed",
-            Self::Cancelled => "cancelled",
-        }
-    }
-
     /// Whether a user can still cancel the item (it has not finished yet).
     pub fn is_cancellable(self) -> bool {
         matches!(self, Self::Pending | Self::Downloading)
-    }
-}
-
-impl std::str::FromStr for QueueStatus {
-    type Err = UnknownQueueStatus;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::ALL
-            .into_iter()
-            .find(|status| status.as_str() == s)
-            .ok_or_else(|| UnknownQueueStatus(s.to_string()))
-    }
-}
-
-/// A string that is not one of [`QueueStatus`]'s values.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnknownQueueStatus(pub String);
-
-impl std::fmt::Display for UnknownQueueStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "unknown queue status {:?}", self.0)
-    }
-}
-
-impl std::error::Error for UnknownQueueStatus {}
-
-impl rusqlite::types::ToSql for QueueStatus {
-    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
-        Ok(self.as_str().into())
-    }
-}
-
-impl rusqlite::types::FromSql for QueueStatus {
-    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
-        value
-            .as_str()?
-            .parse::<Self>()
-            .map_err(|e| rusqlite::types::FromSqlError::Other(Box::new(e)))
     }
 }
 
