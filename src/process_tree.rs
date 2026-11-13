@@ -71,8 +71,8 @@ impl ProcessTree {
                 .inspect_err(|err| {
                     tracing::warn!(
                         program = ?cmd.as_std().get_program(),
-                        "could not put the child in a job; on timeout only the \
-                         child is killed, not what it starts: {err}"
+                        "could not put the child in a job; only the child is \
+                         killed, never what it starts: {err}"
                     )
                 })
                 .ok();
