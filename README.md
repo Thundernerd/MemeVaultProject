@@ -29,6 +29,12 @@ Type-check the frontend without building (`npm run build` also runs this check, 
 cd frontend && npm run typecheck
 ```
 
+Run the frontend tests (CI runs these too):
+
+```bash
+cd frontend && npm test
+```
+
 ## Production build
 
 ```bash
