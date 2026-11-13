@@ -241,30 +241,17 @@ fn read_sidecar_meta(path: &Path) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     #[cfg(unix)]
-    mod process_tree {
-        use super::super::run_gallery_dl;
+    mod cancellation {
         use crate::binaries::Binary;
-        use crate::test_support::{gone_within, script, wait_for_pid, TestVault};
+        use crate::gallerydl::run_gallery_dl;
+        use crate::test_support::{gone_within, wait_for_pid, TestVault};
         use std::time::Duration;
         use tokio::sync::watch;
-
-        /// A fake gallery-dl that, like the PyInstaller build, leaves the
-        /// work to a child process that holds stdout.
-        fn fake_gallerydl(vault: &TestVault) -> std::path::PathBuf {
-            let pidfile = vault.dir.path().join("grandchild.pid");
-            let bin = script(
-                vault.dir.path(),
-                "gallery-dl",
-                &format!("sleep 30 &\necho $! > '{}'\nwait", pidfile.display()),
-            );
-            vault.use_binary(Binary::GalleryDl, &bin);
-            pidfile
-        }
 
         #[tokio::test]
         async fn cancelling_a_download_kills_the_whole_process_tree() {
             let vault = TestVault::new();
-            let pidfile = fake_gallerydl(&vault);
+            let pidfile = vault.use_fake_pyinstaller_binary(Binary::GalleryDl);
             let (cancel_tx, cancel) = watch::channel(false);
             let download = {
                 let (db, config) = (vault.db.clone(), vault.config.clone());
@@ -290,7 +277,7 @@ mod tests {
         #[tokio::test]
         async fn dropping_a_download_kills_the_whole_process_tree() {
             let vault = TestVault::new();
-            let pidfile = fake_gallerydl(&vault);
+            let pidfile = vault.use_fake_pyinstaller_binary(Binary::GalleryDl);
             let (_cancel_tx, cancel) = watch::channel(false);
             let download = {
                 let (db, config) = (vault.db.clone(), vault.config.clone());

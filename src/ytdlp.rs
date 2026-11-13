@@ -640,30 +640,17 @@ mod tests {
     }
 
     #[cfg(unix)]
-    mod process_tree {
-        use super::super::run_ytdlp;
+    mod cancellation {
         use crate::binaries::Binary;
-        use crate::test_support::{gone_within, script, wait_for_pid, TestVault};
+        use crate::test_support::{gone_within, wait_for_pid, TestVault};
+        use crate::ytdlp::run_ytdlp;
         use std::time::Duration;
         use tokio::sync::watch;
-
-        /// A fake yt-dlp that, like the PyInstaller build, leaves the work
-        /// to a child process that holds stdout.
-        fn fake_ytdlp(vault: &TestVault) -> std::path::PathBuf {
-            let pidfile = vault.dir.path().join("grandchild.pid");
-            let bin = script(
-                vault.dir.path(),
-                "yt-dlp",
-                &format!("sleep 30 &\necho $! > '{}'\nwait", pidfile.display()),
-            );
-            vault.use_binary(Binary::YtDlp, &bin);
-            pidfile
-        }
 
         #[tokio::test]
         async fn cancelling_a_download_kills_the_whole_process_tree() {
             let vault = TestVault::new();
-            let pidfile = fake_ytdlp(&vault);
+            let pidfile = vault.use_fake_pyinstaller_binary(Binary::YtDlp);
             let (cancel_tx, cancel) = watch::channel(false);
             let download = {
                 let (db, config) = (vault.db.clone(), vault.config.clone());
@@ -689,7 +676,7 @@ mod tests {
         #[tokio::test]
         async fn dropping_a_download_kills_the_whole_process_tree() {
             let vault = TestVault::new();
-            let pidfile = fake_ytdlp(&vault);
+            let pidfile = vault.use_fake_pyinstaller_binary(Binary::YtDlp);
             let (_cancel_tx, cancel) = watch::channel(false);
             let download = {
                 let (db, config) = (vault.db.clone(), vault.config.clone());

@@ -20,11 +20,12 @@ pub fn script(dir: &Path, name: &str, body: &str) -> String {
 /// The pid a test script wrote to `pidfile`.
 #[cfg(unix)]
 pub fn read_pid(pidfile: &Path) -> libc::pid_t {
-    std::fs::read_to_string(pidfile)
-        .unwrap()
-        .trim()
-        .parse()
-        .unwrap()
+    try_read_pid(pidfile).unwrap_or_else(|| panic!("no pid in {}", pidfile.display()))
+}
+
+#[cfg(unix)]
+fn try_read_pid(pidfile: &Path) -> Option<libc::pid_t> {
+    std::fs::read_to_string(pidfile).ok()?.trim().parse().ok()
 }
 
 /// The pid a running test script writes to `pidfile`, once it has written it.
@@ -32,10 +33,7 @@ pub fn read_pid(pidfile: &Path) -> libc::pid_t {
 pub async fn wait_for_pid(pidfile: &Path, within: Duration) -> libc::pid_t {
     let deadline = std::time::Instant::now() + within;
     loop {
-        if let Some(pid) = std::fs::read_to_string(pidfile)
-            .ok()
-            .and_then(|s| s.trim().parse().ok())
-        {
+        if let Some(pid) = try_read_pid(pidfile) {
             return pid;
         }
         assert!(
@@ -99,5 +97,20 @@ impl TestVault {
         self.db
             .with_conn(|c| Ok(db::set_setting(c, binary.setting_key(), path)?))
             .unwrap();
+    }
+
+    /// Runs `binary` as a fake that, like a PyInstaller onefile build, leaves
+    /// the work to a child process that holds stdout. Returns the file the
+    /// fake writes that child's pid to.
+    #[cfg(unix)]
+    pub fn use_fake_pyinstaller_binary(&self, binary: Binary) -> PathBuf {
+        let pidfile = self.dir.path().join("grandchild.pid");
+        let bin = script(
+            self.dir.path(),
+            binary.name(),
+            &format!("sleep 30 &\necho $! > '{}'\nwait", pidfile.display()),
+        );
+        self.use_binary(binary, &bin);
+        pidfile
     }
 }

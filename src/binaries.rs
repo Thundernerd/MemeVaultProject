@@ -484,6 +484,7 @@ pub async fn ensure_binaries(db: &Db, config: &Config) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[cfg(unix)]
     use crate::test_support::{gone_within, read_pid, script};
 
