@@ -377,6 +377,74 @@ impl rusqlite::types::FromSql for QueueStatus {
     }
 }
 
+/// Where a queue item was submitted from. Stored in `queue_items.source` and
+/// sent over the API as the lowercase variant name. Mirrors the frontend's
+/// `QueueSource` type (`frontend/src/api.ts`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum QueueSource {
+    Web,
+    Api,
+    Discord,
+    Fluxer,
+}
+
+impl QueueSource {
+    const ALL: [Self; 4] = [Self::Web, Self::Api, Self::Discord, Self::Fluxer];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Web => "web",
+            Self::Api => "api",
+            Self::Discord => "discord",
+            Self::Fluxer => "fluxer",
+        }
+    }
+
+    /// Whether a chat bot downloads the item itself, outside the vault worker.
+    pub fn is_chat_bot(self) -> bool {
+        matches!(self, Self::Discord | Self::Fluxer)
+    }
+}
+
+impl std::str::FromStr for QueueSource {
+    type Err = UnknownQueueSource;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|source| source.as_str() == s)
+            .ok_or_else(|| UnknownQueueSource(s.to_string()))
+    }
+}
+
+/// A string that is not one of [`QueueSource`]'s values.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownQueueSource(pub String);
+
+impl std::fmt::Display for UnknownQueueSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown queue source {:?}", self.0)
+    }
+}
+
+impl std::error::Error for UnknownQueueSource {}
+
+impl rusqlite::types::ToSql for QueueSource {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        Ok(self.as_str().into())
+    }
+}
+
+impl rusqlite::types::FromSql for QueueSource {
+    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        value
+            .as_str()?
+            .parse::<Self>()
+            .map_err(|e| rusqlite::types::FromSqlError::Other(Box::new(e)))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueueItem {
     pub id: String,
@@ -387,7 +455,7 @@ pub struct QueueItem {
     pub error: Option<String>,
     pub created_at: String,
     pub completed_at: Option<String>,
-    pub source: String,
+    pub source: QueueSource,
     pub source_label: Option<String>,
     pub include_in_random: i64,
 }
@@ -577,7 +645,7 @@ pub fn insert_queue_item(
     conn: &rusqlite::Connection,
     url: &str,
     downloader: &str,
-    source: &str,
+    source: QueueSource,
     source_label: Option<&str>,
     include_in_random: bool,
 ) -> rusqlite::Result<QueueItem> {
@@ -590,7 +658,7 @@ pub fn insert_queue_item(
         error: None,
         created_at: now_iso(),
         completed_at: None,
-        source: source.to_string(),
+        source,
         source_label: source_label.map(|s| s.to_string()),
         include_in_random: if include_in_random { 1 } else { 0 },
     };
@@ -631,36 +699,93 @@ pub fn list_queue_items(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<Que
 }
 
 pub fn get_next_pending_item(conn: &rusqlite::Connection) -> rusqlite::Result<Option<QueueItem>> {
+    let chat_bots = ChatBotSources::new();
     conn.query_row(
-        "SELECT * FROM queue_items WHERE status = ? AND source NOT IN ('discord', 'fluxer')
-         ORDER BY created_at ASC LIMIT 1",
-        [QueueStatus::Pending],
+        &format!(
+            "SELECT * FROM queue_items WHERE status = ? AND source NOT IN ({})
+             ORDER BY created_at ASC LIMIT 1",
+            chat_bots.placeholders()
+        ),
+        chat_bots
+            .with_leading_params(&[&QueueStatus::Pending])
+            .as_slice(),
         map_queue,
     )
     .optional()
 }
 
 pub fn count_active_downloads(conn: &rusqlite::Connection) -> rusqlite::Result<i64> {
+    let chat_bots = ChatBotSources::new();
     conn.query_row(
-        "SELECT COUNT(*) FROM queue_items WHERE status = ? AND source NOT IN ('discord', 'fluxer')",
-        [QueueStatus::Downloading],
+        &format!(
+            "SELECT COUNT(*) FROM queue_items WHERE status = ? AND source NOT IN ({})",
+            chat_bots.placeholders()
+        ),
+        chat_bots
+            .with_leading_params(&[&QueueStatus::Downloading])
+            .as_slice(),
         |r| r.get(0),
     )
 }
 
 /// Reset interrupted vault downloads to pending; fail chat-bot jobs that cannot be resumed.
 pub fn reset_stale_downloads(conn: &rusqlite::Connection) -> rusqlite::Result<usize> {
+    let chat_bots = ChatBotSources::new();
     let web = conn.execute(
-        "UPDATE queue_items SET status = ?1, progress = 0
-         WHERE status = ?2 AND source NOT IN ('discord', 'fluxer')",
-        params![QueueStatus::Pending, QueueStatus::Downloading],
+        &format!(
+            "UPDATE queue_items SET status = ?, progress = 0
+             WHERE status = ? AND source NOT IN ({})",
+            chat_bots.placeholders()
+        ),
+        chat_bots
+            .with_leading_params(&[&QueueStatus::Pending, &QueueStatus::Downloading])
+            .as_slice(),
     )?;
+    let now = now_iso();
     let bot = conn.execute(
-        "UPDATE queue_items SET status = ?1, error = 'interrupted', completed_at = ?2
-         WHERE status = ?3 AND source IN ('discord', 'fluxer')",
-        params![QueueStatus::Failed, now_iso(), QueueStatus::Downloading],
+        &format!(
+            "UPDATE queue_items SET status = ?, error = 'interrupted', completed_at = ?
+             WHERE status = ? AND source IN ({})",
+            chat_bots.placeholders()
+        ),
+        chat_bots
+            .with_leading_params(&[&QueueStatus::Failed, &now, &QueueStatus::Downloading])
+            .as_slice(),
     )?;
     Ok(web + bot)
+}
+
+/// The chat-bot [`QueueSource`]s, bound as parameters of a `source IN (...)` list.
+struct ChatBotSources(Vec<QueueSource>);
+
+impl ChatBotSources {
+    fn new() -> Self {
+        Self(
+            QueueSource::ALL
+                .into_iter()
+                .filter(|s| s.is_chat_bot())
+                .collect(),
+        )
+    }
+
+    /// `?, ?, ...` with one placeholder per chat-bot source.
+    fn placeholders(&self) -> String {
+        vec!["?"; self.0.len()].join(", ")
+    }
+
+    /// The statement's parameters: `leading` binds every `?` before the
+    /// `IN (...)` list, then the chat-bot sources bind the list itself.
+    ///
+    /// The `IN (...)` list must therefore be the statement's last placeholders,
+    /// and every placeholder must be an anonymous `?`.
+    fn with_leading_params<'a>(
+        &'a self,
+        leading: &[&'a dyn rusqlite::ToSql],
+    ) -> Vec<&'a dyn rusqlite::ToSql> {
+        let mut params = leading.to_vec();
+        params.extend(self.0.iter().map(|s| s as &dyn rusqlite::ToSql));
+        params
+    }
 }
 
 pub fn update_queue_item(
@@ -1460,6 +1585,51 @@ mod tests {
         assert!(read.is_err());
     }
 
+    /// The exact strings stored in `queue_items.source` and sent in API JSON.
+    const SOURCE_STRINGS: [(QueueSource, &str); 4] = [
+        (QueueSource::Web, "web"),
+        (QueueSource::Api, "api"),
+        (QueueSource::Discord, "discord"),
+        (QueueSource::Fluxer, "fluxer"),
+    ];
+
+    #[test]
+    fn queue_source_round_trips_through_json_and_sqlite() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        for (source, wire) in SOURCE_STRINGS {
+            assert_eq!(
+                serde_json::to_string(&source).unwrap(),
+                format!("\"{wire}\"")
+            );
+            assert_eq!(
+                serde_json::from_str::<QueueSource>(&format!("\"{wire}\"")).unwrap(),
+                source
+            );
+
+            let stored: String = conn.query_row("SELECT ?", [source], |r| r.get(0)).unwrap();
+            assert_eq!(stored, wire);
+            let read: QueueSource = conn.query_row("SELECT ?", [wire], |r| r.get(0)).unwrap();
+            assert_eq!(read, source);
+        }
+    }
+
+    #[test]
+    fn only_discord_and_fluxer_are_chat_bots() {
+        assert!(!QueueSource::Web.is_chat_bot());
+        assert!(!QueueSource::Api.is_chat_bot());
+        assert!(QueueSource::Discord.is_chat_bot());
+        assert!(QueueSource::Fluxer.is_chat_bot());
+    }
+
+    #[test]
+    fn queue_source_rejects_unknown_strings() {
+        assert!(serde_json::from_str::<QueueSource>("\"slack\"").is_err());
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let read: rusqlite::Result<QueueSource> =
+            conn.query_row("SELECT 'slack'", [], |r| r.get(0));
+        assert!(read.is_err());
+    }
+
     #[test]
     fn schema_roundtrip_and_settings() {
         let dir = tempdir().unwrap();
@@ -1477,17 +1647,24 @@ mod tests {
         };
         let db = Db::open(&config).unwrap();
         db.with_conn(|c| {
-            let item =
-                insert_queue_item(c, "https://example.com/v", "ytdlp", "web", None, false).unwrap();
+            let item = insert_queue_item(
+                c,
+                "https://example.com/v",
+                "ytdlp",
+                QueueSource::Web,
+                None,
+                false,
+            )
+            .unwrap();
             assert_eq!(item.status, QueueStatus::Pending);
-            assert_eq!(item.source, "web");
+            assert_eq!(item.source, QueueSource::Web);
             assert_eq!(item.source_label, None);
             assert_eq!(item.include_in_random, 0);
             let flagged = insert_queue_item(
                 c,
                 "https://example.com/r",
                 "ytdlp",
-                "api",
+                QueueSource::Api,
                 Some("bot"),
                 true,
             )
@@ -1578,9 +1755,15 @@ mod tests {
             let items = list_media_items_with_tags(c).unwrap();
             assert_eq!(items.len(), 1);
             assert_eq!(items[0].media.id, "m1");
-            let migrated =
-                insert_queue_item(c, "https://example.com/v1", "ytdlp", "web", None, false)
-                    .unwrap();
+            let migrated = insert_queue_item(
+                c,
+                "https://example.com/v1",
+                "ytdlp",
+                QueueSource::Web,
+                None,
+                false,
+            )
+            .unwrap();
             assert_eq!(migrated.include_in_random, 0);
             Ok(())
         })
@@ -1608,29 +1791,29 @@ mod tests {
                 c,
                 "https://example.com/d1",
                 "ytdlp",
-                "discord",
+                QueueSource::Discord,
                 Some("Discord"),
                 false,
             )
             .unwrap();
-            assert_eq!(discord_pending.source, "discord");
+            assert_eq!(discord_pending.source, QueueSource::Discord);
             let fluxer_pending = insert_queue_item(
                 c,
                 "https://example.com/f1",
                 "ytdlp",
-                "fluxer",
+                QueueSource::Fluxer,
                 Some("Fluxer"),
                 false,
             )
             .unwrap();
-            assert_eq!(fluxer_pending.source, "fluxer");
+            assert_eq!(fluxer_pending.source, QueueSource::Fluxer);
             assert!(get_next_pending_item(c).unwrap().is_none());
 
             let discord_dl = insert_queue_item(
                 c,
                 "https://example.com/d2",
                 "gallery-dl",
-                "discord",
+                QueueSource::Discord,
                 Some("Discord"),
                 false,
             )
@@ -1648,7 +1831,7 @@ mod tests {
                 c,
                 "https://example.com/f2",
                 "gallery-dl",
-                "fluxer",
+                QueueSource::Fluxer,
                 Some("Fluxer"),
                 false,
             )
@@ -1664,22 +1847,29 @@ mod tests {
             .unwrap();
             assert_eq!(count_active_downloads(c).unwrap(), 0);
 
-            let web =
-                insert_queue_item(c, "https://example.com/w", "ytdlp", "web", None, false).unwrap();
+            let web = insert_queue_item(
+                c,
+                "https://example.com/w",
+                "ytdlp",
+                QueueSource::Web,
+                None,
+                false,
+            )
+            .unwrap();
             let next = get_next_pending_item(c).unwrap().unwrap();
             assert_eq!(next.id, web.id);
-            assert_eq!(next.source, "web");
+            assert_eq!(next.source, QueueSource::Web);
 
             let api = insert_queue_item(
                 c,
                 "https://example.com/api",
                 "ytdlp",
-                "api",
+                QueueSource::Api,
                 Some("Extra tool"),
                 false,
             )
             .unwrap();
-            assert_eq!(api.source, "api");
+            assert_eq!(api.source, QueueSource::Api);
             assert_eq!(api.source_label.as_deref(), Some("Extra tool"));
             let next_api = get_next_pending_item(c).unwrap().unwrap();
             assert_eq!(next_api.id, web.id); // still oldest pending non-discord
