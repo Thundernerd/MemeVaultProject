@@ -44,6 +44,36 @@ impl QueueHandle {
     }
 }
 
+/// Write the end of a download to its queue item row. `outcome` is the
+/// number of files the download produced, or the error it stopped with.
+pub fn finish_queue_item(db: &Db, item_id: &str, outcome: Result<usize, &anyhow::Error>) {
+    let message;
+    let (status, progress, error) = match outcome {
+        Ok(0) => (QueueStatus::Failed, None, Some("No files downloaded")),
+        Ok(_) => (QueueStatus::Completed, Some(100.0), None),
+        Err(e) => {
+            message = e.to_string();
+            if message.contains("cancelled") {
+                (QueueStatus::Cancelled, None, Some("cancelled"))
+            } else {
+                (QueueStatus::Failed, None, Some(message.as_str()))
+            }
+        }
+    };
+    let completed_at = chrono::Utc::now().to_rfc3339();
+    let _ = db.with_conn(|c| {
+        db::update_queue_item(
+            c,
+            item_id,
+            Some(status),
+            progress,
+            Some(error),
+            Some(Some(&completed_at)),
+        )?;
+        Ok(())
+    });
+}
+
 /// Persist download progress updates to the queue item row.
 pub fn spawn_progress_persister(db: Db, item_id: String, mut progress_rx: watch::Receiver<f64>) {
     tokio::spawn(async move {
@@ -133,46 +163,29 @@ async fn process_next(db: &Db, config: &Config, handle: &QueueHandle) -> anyhow:
 
     handle.unregister(&item.id).await;
 
+    finish_queue_item(db, &item.id, result.as_ref().copied());
+
     match result {
-        Ok(()) => {
-            let _ = db.with_conn(|c| {
-                db::update_queue_item(
-                    c,
-                    &item.id,
-                    Some(QueueStatus::Completed),
-                    Some(100.0),
-                    Some(None),
-                    Some(Some(&chrono::Utc::now().to_rfc3339())),
-                )?;
-                Ok(())
-            });
+        Ok(0) => {
+            tracing::warn!(
+                item_id = %item.id,
+                url = %item.url,
+                downloader = %item.downloader,
+                "queue item produced no files"
+            );
+        }
+        Ok(file_count) => {
             tracing::info!(
                 item_id = %item.id,
                 url = %item.url,
                 downloader = %item.downloader,
+                file_count,
                 "queue item completed"
             );
         }
         Err(e) => {
             let msg = e.to_string();
-            let cancelled = msg.contains("cancelled");
-            let status = if cancelled {
-                QueueStatus::Cancelled
-            } else {
-                QueueStatus::Failed
-            };
-            let _ = db.with_conn(|c| {
-                db::update_queue_item(
-                    c,
-                    &item.id,
-                    Some(status),
-                    None,
-                    Some(Some(if cancelled { "cancelled" } else { &msg })),
-                    Some(Some(&chrono::Utc::now().to_rfc3339())),
-                )?;
-                Ok(())
-            });
-            if cancelled {
+            if msg.contains("cancelled") {
                 tracing::warn!(
                     item_id = %item.id,
                     url = %item.url,
@@ -199,7 +212,7 @@ async fn run_video(
     item: &db::QueueItem,
     progress_tx: watch::Sender<f64>,
     cancel_rx: watch::Receiver<bool>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<usize> {
     let result =
         ytdlp::run_ytdlp(db, config, &item.url, Some(progress_tx), cancel_rx, None).await?;
 
@@ -266,7 +279,7 @@ async fn run_video(
         media.format.as_deref(),
         &media.created_at,
     );
-    Ok(())
+    Ok(1)
 }
 
 async fn run_gallery(
@@ -275,7 +288,7 @@ async fn run_gallery(
     item: &db::QueueItem,
     progress_tx: watch::Sender<f64>,
     cancel_rx: watch::Receiver<bool>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<usize> {
     let cancel_for_convert = cancel_rx.clone();
     let files = gallerydl::run_gallery_dl(
         db,
@@ -288,7 +301,7 @@ async fn run_gallery(
     .await?;
 
     if files.is_empty() {
-        anyhow::bail!("gallery-dl produced no files");
+        return Ok(0);
     }
 
     let album_id = if files.len() > 1 {
@@ -431,5 +444,103 @@ async fn run_gallery(
     }
 
     let _ = progress_tx.send(100.0);
-    Ok(())
+    Ok(files.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::TestVault;
+
+    /// A queue item mid-download, at 42 % progress.
+    fn downloading_item(vault: &TestVault) -> String {
+        vault
+            .db
+            .with_conn(|c| {
+                let item = db::insert_queue_item(
+                    c,
+                    "https://example.com/v",
+                    "yt-dlp",
+                    "web",
+                    None,
+                    false,
+                )?;
+                db::update_queue_item(
+                    c,
+                    &item.id,
+                    Some(QueueStatus::Downloading),
+                    Some(42.0),
+                    None,
+                    None,
+                )?;
+                Ok(item.id)
+            })
+            .unwrap()
+    }
+
+    fn row(vault: &TestVault, id: &str) -> db::QueueItem {
+        vault
+            .db
+            .with_conn(|c| Ok(db::get_queue_item(c, id)?))
+            .unwrap()
+            .unwrap()
+    }
+
+    #[test]
+    fn a_download_with_files_completes_the_item() {
+        let vault = TestVault::new();
+        let id = downloading_item(&vault);
+
+        finish_queue_item(&vault.db, &id, Ok(2));
+
+        let item = row(&vault, &id);
+        assert_eq!(item.status, QueueStatus::Completed);
+        assert_eq!(item.progress, 100.0);
+        assert_eq!(item.error, None);
+        assert!(item.completed_at.is_some());
+    }
+
+    #[test]
+    fn a_download_with_no_files_fails_the_item() {
+        let vault = TestVault::new();
+        let id = downloading_item(&vault);
+
+        finish_queue_item(&vault.db, &id, Ok(0));
+
+        let item = row(&vault, &id);
+        assert_eq!(item.status, QueueStatus::Failed);
+        assert_eq!(item.progress, 42.0);
+        assert_eq!(item.error.as_deref(), Some("No files downloaded"));
+        assert!(item.completed_at.is_some());
+    }
+
+    #[test]
+    fn a_cancelled_download_cancels_the_item() {
+        let vault = TestVault::new();
+        let id = downloading_item(&vault);
+
+        let error = anyhow::anyhow!("cancelled");
+        finish_queue_item(&vault.db, &id, Err(&error));
+
+        let item = row(&vault, &id);
+        assert_eq!(item.status, QueueStatus::Cancelled);
+        assert_eq!(item.progress, 42.0);
+        assert_eq!(item.error.as_deref(), Some("cancelled"));
+        assert!(item.completed_at.is_some());
+    }
+
+    #[test]
+    fn a_failed_download_fails_the_item_with_its_error() {
+        let vault = TestVault::new();
+        let id = downloading_item(&vault);
+
+        let error = anyhow::anyhow!("yt-dlp exited with status 1");
+        finish_queue_item(&vault.db, &id, Err(&error));
+
+        let item = row(&vault, &id);
+        assert_eq!(item.status, QueueStatus::Failed);
+        assert_eq!(item.progress, 42.0);
+        assert_eq!(item.error.as_deref(), Some("yt-dlp exited with status 1"));
+        assert!(item.completed_at.is_some());
+    }
 }
