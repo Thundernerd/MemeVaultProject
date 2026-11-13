@@ -255,10 +255,7 @@ async fn download_gallerydl(config: &Config) -> anyhow::Result<()> {
     })?;
     // Codeberg/Forgejo has no GitHub-style /releases/latest/download/{asset}
     // shortcut — resolve the latest tag via the API, then download by tag.
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .build()?;
-    let release: serde_json::Value = client
+    let release: serde_json::Value = http_client()?
         .get("https://codeberg.org/api/v1/repos/mikf/gallery-dl/releases/latest")
         .send()
         .await?
@@ -282,9 +279,10 @@ async fn download_gallerydl(config: &Config) -> anyhow::Result<()> {
 
 async fn download_ffmpeg(config: &Config) -> anyhow::Result<()> {
     let archive = ffmpeg_archive(std::env::consts::OS, std::env::consts::ARCH);
+    let url = archive.source.resolve().await?;
     let ext = archive.format.extension();
     let tmp = config.bin_dir().join(format!("ffmpeg-tmp.{ext}"));
-    download_file(archive.url, &tmp).await?;
+    download_file(&url, &tmp).await?;
     archive.format.extract_ffmpeg(&tmp, &config.bin_dir())?;
     let _ = std::fs::remove_file(&tmp);
     Ok(())
@@ -316,32 +314,71 @@ impl ArchiveFormat {
 /// Where the ffmpeg + ffprobe build for a target is downloaded from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct FfmpegArchive {
-    url: &'static str,
+    source: FfmpegSource,
     format: ArchiveFormat,
+}
+
+/// How the archive's download URL is found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FfmpegSource {
+    /// A stable URL that always serves the latest archive.
+    Direct(&'static str),
+    /// evermeet.cx's info JSON, whose `download.zip.url` names the
+    /// versioned zip of the latest release.
+    EvermeetInfo(&'static str),
+}
+
+impl FfmpegSource {
+    async fn resolve(self) -> anyhow::Result<String> {
+        match self {
+            FfmpegSource::Direct(url) => Ok(url.to_string()),
+            FfmpegSource::EvermeetInfo(info_url) => {
+                let info = fetch_text(info_url).await.map_err(|e| {
+                    anyhow::anyhow!("fetching evermeet.cx ffmpeg info failed: {e:#}")
+                })?;
+                evermeet_zip_url(&info)
+            }
+        }
+    }
 }
 
 /// The ffmpeg archive for a target. Targets with no build of their own get
 /// the Linux x86-64 one.
 fn ffmpeg_archive(os: &str, arch: &str) -> FfmpegArchive {
-    let (url, format) = match (os, arch) {
+    let (source, format) = match (os, arch) {
         ("linux", "aarch64") => (
-            "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-gpl.tar.xz",
+            FfmpegSource::Direct("https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-gpl.tar.xz"),
             ArchiveFormat::TarXz,
         ),
         ("macos", _) => (
-            "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip",
+            FfmpegSource::EvermeetInfo("https://evermeet.cx/ffmpeg/info/ffmpeg/release"),
             ArchiveFormat::Zip,
         ),
         ("windows", _) => (
-            "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip",
+            FfmpegSource::Direct("https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"),
             ArchiveFormat::Zip,
         ),
         _ => (
-            "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz",
+            FfmpegSource::Direct("https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz"),
             ArchiveFormat::TarXz,
         ),
     };
-    FfmpegArchive { url, format }
+    FfmpegArchive { source, format }
+}
+
+/// The versioned zip URL from evermeet.cx's ffmpeg info JSON
+/// (`https://evermeet.cx/ffmpeg/info/ffmpeg/release`), read from
+/// `download.zip.url`.
+fn evermeet_zip_url(info: &str) -> anyhow::Result<String> {
+    let info: serde_json::Value = serde_json::from_str(info)
+        .map_err(|e| anyhow::anyhow!("evermeet.cx ffmpeg info is not valid JSON: {e}"))?;
+    let url = info["download"]["zip"]["url"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("evermeet.cx ffmpeg info is missing download.zip.url"))?;
+    if !url.starts_with("https://") {
+        anyhow::bail!("evermeet.cx ffmpeg info gave a download.zip.url that is not https: {url}");
+    }
+    Ok(url.to_string())
 }
 
 fn extract_ffmpeg_xz(archive: &Path, bin_dir: &Path) -> anyhow::Result<()> {
@@ -386,11 +423,26 @@ fn copy_ffmpeg_bins(tmp_dir: &Path, bin_dir: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn download_file(url: &str, dest: &Path) -> anyhow::Result<()> {
-    let client = reqwest::Client::builder()
+async fn fetch_text(url: &str) -> anyhow::Result<String> {
+    Ok(http_client()?
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?)
+}
+
+/// The HTTP client used for every binary download: follows up to 10
+/// redirects, as GitHub release and evermeet download links redirect.
+fn http_client() -> anyhow::Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::limited(10))
-        .build()?;
-    let resp = client.get(url).send().await?.error_for_status()?;
+        .build()?)
+}
+
+async fn download_file(url: &str, dest: &Path) -> anyhow::Result<()> {
+    let resp = http_client()?.get(url).send().await?.error_for_status()?;
     let bytes = resp.bytes().await?;
     let partial = dest.with_extension("partial");
     tokio::fs::write(&partial, &bytes).await?;
@@ -546,9 +598,37 @@ mod tests {
     }
 
     #[test]
+    fn evermeet_zip_url_reads_download_zip_url_from_the_info_json() {
+        let info = r#"{"name":"ffmpeg","type":"release","version":"9.0.2",
+            "download":{"7z":{"url":"https://evermeet.cx/ffmpeg/ffmpeg-9.0.2.7z"},
+            "zip":{"url":"https://evermeet.cx/ffmpeg/ffmpeg-9.0.2.zip","size":26198325}}}"#;
+        assert_eq!(
+            evermeet_zip_url(info).unwrap(),
+            "https://evermeet.cx/ffmpeg/ffmpeg-9.0.2.zip"
+        );
+    }
+
+    #[test]
+    fn evermeet_zip_url_names_the_missing_field() {
+        let info = r#"{"name":"ffmpeg","download":{"7z":{"url":"https://evermeet.cx/ffmpeg/ffmpeg-9.0.2.7z"}}}"#;
+        let err = evermeet_zip_url(info).unwrap_err().to_string();
+        assert!(err.contains("download.zip.url"), "{err}");
+    }
+
+    #[test]
+    fn evermeet_zip_url_rejects_a_url_that_is_not_https() {
+        let info = r#"{"download":{"zip":{"url":"http://evermeet.cx/ffmpeg/ffmpeg-9.0.2.zip"}}}"#;
+        let err = evermeet_zip_url(info).unwrap_err().to_string();
+        assert!(
+            err.contains("http://evermeet.cx/ffmpeg/ffmpeg-9.0.2.zip"),
+            "{err}"
+        );
+    }
+
+    #[test]
     fn ffmpeg_archive_matches_each_target() {
         let linux64 = FfmpegArchive {
-            url: "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz",
+            source: FfmpegSource::Direct("https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linux64-gpl.tar.xz"),
             format: ArchiveFormat::TarXz,
         };
         assert_eq!(ffmpeg_archive("linux", "x86_64"), linux64);
@@ -556,12 +636,14 @@ mod tests {
         assert_eq!(
             ffmpeg_archive("linux", "aarch64"),
             FfmpegArchive {
-                url: "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-gpl.tar.xz",
+                source: FfmpegSource::Direct("https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-linuxarm64-gpl.tar.xz"),
                 format: ArchiveFormat::TarXz,
             }
         );
+        // evermeet.cx retired its "latest zip" redirect (410 Gone); the
+        // versioned zip URL is read from its info JSON instead.
         let evermeet = FfmpegArchive {
-            url: "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip",
+            source: FfmpegSource::EvermeetInfo("https://evermeet.cx/ffmpeg/info/ffmpeg/release"),
             format: ArchiveFormat::Zip,
         };
         assert_eq!(ffmpeg_archive("macos", "aarch64"), evermeet);
@@ -569,7 +651,7 @@ mod tests {
         assert_eq!(
             ffmpeg_archive("windows", "x86_64"),
             FfmpegArchive {
-                url: "https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip",
+                source: FfmpegSource::Direct("https://github.com/yt-dlp/FFmpeg-Builds/releases/latest/download/ffmpeg-master-latest-win64-gpl.zip"),
                 format: ArchiveFormat::Zip,
             }
         );
