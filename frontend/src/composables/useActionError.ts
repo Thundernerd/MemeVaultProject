@@ -2,11 +2,11 @@ import { computed, ref } from 'vue'
 import { errorMessage } from '@/api'
 
 /**
- * The error for a page whose actions act straight away (delete, cancel, upload, revoke) and
- * then reload its list. `load` runs `fetch`; a failure shows "Load failed: <message>" until a
- * later load succeeds. `attempt` runs one action and then loads; a failure shows
- * "<prefix>: <message>" until the next action starts, so the reload after it (or a poll) does
- * not clear it.
+ * The error for a page whose actions act straight away (delete, cancel, upload, revoke, save).
+ * `load` runs `fetch`; a failure shows "Load failed: <message>" until a later load succeeds.
+ * `attempt` runs one action and then loads; a failure shows "<prefix>: <message>" until the next
+ * action starts, so the reload after it (or a poll) does not clear it. `error` shows the load
+ * error first.
  */
 export function useActionError(fetch: () => Promise<void>) {
   const loadError = ref('')
