@@ -2,8 +2,10 @@
 //!
 //! Killing a child kills only that process. A wrapper script's grandchildren,
 //! or the Python a PyInstaller onefile bootloader runs, keep running.
-//! [`output_within`] starts the child in a group of its own (a process group
+//! [`ProcessTree`] starts the child in a group of its own (a process group
 //! on Unix, a Job Object on Windows) so the whole tree can be killed at once.
+//! [`output_within`] uses it for short checks; downloads and conversions use
+//! it directly so cancelling them kills everything they started.
 //!
 //! A descendant that leaves the group on purpose (`setsid` or `setpgid` on
 //! Unix, breakaway on Windows) is out of reach.
