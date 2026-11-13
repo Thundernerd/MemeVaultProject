@@ -15,6 +15,8 @@ mod process_tree;
 mod queue;
 mod routes;
 mod state;
+#[cfg(test)]
+mod test_support;
 mod ytdlp;
 
 use crate::config::Config;
