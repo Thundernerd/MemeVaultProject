@@ -4,6 +4,7 @@ use crate::binaries;
 use crate::config::Config;
 use crate::cookies;
 use crate::db::{self, Db};
+use crate::process_tree::ProcessTree;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -75,15 +76,17 @@ pub async fn run_gallery_dl(
         "spawning gallery-dl"
     );
 
-    let mut child = Command::new(&bin)
-        .args(&args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()?;
+    // The upstream builds are PyInstaller bootloaders that run Python as a
+    // child, so cancelling must kill the whole tree.
+    let mut tree = ProcessTree::spawn(
+        Command::new(&bin)
+            .args(&args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+    )?;
 
-    let stdout = child.stdout.take().unwrap();
-    let stderr = child.stderr.take().unwrap();
+    let stdout = tree.take_stdout().unwrap();
+    let stderr = tree.take_stderr().unwrap();
     let mut reader = BufReader::new(stdout).lines();
     let progress_tx = progress_tx.map(Arc::new);
     let mut files_seen = 0u32;
@@ -122,18 +125,12 @@ pub async fn run_gallery_dl(
     };
 
     let wait_task = async {
-        loop {
-            tokio::select! {
-                status = child.wait() => break status,
-                _ = async {
-                    let mut c = cancel.clone();
-                    let _ = c.changed().await;
-                } => {
-                    if *cancel.borrow() {
-                        let _ = child.start_kill();
-                        break child.wait().await;
-                    }
-                }
+        let mut cancel = cancel.clone();
+        tokio::select! {
+            status = tree.wait() => status,
+            Ok(()) = async { cancel.wait_for(|cancelled| *cancelled).await.map(drop) } => {
+                tree.kill();
+                tree.wait().await
             }
         }
     };
@@ -248,4 +245,55 @@ fn collect_files(job_dir: &Path) -> anyhow::Result<Vec<GalleryDlFile>> {
 fn read_sidecar_meta(path: &Path) -> Option<Value> {
     let data = std::fs::read_to_string(path).ok()?;
     serde_json::from_str(&data).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(unix)]
+    mod process_tree {
+        use super::super::run_gallery_dl;
+        use crate::binaries::Binary;
+        use crate::test_support::{gone_within, script, wait_for_pid, TestVault};
+        use std::time::Duration;
+        use tokio::sync::watch;
+
+        /// A fake gallery-dl that, like the PyInstaller build, leaves the
+        /// work to a child process that holds stdout.
+        fn fake_gallerydl(vault: &TestVault) -> std::path::PathBuf {
+            let pidfile = vault.dir.path().join("grandchild.pid");
+            let bin = script(
+                vault.dir.path(),
+                "gallery-dl",
+                &format!("sleep 30 &\necho $! > '{}'\nwait", pidfile.display()),
+            );
+            vault.use_binary(Binary::GalleryDl, &bin);
+            pidfile
+        }
+
+        #[tokio::test]
+        async fn cancelling_a_download_kills_the_whole_process_tree() {
+            let vault = TestVault::new();
+            let pidfile = fake_gallerydl(&vault);
+            let (cancel_tx, cancel) = watch::channel(false);
+            let download = {
+                let (db, config) = (vault.db.clone(), vault.config.clone());
+                tokio::spawn(async move {
+                    run_gallery_dl(&db, &config, "https://example.com/g", None, cancel, None).await
+                })
+            };
+            let pid = wait_for_pid(&pidfile, Duration::from_secs(5)).await;
+
+            cancel_tx.send(true).unwrap();
+
+            let result = tokio::time::timeout(Duration::from_secs(5), download)
+                .await
+                .expect("download still running 5 s after cancel")
+                .unwrap();
+            assert_eq!(result.unwrap_err().to_string(), "cancelled");
+            assert!(
+                gone_within(pid, Duration::from_secs(2)).await,
+                "grandchild {pid} is still running after cancel"
+            );
+        }
+    }
 }
