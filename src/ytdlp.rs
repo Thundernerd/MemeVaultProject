@@ -5,6 +5,7 @@ use crate::config::Config;
 use crate::cookies;
 use crate::db::{self, Db};
 use crate::ffprobe;
+use crate::process_tree::ProcessTree;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde_json::Value;
@@ -108,16 +109,18 @@ pub async fn run_ytdlp(
         "spawning yt-dlp"
     );
 
-    let mut child = Command::new(&ytdlp)
-        .args(&args)
-        .env("PYTHONUNBUFFERED", "1")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()?;
+    // The upstream builds are PyInstaller bootloaders that run Python as a
+    // child, so cancelling must kill the whole tree.
+    let mut tree = ProcessTree::spawn(
+        Command::new(&ytdlp)
+            .args(&args)
+            .env("PYTHONUNBUFFERED", "1")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped()),
+    )?;
 
-    let stdout = child.stdout.take().unwrap();
-    let stderr = child.stderr.take().unwrap();
+    let stdout = tree.take_stdout().unwrap();
+    let stderr = tree.take_stderr().unwrap();
     let mut reader = BufReader::new(stdout).lines();
     let progress_tx = progress_tx.map(Arc::new);
     let tracker = Arc::new(Mutex::new(DownloadProgress::new()));
@@ -152,20 +155,7 @@ pub async fn run_ytdlp(
     };
 
     let cancel_for_convert = cancel.clone();
-    let wait_task = async {
-        let mut cancel = cancel;
-        loop {
-            tokio::select! {
-                status = child.wait() => break status,
-                _ = cancel.changed() => {
-                    if *cancel.borrow() {
-                        let _ = child.start_kill();
-                        break child.wait().await;
-                    }
-                }
-            }
-        }
-    };
+    let wait_task = tree.wait_or_cancel(Some(cancel));
 
     let (_, stderr_tail, status) = tokio::join!(read_task, stderr_task, wait_task);
     let status = status?;
@@ -647,5 +637,62 @@ mod tests {
             .on_line("[download]  42.3% of   12.34MiB at  1.23MiB/s ETA 00:07")
             .unwrap();
         assert!((pct - 35.109).abs() < 0.05); // 42.3% of 83
+    }
+
+    #[cfg(unix)]
+    mod cancellation {
+        use crate::binaries::Binary;
+        use crate::test_support::{gone_within, wait_for_pid, TestVault};
+        use crate::ytdlp::run_ytdlp;
+        use std::time::Duration;
+        use tokio::sync::watch;
+
+        #[tokio::test]
+        async fn cancelling_a_download_kills_the_whole_process_tree() {
+            let vault = TestVault::new();
+            let pidfile = vault.use_fake_pyinstaller_binary(Binary::YtDlp);
+            let (cancel_tx, cancel) = watch::channel(false);
+            let download = {
+                let (db, config) = (vault.db.clone(), vault.config.clone());
+                tokio::spawn(async move {
+                    run_ytdlp(&db, &config, "https://example.com/v", None, cancel, None).await
+                })
+            };
+            let pid = wait_for_pid(&pidfile, Duration::from_secs(5)).await;
+
+            cancel_tx.send(true).unwrap();
+
+            let result = tokio::time::timeout(Duration::from_secs(5), download)
+                .await
+                .expect("download still running 5 s after cancel")
+                .unwrap();
+            assert_eq!(result.unwrap_err().to_string(), "cancelled");
+            assert!(
+                gone_within(pid, Duration::from_secs(2)).await,
+                "grandchild {pid} is still running after cancel"
+            );
+        }
+
+        #[tokio::test]
+        async fn dropping_a_download_kills_the_whole_process_tree() {
+            let vault = TestVault::new();
+            let pidfile = vault.use_fake_pyinstaller_binary(Binary::YtDlp);
+            let (_cancel_tx, cancel) = watch::channel(false);
+            let download = {
+                let (db, config) = (vault.db.clone(), vault.config.clone());
+                tokio::spawn(async move {
+                    run_ytdlp(&db, &config, "https://example.com/v", None, cancel, None).await
+                })
+            };
+            let pid = wait_for_pid(&pidfile, Duration::from_secs(5)).await;
+
+            download.abort();
+            let _ = download.await;
+
+            assert!(
+                gone_within(pid, Duration::from_secs(2)).await,
+                "grandchild {pid} is still running after the download was dropped"
+            );
+        }
     }
 }

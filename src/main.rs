@@ -15,6 +15,10 @@ mod process_tree;
 mod queue;
 mod routes;
 mod state;
+#[cfg(test)]
+// Only the version-check tests run on Windows; the download tests are Unix-only.
+#[cfg_attr(windows, allow(dead_code))]
+mod test_support;
 mod ytdlp;
 
 use crate::config::Config;
