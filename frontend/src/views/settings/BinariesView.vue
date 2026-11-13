@@ -4,7 +4,7 @@ import { api } from '@/api'
 import { useSettings } from './useSettings'
 import SaveRow from './SaveRow.vue'
 import ErrorTag from './ErrorTag.vue'
-import { messageOf } from './useActionError'
+import { messageOf, useActionError } from './useActionError'
 
 interface BinaryStatus {
   name: string
@@ -23,6 +23,9 @@ const downloadNotes = ref<Record<string, string>>({})
 async function loadBins() {
   binaries.value = await api('/api/binaries')
 }
+
+// The binaries list's own load tag; the paths form above reports its load in its save row.
+const { error: binsError, initialLoad: initialLoadBins } = useActionError(loadBins)
 
 async function download(name: string) {
   busy.value.add(name)
@@ -43,7 +46,7 @@ async function download(name: string) {
   }
 }
 
-onMounted(loadBins)
+onMounted(initialLoadBins)
 </script>
 
 <template>
@@ -65,6 +68,7 @@ onMounted(loadBins)
     </form>
 
     <div class="cards">
+      <ErrorTag :message="binsError" class="self-start" />
       <div v-for="(b, key) in binaries" :key="key" class="panel" :class="{ 'panel-missing': !b.exists }">
         <div class="flex-1 min-w-0 flex flex-col gap-1">
           <h3>{{ b.name }}</h3>
