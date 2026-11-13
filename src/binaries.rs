@@ -386,12 +386,7 @@ fn copy_ffmpeg_bins(tmp_dir: &Path, bin_dir: &Path) -> anyhow::Result<()> {
             || name == "ffmpeg.exe"
             || name == "ffprobe.exe"
         {
-            let dest_name = if name.ends_with(".exe") {
-                name.to_string()
-            } else {
-                name.to_string()
-            };
-            let dest = bin_dir.join(&dest_name);
+            let dest = bin_dir.join(name.as_ref());
             std::fs::copy(entry.path(), &dest)?;
             #[cfg(unix)]
             {
