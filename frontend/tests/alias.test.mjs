@@ -34,6 +34,11 @@ test('dev server rewrites @/ imports in src/router.ts to /src/', async () => {
   assert.match(code, /["']\/src\/layouts\/MainLayout\.vue["']/)
 })
 
+test('dev server rewrites @/ imports in .vue files to /src/', async () => {
+  const code = await transform(frontendDir, '/src/layouts/MainLayout.vue')
+  assert.match(code, /["']\/src\/theme\.ts["']/)
+})
+
 test('changing @/* in tsconfig.app.json changes what Vite resolves', async () => {
   // A copy of this project with a different @/* target. Not under node_modules:
   // Vite does not apply tsconfig paths to files inside node_modules.
