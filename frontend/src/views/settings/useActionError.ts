@@ -28,4 +28,4 @@ export function useActionError(reload: () => Promise<void>) {
 }
 
 /** Falls back to the thrown value itself, so a non-`Error` rejection still says something. */
-const messageOf = (e: unknown) => errorMessage(e, String(e))
+export const messageOf = (e: unknown) => errorMessage(e, String(e))
