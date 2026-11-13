@@ -311,6 +311,86 @@ mod tests {
         }
     }
 
+    /// Every hard-coded fallback theme / accent (share.html's `<html>` tag, the
+    /// pre-paint scripts' fallback and `catch`, theme.ts's `readStored` calls)
+    /// names a style.css block, so a viewer who falls back still gets tokens.
+    #[test]
+    fn theme_and_accent_fallback_defaults_have_a_stylesheet_block() {
+        const APP: &str = include_str!("../../frontend/src/style.css");
+        for (attr, sites) in fallback_defaults() {
+            let names = css_names(APP, attr);
+            for (site, value) in sites {
+                assert!(
+                    names.contains(&value),
+                    "{site} falls back to {attr} `{value}`, which has no style.css block \
+                     (blocks: {names:?})"
+                );
+            }
+        }
+    }
+
+    /// For `data-theme` and `data-accent`: each fallback-default site and the
+    /// name it hard-codes.
+    fn fallback_defaults() -> [(&'static str, Vec<(String, String)>); 2] {
+        const THEME_TS: &str = include_str!("../../frontend/src/theme.ts");
+        const SHARE: &str = include_str!("../../templates/share.html");
+        const INDEX: &str = include_str!("../../frontend/index.html");
+        let sites = |attr: &str, var: &str, list: &str, key: &str| {
+            let mut found = vec![
+                one_capture(
+                    SHARE,
+                    "templates/share.html <html>",
+                    &format!(r#"<html[^>]*\s{attr}="([^"]+)""#),
+                ),
+                one_capture(
+                    THEME_TS,
+                    "frontend/src/theme.ts readStored",
+                    &format!(r"readStored\({key},\s*{list},\s*'([^']+)'\)"),
+                ),
+            ];
+            for (src, file) in [
+                (SHARE, "templates/share.html"),
+                (INDEX, "frontend/index.html"),
+            ] {
+                found.push(one_capture(
+                    src,
+                    &format!("{file} script fallback"),
+                    &format!(r"\b{var} = '([^']+)'"),
+                ));
+                found.push(one_capture(
+                    src,
+                    &format!("{file} script catch"),
+                    &format!(r"setAttribute\('{attr}',\s*'([^']+)'\)"),
+                ));
+            }
+            found
+        };
+        [
+            (
+                "data-theme",
+                sites("data-theme", "theme", "THEMES", "THEME_KEY"),
+            ),
+            (
+                "data-accent",
+                sites("data-accent", "accent", "ACCENTS", "ACCENT_KEY"),
+            ),
+        ]
+    }
+
+    /// `(site, x)` for the one match of `pattern` (capturing `x`) in `src`;
+    /// panics if there isn't exactly one.
+    fn one_capture(src: &str, site: &str, pattern: &str) -> (String, String) {
+        let re = Regex::new(pattern).unwrap();
+        let found: Vec<_> = re.captures_iter(src).collect();
+        let [one] = found.as_slice() else {
+            panic!(
+                "{site}: expected one match of `{pattern}`, found {}",
+                found.len()
+            );
+        };
+        (site.to_string(), one[1].to_string())
+    }
+
     /// Sorted names `x` of the `[attr="x"]` token blocks in `css`.
     fn css_names(css: &str, attr: &str) -> Vec<String> {
         let selector = Regex::new(&format!(r#"^\[{attr}="([^"]+)"\]$"#)).unwrap();
