@@ -16,23 +16,35 @@ const keys = ref<ApiKeyRow[]>([])
 const name = ref('')
 const permission = ref<'read' | 'read_write'>('read_write')
 const created = ref<ApiKeyRow | null>(null)
+const error = ref('')
 
 async function load() {
   keys.value = await api('/api/api-keys')
 }
 
-async function create() {
-  created.value = await api('/api/api-keys', {
-    method: 'POST',
-    body: JSON.stringify({ name: name.value, permission: permission.value }),
-  })
-  name.value = ''
+/** Runs a key action, showing "<prefix>: <message>" if it fails and clearing it if it succeeds. */
+async function run(prefix: string, action: () => Promise<void>) {
+  try {
+    await action()
+    error.value = ''
+  } catch (e) {
+    error.value = `${prefix}: ${e instanceof Error ? e.message : String(e)}`
+  }
   await load()
 }
 
+async function create() {
+  await run('Create failed', async () => {
+    created.value = await api('/api/api-keys', {
+      method: 'POST',
+      body: JSON.stringify({ name: name.value, permission: permission.value }),
+    })
+    name.value = ''
+  })
+}
+
 async function revoke(id: string) {
-  await api(`/api/api-keys/${id}`, { method: 'DELETE' })
-  await load()
+  await run('Revoke failed', () => api(`/api/api-keys/${id}`, { method: 'DELETE' }))
 }
 
 onMounted(load)
@@ -51,7 +63,7 @@ onMounted(load)
         <option value="read">read</option>
         <option value="read_write">read_write</option>
       </select>
-      <SaveRow label="Create key" />
+      <SaveRow label="Create key" :error="error" />
     </form>
     <div v-if="created?.key" class="reveal">
       <p class="label">New key (copy now)</p>
