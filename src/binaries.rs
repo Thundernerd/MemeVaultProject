@@ -2,6 +2,7 @@
 
 use crate::config::Config;
 use crate::db::{self, Db};
+use crate::process_tree;
 use serde::Serialize;
 use std::path::Path;
 use std::process::Stdio;
@@ -186,18 +187,14 @@ async fn version_of(path: &str, args: &[&str]) -> Option<String> {
 
 /// [`version_of`] with a caller-chosen timeout, so tests need not wait 10 s.
 async fn version_of_within(path: &str, args: &[&str], timeout: Duration) -> Option<String> {
-    let output = tokio::process::Command::new(path)
-        .args(args)
+    let mut cmd = tokio::process::Command::new(path);
+    cmd.args(args)
         // A wrapper that reads stdin would otherwise wait for input forever.
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        // Dropping the timed-out future kills the child instead of leaking it.
-        .kill_on_drop(true)
-        .output();
+        .stdin(Stdio::null());
     // A binary that hangs (cannot unpack, network-mounted path) has no
-    // version, the same as one that exits non-zero.
-    let out = tokio::time::timeout(timeout, output).await.ok()?.ok()?;
+    // version, the same as one that exits non-zero. On timeout, everything it
+    // started (PyInstaller's Python, a wrapper's grandchildren) is killed too.
+    let out = process_tree::output_within(&mut cmd, timeout).await?;
     // A binary that cannot run (wrong architecture, missing interpreter)
     // prints its error to stderr and exits non-zero; that is not a version.
     if !out.status.success() {
@@ -477,6 +474,45 @@ mod tests {
             None
         );
         assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn version_of_kills_the_whole_process_tree_when_it_times_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("grandchild.pid");
+        let bin = script(
+            dir.path(),
+            "wrapper",
+            &format!("sleep 30 &\necho $! > '{}'\nwait", pidfile.display()),
+        );
+        assert_eq!(
+            version_of_within(&bin, &["--version"], Duration::from_millis(500)).await,
+            None
+        );
+        let pid: libc::pid_t = std::fs::read_to_string(&pidfile)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+
+        // The orphaned grandchild is reaped by init, which may take a moment.
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let gone = loop {
+            // SAFETY: signal 0 only checks whether the process exists.
+            let alive = unsafe { libc::kill(pid, 0) } == 0;
+            if !alive {
+                break std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
+            }
+            if std::time::Instant::now() > deadline {
+                // Do not leave the leaked process behind after the test.
+                // SAFETY: signal-only syscall on the pid the script recorded.
+                unsafe { libc::kill(pid, libc::SIGKILL) };
+                break false;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        };
+        assert!(gone, "grandchild {pid} is still running after the timeout");
     }
 
     #[cfg(unix)]
