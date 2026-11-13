@@ -3,29 +3,43 @@ import { computed, onMounted, ref } from 'vue'
 import { api, errorMessage, type TagWithCount } from '@/api'
 
 const tags = ref<TagWithCount[]>([])
-const error = ref('')
+const loadError = ref('')
+/** A failed delete or purge. Kept apart from `loadError` so the reload that follows doesn't clear it; cleared when the next action starts. */
+const actionError = ref('')
+const error = computed(() => actionError.value || loadError.value)
 const loaded = ref(false)
 
 async function load() {
   try {
     tags.value = await api('/api/tags')
     loaded.value = true
-    error.value = ''
+    loadError.value = ''
   } catch (e) {
-    error.value = errorMessage(e)
+    loadError.value = errorMessage(e)
   }
 }
 
 async function remove(id: string) {
   if (!confirm('Delete this tag?')) return
-  await api('/api/tags', { method: 'DELETE', body: JSON.stringify({ id }) })
+  actionError.value = ''
+  try {
+    await api('/api/tags', { method: 'DELETE', body: JSON.stringify({ id }) })
+  } catch (e) {
+    actionError.value = errorMessage(e)
+  }
   await load()
 }
 
+/** Deletes unused tags one by one, stopping at the first failure; the reload then shows which ones went. */
 async function purgeOrphans() {
   const orphans = tags.value.filter((t) => t.usage_count === 0)
-  for (const t of orphans) {
-    await api('/api/tags', { method: 'DELETE', body: JSON.stringify({ id: t.id }) })
+  actionError.value = ''
+  try {
+    for (const t of orphans) {
+      await api('/api/tags', { method: 'DELETE', body: JSON.stringify({ id: t.id }) })
+    }
+  } catch (e) {
+    actionError.value = errorMessage(e)
   }
   await load()
 }
