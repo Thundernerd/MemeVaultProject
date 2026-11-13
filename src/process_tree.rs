@@ -7,11 +7,14 @@
 //! [`output_within`] uses it for short checks; downloads and conversions use
 //! it directly so cancelling them kills everything they started.
 //! On Windows the child starts suspended and joins its job before it runs,
-//! so nothing it starts, however early, escapes the job.
+//! so nothing it starts, however early, escapes the job. If the job cannot
+//! be set up, `taskkill /T` kills the tree instead.
 //!
 //! A descendant that leaves the group on purpose (`setsid` or `setpgid` on
 //! Unix, breakaway on Windows) is out of reach.
 
+#[cfg(windows)]
+use std::os::windows::io::RawHandle;
 use std::process::{ExitStatus, Output, Stdio};
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
@@ -40,10 +43,24 @@ pub struct ProcessTree {
     /// the id may belong to an unrelated process.
     #[cfg(unix)]
     pgid: Option<libc::pid_t>,
-    /// `None` if the job could not be set up (a warning is logged); then
-    /// only the child is killed.
+    /// How to kill the child's tree: `None` once it has been killed.
     #[cfg(windows)]
-    job: Option<job::Job>,
+    group: Option<Group>,
+}
+
+/// How a [`ProcessTree`] kills the child and everything it started.
+#[cfg(windows)]
+enum Group {
+    /// Closing the job kills every process in it.
+    Job(job::Job),
+    /// The job could not be set up (a warning is logged at spawn).
+    /// `taskkill /T` kills the child and its descendants, found through
+    /// their parent pids, but only while the child is unreaped and so its
+    /// pid still names it. A descendant whose parent has already exited
+    /// is out of reach, and an unrelated orphan whose dead parent had the
+    /// child's pid is killed too. Killing blocks the calling thread while
+    /// taskkill runs.
+    Taskkill,
 }
 
 impl ProcessTree {
@@ -64,38 +81,63 @@ impl ProcessTree {
         }
         #[cfg(windows)]
         {
-            // The child starts suspended and is put in the job before any of
-            // its code runs, so everything it starts joins the job too.
-            cmd.creation_flags(job::CREATE_SUSPENDED);
-            let mut child = cmd.spawn()?;
-            let job = match child.raw_handle() {
-                Some(handle) => job::Job::kill_on_close(handle),
-                None => Err(std::io::Error::other("the child has no process handle")),
-            };
-            let job = job
-                .inspect_err(|err| {
-                    tracing::warn!(
-                        program = ?cmd.as_std().get_program(),
-                        "could not put the child in a job; only the child is \
-                         killed, never what it starts: {err}"
-                    )
-                })
-                .ok();
-            let resumed = child
-                .id()
-                .ok_or_else(|| std::io::Error::other("the child has no pid"))
-                .and_then(job::resume_main_thread);
-            if let Err(err) = resumed {
+            ProcessTree::spawn_in_job(cmd, job::Job::kill_on_close)
+        }
+    }
+
+    /// Spawns `cmd` suspended, puts it in the job `new_job` makes for its
+    /// process handle, then resumes it. If there is no job, the tree is
+    /// killed with `taskkill` instead (see [`Group::Taskkill`]).
+    #[cfg(windows)]
+    fn spawn_in_job(
+        cmd: &mut Command,
+        new_job: impl FnOnce(RawHandle) -> std::io::Result<job::Job>,
+    ) -> std::io::Result<ProcessTree> {
+        // The child starts suspended and is put in the job before any of
+        // its code runs, so everything it starts joins the job too.
+        cmd.creation_flags(job::CREATE_SUSPENDED);
+        let mut child = cmd.spawn()?;
+        let job = match child.raw_handle() {
+            Some(handle) => new_job(handle),
+            None => Err(std::io::Error::other("the child has no process handle")),
+        };
+        let group = match job {
+            Ok(job) => Group::Job(job),
+            Err(err) => {
                 tracing::warn!(
                     program = ?cmd.as_std().get_program(),
-                    "could not resume the child; killing it: {err}"
+                    "could not put the child in a job; its tree is killed with \
+                     taskkill instead, which misses anything whose parent has \
+                     already exited: {err}"
                 );
-                // Left suspended, the child would never exit.
-                let _ = child.start_kill();
-                return Err(err);
+                Group::Taskkill
             }
-            Ok(ProcessTree { child, job })
+        };
+        let resumed = child
+            .id()
+            .ok_or_else(|| std::io::Error::other("the child has no pid"))
+            .and_then(job::resume_main_thread);
+        if let Err(err) = resumed {
+            tracing::warn!(
+                program = ?cmd.as_std().get_program(),
+                "could not resume the child; killing it: {err}"
+            );
+            // Left suspended, the child would never exit.
+            let _ = child.start_kill();
+            return Err(err);
         }
+        Ok(ProcessTree {
+            child,
+            group: Some(group),
+        })
+    }
+
+    /// Like [`ProcessTree::spawn`], but as if the job could not be set up.
+    #[cfg(all(test, windows))]
+    fn spawn_without_job(cmd: &mut Command) -> std::io::Result<ProcessTree> {
+        ProcessTree::spawn_in_job(cmd, |_| {
+            Err(std::io::Error::other("the test skipped the job"))
+        })
     }
 
     /// The child's stdout, if it was piped and not taken yet.
@@ -150,7 +192,9 @@ impl ProcessTree {
         let status = self.child.wait().await?;
         // A job is held by its handle, not an id, so it can be closed after
         // the child is reaped. Closing it earlier could kill a child that has
-        // closed its pipes but not yet exited.
+        // closed its pipes but not yet exited. Without a job, nothing is
+        // left to kill: taskkill needs the child's pid, which may now name
+        // an unrelated process.
         #[cfg(windows)]
         self.kill_remaining();
         Ok(status)
@@ -197,10 +241,45 @@ impl ProcessTree {
             unsafe { libc::killpg(pgid, libc::SIGKILL) };
         }
         #[cfg(windows)]
-        {
-            // Closing the job kills every process in it.
-            self.job.take();
+        match self.group.take() {
+            Some(Group::Job(job)) => drop(job),
+            // `id` is `None` once the child has been reaped, when its pid
+            // may name an unrelated process.
+            Some(Group::Taskkill) => {
+                if let Some(pid) = self.child.id() {
+                    taskkill_tree(pid);
+                }
+            }
+            None => {}
         }
+    }
+}
+
+/// Kills process `pid` and its descendants with `taskkill /T /F`, blocking
+/// until taskkill exits. Does nothing if `pid` has already exited. Only the
+/// fallback for a missing job runs this, so the block is accepted: running
+/// taskkill in the background could let the pid be reused before it acts.
+#[cfg(windows)]
+fn taskkill_tree(pid: u32) {
+    // taskkill's exit code when there is no process `pid`.
+    const NOT_FOUND: i32 = 128;
+    use std::os::windows::process::CommandExt;
+    // From System32, so nothing on PATH can stand in for it.
+    let taskkill = std::env::var_os("SystemRoot")
+        .map(|root| std::path::Path::new(&root).join(r"System32\taskkill.exe"))
+        .unwrap_or_else(|| "taskkill.exe".into());
+    let killed = std::process::Command::new(taskkill)
+        .args(["/T", "/F", "/PID", &pid.to_string()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(job::CREATE_NO_WINDOW)
+        .status();
+    match killed {
+        // Not found: the child exited before it could be killed.
+        Ok(status) if status.success() || status.code() == Some(NOT_FOUND) => {}
+        Ok(status) => tracing::warn!(pid, "taskkill could not kill the child's tree: {status}"),
+        Err(err) => tracing::warn!(pid, "could not run taskkill: {err}"),
     }
 }
 
@@ -254,7 +333,7 @@ mod job {
     };
     use windows_sys::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
 
-    pub use windows_sys::Win32::System::Threading::CREATE_SUSPENDED;
+    pub use windows_sys::Win32::System::Threading::{CREATE_NO_WINDOW, CREATE_SUSPENDED};
 
     /// Resumes the only thread of process `pid`, started with
     /// [`CREATE_SUSPENDED`]. std and tokio keep the thread's handle to
@@ -351,5 +430,78 @@ mod job {
             // SAFETY: the handle is valid and closed only here.
             unsafe { CloseHandle(self.0) };
         }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::ProcessTree;
+    use crate::test_support::{cmd_script, gone_within, wait_for_pid};
+    use std::path::{Path, PathBuf};
+    use std::process::Stdio;
+    use std::time::Duration;
+    use tokio::io::AsyncReadExt;
+    use tokio::process::Command;
+
+    /// Spawns, with no job, a script that starts a PowerShell grandchild
+    /// holding the script's stdout for 30 s, like the Python a PyInstaller
+    /// onefile bootloader runs. Returns the tree and the file the grandchild
+    /// writes its pid to. Unlike `test_support::start_grandchild`, the
+    /// grandchild keeps stdout, so the tree is gone only once it reaches EOF.
+    fn spawn_tree_without_job(dir: &Path) -> (ProcessTree, PathBuf) {
+        let pidfile = dir.join("grandchild.pid");
+        let bin = cmd_script(
+            dir,
+            "wrapper",
+            &format!(
+                "start /b powershell -NoProfile -NonInteractive -Command \
+                 \"Set-Content -Path '{}' -Value $PID; Start-Sleep 30\"\n\
+                 ping -n 30 127.0.0.1 >nul",
+                pidfile.display()
+            ),
+        );
+        let mut cmd = Command::new(bin);
+        cmd.stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        (ProcessTree::spawn_without_job(&mut cmd).unwrap(), pidfile)
+    }
+
+    #[tokio::test]
+    async fn kill_without_a_job_kills_the_whole_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut tree, pidfile) = spawn_tree_without_job(dir.path());
+        let mut stdout = tree.take_stdout().unwrap();
+        // Long enough for PowerShell to start on a cold CI runner.
+        let pid = wait_for_pid(&pidfile, Duration::from_secs(15)).await;
+
+        tree.kill();
+
+        tokio::time::timeout(Duration::from_secs(5), tree.wait())
+            .await
+            .expect("wait still running 5 s after kill")
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(5), stdout.read_to_end(&mut Vec::new()))
+            .await
+            .expect("stdout still open 5 s after kill")
+            .unwrap();
+        assert!(
+            gone_within(pid, Duration::from_secs(2)).await,
+            "grandchild {pid} is still running after kill"
+        );
+    }
+
+    #[tokio::test]
+    async fn dropping_without_a_job_kills_the_whole_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let (tree, pidfile) = spawn_tree_without_job(dir.path());
+        let pid = wait_for_pid(&pidfile, Duration::from_secs(15)).await;
+
+        drop(tree);
+
+        assert!(
+            gone_within(pid, Duration::from_secs(2)).await,
+            "grandchild {pid} is still running after the tree was dropped"
+        );
     }
 }
