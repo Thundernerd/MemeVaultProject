@@ -192,8 +192,9 @@ async fn version_of_within(path: &str, args: &[&str], timeout: Duration) -> Opti
         // A wrapper that reads stdin would otherwise wait for input forever.
         .stdin(Stdio::null());
     // A binary that hangs (cannot unpack, network-mounted path) has no
-    // version, the same as one that exits non-zero. On timeout, everything it
-    // started (PyInstaller's Python, a wrapper's grandchildren) is killed too.
+    // version, the same as one that exits non-zero. Anything it started
+    // (PyInstaller's Python, a wrapper's grandchildren) is killed once it
+    // exits, and on timeout the binary is killed with them.
     let out = process_tree::output_within(&mut cmd, timeout).await?;
     // A binary that cannot run (wrong architecture, missing interpreter)
     // prints its error to stderr and exits non-zero; that is not a version.
@@ -532,29 +533,66 @@ mod tests {
             version_of_within(&bin, &["--version"], Duration::from_millis(500)).await,
             None
         );
-        let pid: libc::pid_t = std::fs::read_to_string(&pidfile)
+        let pid = read_pid(&pidfile);
+        assert!(
+            gone_within(pid, Duration::from_secs(2)).await,
+            "grandchild {pid} is still running after the timeout"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn version_of_leaves_nothing_running_after_it_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("grandchild.pid");
+        let bin = script(
+            dir.path(),
+            "detaches",
+            &format!(
+                "sleep 30 >/dev/null 2>&1 &\necho $! > '{}'\necho 1.2.3",
+                pidfile.display()
+            ),
+        );
+        assert_eq!(
+            version_of_within(&bin, &["--version"], Duration::from_secs(5)).await,
+            Some("1.2.3".to_string())
+        );
+        let pid = read_pid(&pidfile);
+        assert!(
+            gone_within(pid, Duration::from_secs(2)).await,
+            "grandchild {pid} is still running after a successful check"
+        );
+    }
+
+    /// The pid a test script wrote to `pidfile`.
+    #[cfg(unix)]
+    fn read_pid(pidfile: &Path) -> libc::pid_t {
+        std::fs::read_to_string(pidfile)
             .unwrap()
             .trim()
             .parse()
-            .unwrap();
+            .unwrap()
+    }
 
-        // The orphaned grandchild is reaped by init, which may take a moment.
-        let deadline = std::time::Instant::now() + Duration::from_secs(2);
-        let gone = loop {
+    /// Whether `pid` stops existing within `grace`. An orphan is reaped by
+    /// init, which may take a moment. Kills `pid` if it is still running, so
+    /// a failing test leaves nothing behind.
+    #[cfg(unix)]
+    async fn gone_within(pid: libc::pid_t, grace: Duration) -> bool {
+        let deadline = std::time::Instant::now() + grace;
+        loop {
             // SAFETY: signal 0 only checks whether the process exists.
             let alive = unsafe { libc::kill(pid, 0) } == 0;
             if !alive {
-                break std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
+                return std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
             }
             if std::time::Instant::now() > deadline {
-                // Do not leave the leaked process behind after the test.
                 // SAFETY: signal-only syscall on the pid the script recorded.
                 unsafe { libc::kill(pid, libc::SIGKILL) };
-                break false;
+                return false;
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
-        };
-        assert!(gone, "grandchild {pid} is still running after the timeout");
+        }
     }
 
     #[cfg(unix)]
