@@ -122,6 +122,7 @@ Use the copy in `MOCK.states`.
   ("Loading…") and error.
 - **Queue:** empty ("Queue is empty"), loading and error. The app has no queue
   loading copy yet, so a style may propose one.
+- **Tags:** empty ("No tags yet"), loading ("Loading…") and error.
 
 ## Not covered
 

@@ -376,7 +376,7 @@
   // ------------------------------------------------------------------ states
 
   // Canned strings for the empty, loading and error states (VaultView.vue,
-  // QueueView.vue), so every style shows the same copy.
+  // QueueView.vue, TagsView.vue), so every style shows the same copy.
   var states = {
     vault: {
       empty: 'Vault is empty. Add a URL or upload a file.',
@@ -386,6 +386,11 @@
     queue: {
       empty: 'Queue is empty',
       // QueueView.vue has no loading copy today; styles may design one.
+      loading: 'Loading…',
+      error: 'Failed',
+    },
+    tags: {
+      empty: 'No tags yet',
       loading: 'Loading…',
       error: 'Failed',
     },
