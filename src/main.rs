@@ -130,6 +130,7 @@ where
     };
     let api_not_found = || async { crate::error::AppError::NotFound };
     api.route("/api", any(api_not_found))
+        .route("/api/", any(api_not_found))
         .route("/api/{*rest}", any(api_not_found))
         .merge(spa)
 }
@@ -207,6 +208,10 @@ mod tests {
         let (status, body) = get(app.clone(), "/api/does-not-exist").await;
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_ne!(body, INDEX);
+
+        for path in ["/api", "/api/"] {
+            assert_eq!(get(app.clone(), path).await.0, StatusCode::NOT_FOUND, "{path}");
+        }
 
         assert_eq!(get(app, "/api/ping").await, (StatusCode::OK, "pong".into()));
     }
