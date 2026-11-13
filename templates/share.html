@@ -8,8 +8,11 @@
   <script>
     (function () {
       try {
-        var theme = localStorage.getItem('mvp-theme') || 'dark';
-        var accent = localStorage.getItem('mvp-accent') || 'blue';
+        // Keep in sync with THEMES / ACCENTS in frontend/src/theme.ts.
+        var theme = localStorage.getItem('mvp-theme');
+        var accent = localStorage.getItem('mvp-accent');
+        if (['dark', 'light'].indexOf(theme) === -1) theme = 'dark';
+        if (['blue', 'purple', 'green', 'orange', 'rose'].indexOf(accent) === -1) accent = 'blue';
         document.documentElement.setAttribute('data-theme', theme);
         document.documentElement.setAttribute('data-accent', accent);
       } catch (e) {

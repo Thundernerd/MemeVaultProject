@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useTheme, type Accent, type Theme } from '@/theme'
+import { ACCENTS, useTheme, type Theme } from '@/theme'
 
 const { theme, accent, setTheme, setAccent } = useTheme()
-const accents: Accent[] = ['blue', 'purple', 'green', 'orange', 'rose']
 const toggleLabel = computed(() => (theme.value === 'dark' ? 'Light mode' : 'Dark mode'))
 
 function toggleTheme() {
@@ -24,7 +23,7 @@ function toggleTheme() {
     </button>
     <div class="swatches">
       <button
-        v-for="a in accents"
+        v-for="a in ACCENTS"
         :key="a"
         type="button"
         class="swatch"
