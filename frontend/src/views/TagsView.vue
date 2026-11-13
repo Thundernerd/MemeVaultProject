@@ -83,7 +83,7 @@ onMounted(load)
 </template>
 
 <style scoped>
-/* Ported from prototypes/brutalist/styles.css (tags). */
+/* Brutalist tags styles (#29). */
 .tag-groups { display: flex; flex-direction: column; gap: 28px; }
 .tag-group { display: flex; flex-direction: column; gap: 12px; }
 .tag-ns { display: flex; align-items: baseline; gap: 10px; padding-bottom: 6px; border-bottom: var(--bw) solid var(--border); }
