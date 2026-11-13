@@ -43,8 +43,11 @@ export interface Album {
 /** Queue item lifecycle, as written by the backend (`src/queue.rs`). */
 export type QueueStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled'
 
+/** Sources that are chat bots rather than a person in the web UI or an API client. */
+export type ChatSource = 'discord' | 'fluxer'
+
 /** Where a queue item was submitted from. */
-export type QueueSource = 'web' | 'api' | 'discord' | 'fluxer'
+export type QueueSource = 'web' | 'api' | ChatSource
 
 /** Still in the queue: waiting or downloading, so it can be cancelled. */
 export function isActive(status: QueueStatus): boolean {
@@ -52,7 +55,7 @@ export function isActive(status: QueueStatus): boolean {
 }
 
 /** Submitted from a chat bot (Discord/Fluxer): the bot owns retries and replies, so it gets no Retry button and no Vault pending card. */
-export function isChatSource(source: QueueSource): source is 'discord' | 'fluxer' {
+export function isChatSource(source: QueueSource): source is ChatSource {
   return source === 'discord' || source === 'fluxer'
 }
 
