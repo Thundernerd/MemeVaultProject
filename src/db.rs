@@ -1568,6 +1568,23 @@ mod tests {
         }
     }
 
+    #[test]
+    fn only_pending_and_downloading_are_cancellable() {
+        assert!(QueueStatus::Pending.is_cancellable());
+        assert!(QueueStatus::Downloading.is_cancellable());
+        assert!(!QueueStatus::Completed.is_cancellable());
+        assert!(!QueueStatus::Failed.is_cancellable());
+        assert!(!QueueStatus::Cancelled.is_cancellable());
+    }
+
+    #[test]
+    fn queue_status_rejects_unknown_strings() {
+        assert!(serde_json::from_str::<QueueStatus>("\"done\"").is_err());
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let read: rusqlite::Result<QueueStatus> = conn.query_row("SELECT 'done'", [], |r| r.get(0));
+        assert!(read.is_err());
+    }
+
     /// The exact strings stored in `queue_items.source` and sent in API JSON.
     const SOURCE_STRINGS: [(QueueSource, &str); 4] = [
         (QueueSource::Web, "web"),
@@ -1610,23 +1627,6 @@ mod tests {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         let read: rusqlite::Result<QueueSource> =
             conn.query_row("SELECT 'slack'", [], |r| r.get(0));
-        assert!(read.is_err());
-    }
-
-    #[test]
-    fn only_pending_and_downloading_are_cancellable() {
-        assert!(QueueStatus::Pending.is_cancellable());
-        assert!(QueueStatus::Downloading.is_cancellable());
-        assert!(!QueueStatus::Completed.is_cancellable());
-        assert!(!QueueStatus::Failed.is_cancellable());
-        assert!(!QueueStatus::Cancelled.is_cancellable());
-    }
-
-    #[test]
-    fn queue_status_rejects_unknown_strings() {
-        assert!(serde_json::from_str::<QueueStatus>("\"done\"").is_err());
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
-        let read: rusqlite::Result<QueueStatus> = conn.query_row("SELECT 'done'", [], |r| r.get(0));
         assert!(read.is_err());
     }
 
