@@ -23,6 +23,12 @@ cd frontend && npm install && npm run dev
 
 Open http://localhost:5173
 
+Type-check the frontend (CI runs this too):
+
+```bash
+cd frontend && npm run typecheck
+```
+
 ## Production build
 
 ```bash
