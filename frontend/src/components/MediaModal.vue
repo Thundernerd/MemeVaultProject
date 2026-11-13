@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { api, type MediaItem, type ShareLink, type Tag } from '@/api'
+import { useDialog } from '@/composables/useDialog'
 
 const props = defineProps<{ item: MediaItem }>()
 const emit = defineEmits<{ close: []; deleted: []; updated: [MediaItem] }>()
@@ -12,6 +13,10 @@ const includeRandom = ref(props.item.include_in_random === 1)
 const busy = ref(false)
 const copiedToken = ref<string | null>(null)
 let copiedTimer: number | undefined
+const box = ref<HTMLElement | null>(null)
+
+// Mounted with v-if by its parent, so the dialog is open for as long as it exists.
+useDialog(true, () => emit('close'), box)
 
 watch(
   () => props.item,
@@ -96,9 +101,10 @@ function shareUrl(token: string) {
 </script>
 
 <template>
-  <div class="modal" @keydown.esc="emit('close')">
+  <div class="modal">
     <div class="modal-backdrop" @click="emit('close')" />
     <div
+      ref="box"
       class="modal-box modal-wide"
       role="dialog"
       aria-modal="true"
@@ -119,7 +125,13 @@ function shareUrl(token: string) {
             <h2 class="media-title">{{ item.title || 'Untitled' }}</h2>
             <p class="media-url truncate" :title="item.url">{{ item.url }}</p>
           </div>
-          <button type="button" class="btn btn-sm btn-icon" aria-label="Close" @click="emit('close')">✕</button>
+          <button
+            type="button"
+            class="btn btn-sm btn-icon"
+            aria-label="Close"
+            data-autofocus
+            @click="emit('close')"
+          >✕</button>
         </div>
 
         <section class="stack">
