@@ -35,12 +35,12 @@ pub fn get_gallerydl_path(db: &Db, config: &Config) -> String {
         .ok()
         .flatten()
         .filter(|s| !s.is_empty());
-    override_path.unwrap_or_else(|| {
-        config
-            .bin_dir()
-            .join(gallerydl_filename())
-            .to_string_lossy()
-            .into()
+    override_path.unwrap_or_else(|| match host_gallerydl_asset() {
+        Some(asset) => config.bin_dir().join(asset).to_string_lossy().into(),
+        // No upstream build for this host: use the user's own install.
+        None => which::which("gallery-dl")
+            .map(|p| p.to_string_lossy().into())
+            .unwrap_or_else(|_| "gallery-dl".into()),
     })
 }
 
@@ -106,15 +106,20 @@ fn ytdlp_filename() -> &'static str {
     }
 }
 
-fn gallerydl_filename() -> &'static str {
-    #[cfg(target_os = "windows")]
-    {
-        "gallery-dl.exe"
+/// The upstream gallery-dl release asset for a target, if one exists.
+/// Upstream only publishes standalone builds for Linux x86-64 and Windows;
+/// everywhere else gallery-dl must come from the user's own install.
+fn gallerydl_asset(os: &str, arch: &str) -> Option<&'static str> {
+    match (os, arch) {
+        ("linux", "x86_64") => Some("gallery-dl.bin"),
+        ("windows", "x86_64") => Some("gallery-dl.exe"),
+        ("windows", "x86") => Some("gallery-dl_x86.exe"),
+        _ => None,
     }
-    #[cfg(not(target_os = "windows"))]
-    {
-        "gallery-dl.bin"
-    }
+}
+
+fn host_gallerydl_asset() -> Option<&'static str> {
+    gallerydl_asset(std::env::consts::OS, std::env::consts::ARCH)
 }
 
 fn ffmpeg_filename() -> &'static str {
@@ -222,6 +227,13 @@ async fn download_ytdlp(config: &Config) -> anyhow::Result<()> {
 }
 
 async fn download_gallerydl(config: &Config) -> anyhow::Result<()> {
+    let asset = host_gallerydl_asset().ok_or_else(|| {
+        anyhow::anyhow!(
+            "gallery-dl publishes no build for {}/{}; install gallery-dl on PATH or set its path in Settings",
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        )
+    })?;
     // Codeberg/Forgejo has no GitHub-style /releases/latest/download/{asset}
     // shortcut — resolve the latest tag via the API, then download by tag.
     let client = reqwest::Client::builder()
@@ -238,28 +250,15 @@ async fn download_gallerydl(config: &Config) -> anyhow::Result<()> {
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("gallery-dl release missing tag_name"))?;
 
-    let asset = gallerydl_filename();
-    let urls = [
-        format!("https://codeberg.org/mikf/gallery-dl/releases/download/{tag}/{asset}"),
-        format!("https://codeberg.org/mikf/gallery-dl/releases/download/{tag}/gallery-dl.bin"),
-        format!("https://codeberg.org/mikf/gallery-dl/releases/download/{tag}/gallery-dl"),
-    ];
+    let url = format!("https://codeberg.org/mikf/gallery-dl/releases/download/{tag}/{asset}");
     let dest = config.bin_dir().join(asset);
-    let mut last_err = None;
-    for url in &urls {
-        match download_file(url, &dest).await {
-            Ok(()) => {
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755))?;
-                }
-                return Ok(());
-            }
-            Err(e) => last_err = Some(e),
-        }
+    download_file(&url, &dest).await?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755))?;
     }
-    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("gallery-dl download failed")))
+    Ok(())
 }
 
 async fn download_ffmpeg(config: &Config) -> anyhow::Result<()> {
@@ -399,6 +398,14 @@ pub async fn ensure_binaries(db: &Db, config: &Config) {
                 .is_some(),
             _ => false,
         };
+        if name == "gallery-dl" && host_gallerydl_asset().is_none() {
+            if !status.exists && !has_override {
+                tracing::info!(
+                    "gallery-dl has no upstream build for this platform; install it on PATH or set its path in Settings"
+                );
+            }
+            continue;
+        }
         if !status.exists && !has_override {
             tracing::info!("downloading missing binary: {name}");
             match download_binary(db, config, name).await {
@@ -436,5 +443,16 @@ mod tests {
             "echo 'broken: cannot execute binary file' >&2\nexit 126",
         );
         assert_eq!(version_of(&bin, &["--version"]).await, None);
+    }
+
+    #[test]
+    fn gallerydl_is_downloaded_only_where_upstream_publishes_a_build() {
+        assert_eq!(gallerydl_asset("linux", "x86_64"), Some("gallery-dl.bin"));
+        assert_eq!(gallerydl_asset("windows", "x86_64"), Some("gallery-dl.exe"));
+        assert_eq!(gallerydl_asset("windows", "x86"), Some("gallery-dl_x86.exe"));
+        assert_eq!(gallerydl_asset("macos", "aarch64"), None);
+        assert_eq!(gallerydl_asset("macos", "x86_64"), None);
+        assert_eq!(gallerydl_asset("linux", "aarch64"), None);
+        assert_eq!(gallerydl_asset("freebsd", "x86_64"), None);
     }
 }
