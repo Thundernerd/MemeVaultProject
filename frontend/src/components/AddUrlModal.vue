@@ -158,171 +158,152 @@ async function handleUpload() {
 </script>
 
 <template>
-  <div v-if="open" class="fixed inset-0 z-[60] flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/70" @click="open = false" />
-    <div class="relative bg-surface-1 border border-border rounded-2xl w-full max-w-md p-5 flex flex-col gap-4">
-      <h2 class="text-lg font-semibold">Add to vault</h2>
-      <label class="flex items-center gap-2 text-sm text-text-secondary">
+  <div v-if="open" class="modal">
+    <div class="modal-backdrop" @click="open = false" />
+    <div class="modal-box" role="dialog" aria-modal="true" aria-label="Add to vault">
+      <div class="modal-head">
+        <h2>Add to vault</h2>
+        <button type="button" class="btn btn-sm btn-icon" aria-label="Close" @click="open = false">✕</button>
+      </div>
+      <label class="check">
         <input type="checkbox" v-model="includeInRandom" />
         Include in random
       </label>
-      <form class="flex flex-col gap-3" @submit.prevent="submitUrl">
+      <form class="stack" @submit.prevent="submitUrl">
         <input
           v-model="url"
           type="url"
           required
           placeholder="https://..."
-          class="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm"
+          aria-label="URL"
+          class="input"
         />
-        <div class="flex gap-2">
-          <label class="flex-1 text-sm">
+        <div class="radios">
+          <label class="check">
             <input v-model="downloader" type="radio" value="ytdlp" /> yt-dlp (video)
           </label>
-          <label class="flex-1 text-sm">
+          <label class="check">
             <input v-model="downloader" type="radio" value="gallery-dl" /> gallery-dl
           </label>
         </div>
-        <button
-          type="submit"
-          class="bg-accent hover:bg-accent-hover text-white rounded-lg py-2 text-sm font-medium disabled:opacity-50"
-          :disabled="busy"
-        >Queue download</button>
+        <button type="submit" class="btn btn-primary btn-block" :disabled="busy">Queue download</button>
       </form>
 
-      <div class="border-t border-border pt-3 flex flex-col gap-3">
-        <p class="text-xs text-text-muted">Or upload files</p>
+      <div class="divider"><span class="label">Or upload files</span></div>
 
-        <div
-          class="border-2 border-dashed rounded-xl p-8 flex flex-col items-center gap-2 cursor-pointer transition-colors"
-          :class="dragOver
-            ? 'border-accent bg-accent-subtle'
-            : 'border-border hover:border-border-strong'"
-          @dragover="onDragOver"
-          @dragleave="onDragLeave"
-          @drop="onDrop"
-          @click="fileInput?.click()"
-        >
-          <svg
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
+      <div
+        class="dropzone"
+        :class="{ over: dragOver }"
+        role="button"
+        tabindex="0"
+        aria-label="Drop files here or browse"
+        @dragover="onDragOver"
+        @dragleave="onDragLeave"
+        @drop="onDrop"
+        @click="fileInput?.click()"
+        @keydown.enter.prevent="fileInput?.click()"
+        @keydown.space.prevent="fileInput?.click()"
+      >
+        <svg width="36" height="36" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M12 18V5M5 11l7-7 7 7M3 21h18"
             fill="none"
             stroke="currentColor"
-            stroke-width="1.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="text-text-secondary"
-          >
-            <path d="M12 18V6M6 12l6-6 6 6" />
-            <path d="M3 20h18" />
-          </svg>
-          <p class="text-sm text-text-secondary">
-            Drop files here or <span class="text-text-primary">browse</span>
-          </p>
-          <p class="text-xs text-text-muted">Videos and images</p>
-        </div>
-
-        <input
-          ref="fileInput"
-          type="file"
-          multiple
-          accept="video/*,image/*"
-          class="hidden"
-          @change="onBrowse"
-        />
-
-        <ul v-if="selectedFiles.length" class="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
-          <li
-            v-for="{ file, state, error: fileError } in selectedFiles"
-            :key="file.name"
-            class="flex items-center gap-2 text-sm"
-          >
-            <span
-              v-if="state === 'pending'"
-              class="w-4 h-4 rounded-full border border-border-strong shrink-0"
-            />
-            <svg
-              v-else-if="state === 'done'"
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              class="text-green-400 shrink-0"
-            >
-              <path d="M3 8l3.5 3.5L13 5" />
-            </svg>
-            <svg
-              v-else
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              class="text-rose-400 shrink-0"
-            >
-              <path d="M4 4l8 8M12 4l-8 8" />
-            </svg>
-            <span
-              class="flex-1 truncate"
-              :class="state === 'error' ? 'text-rose-400' : 'text-text-secondary'"
-            >{{ file.name }}</span>
-            <span
-              v-if="state === 'error' && fileError"
-              class="text-xs text-rose-500 shrink-0 max-w-32 truncate"
-            >{{ fileError }}</span>
-            <button
-              v-if="state === 'pending' && !busy"
-              type="button"
-              class="text-text-muted hover:text-text-secondary shrink-0 transition-colors"
-              aria-label="Remove"
-              @click="removeFile(file.name)"
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 12 12"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-              >
-                <path d="M1 1l10 10M11 1L1 11" />
-              </svg>
-            </button>
-          </li>
-        </ul>
-
-        <button
-          v-if="!allDone"
-          type="button"
-          class="w-full bg-accent hover:bg-accent-hover disabled:opacity-50 text-white text-sm font-medium py-2.5 rounded-lg transition-colors"
-          :disabled="pendingCount === 0 || busy"
-          @click="handleUpload"
-        >
-          {{
-            busy
-              ? 'Uploading…'
-              : pendingCount > 0
-                ? `Upload ${pendingCount} file${pendingCount !== 1 ? 's' : ''}`
-                : 'Upload'
-          }}
-        </button>
-        <button
-          v-else
-          type="button"
-          class="w-full bg-surface-2 hover:bg-surface-3 text-text-primary text-sm font-medium py-2.5 rounded-lg transition-colors"
-          @click="open = false"
-        >
-          Done
-        </button>
+            stroke-width="3"
+            stroke-linecap="square"
+          />
+        </svg>
+        <p class="drop-title">Drop files here or <u>browse</u></p>
+        <p class="label drop-hint">Videos and images</p>
       </div>
 
-      <p v-if="error" class="text-sm text-rose-400">{{ error }}</p>
+      <input
+        ref="fileInput"
+        type="file"
+        multiple
+        accept="video/*,image/*"
+        class="hidden"
+        @change="onBrowse"
+      />
+
+      <ul v-if="selectedFiles.length" class="file-list">
+        <li
+          v-for="{ file, state, error: fileError } in selectedFiles"
+          :key="file.name"
+          class="file"
+          :class="`file-${state}`"
+        >
+          <span class="file-icon" role="img" :aria-label="state">{{
+            state === 'done' ? '✓' : state === 'error' ? '✕' : ''
+          }}</span>
+          <span class="file-name truncate">{{ file.name }}</span>
+          <span v-if="state === 'error' && fileError" class="file-msg truncate">{{ fileError }}</span>
+          <button
+            v-if="state === 'pending' && !busy"
+            type="button"
+            class="file-remove"
+            :aria-label="`Remove ${file.name}`"
+            @click="removeFile(file.name)"
+          >✕</button>
+        </li>
+      </ul>
+
+      <button
+        v-if="!allDone"
+        type="button"
+        class="btn btn-primary btn-block"
+        :disabled="pendingCount === 0 || busy"
+        @click="handleUpload"
+      >
+        {{
+          busy
+            ? 'Uploading…'
+            : pendingCount > 0
+              ? `Upload ${pendingCount} file${pendingCount !== 1 ? 's' : ''}`
+              : 'Upload'
+        }}
+      </button>
+      <button v-else type="button" class="btn btn-block" @click="open = false">Done</button>
+
+      <p v-if="error" class="error-text">{{ error }}</p>
     </div>
   </div>
 </template>
+
+<style scoped>
+.radios { display: flex; flex-wrap: wrap; gap: 10px 24px; }
+
+.divider { display: flex; align-items: center; gap: 10px; color: var(--text-muted); }
+.divider::before, .divider::after { content: ""; flex: 1; border-top: var(--bw) solid var(--border); }
+
+.dropzone {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 28px 16px; text-align: center; cursor: pointer;
+  border: var(--bw) dashed var(--border); color: var(--text-secondary);
+  transition: background-color 80ms, transform 80ms;
+}
+.dropzone:hover { background: var(--surface-2); }
+.dropzone:focus-visible { outline: var(--bw) dashed var(--accent); outline-offset: 3px; }
+.dropzone.over {
+  background: var(--pop-1); color: var(--on-pop); border-style: solid;
+  transform: rotate(-1deg) scale(1.02); box-shadow: 6px 6px 0 var(--shadow);
+}
+.drop-title { font-weight: 800; }
+.drop-hint { color: var(--text-muted); }
+.dropzone.over .drop-hint { color: inherit; }
+
+.file-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 12rem; overflow-y: auto; }
+.file { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: var(--bw-thin) solid var(--border); font-size: 0.85rem; min-width: 0; }
+.file-icon {
+  flex: none; width: 20px; height: 20px; display: grid; place-items: center;
+  border: var(--bw-thin) solid var(--border); font-weight: 900; font-size: 0.75rem;
+}
+.file-done .file-icon { background: var(--ok); color: var(--on-ok); }
+.file-error .file-icon { background: var(--danger); color: var(--on-danger); }
+.file-error .file-name { color: var(--danger); }
+.file-name { flex: 1; min-width: 0; }
+.file-msg { flex: 0 1 auto; max-width: 45%; font-size: 0.75rem; font-weight: 700; color: var(--danger); }
+.file-remove { flex: none; border: 0; background: none; cursor: pointer; font-weight: 900; color: var(--text-muted); padding: 2px 4px; }
+.file-remove:hover { color: var(--danger); }
+
+.error-text { font-weight: 700; color: var(--danger); }
+</style>
