@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { api } from '@/api'
+import { useDialog } from '@/composables/useDialog'
 
 const open = defineModel<boolean>('open', { default: false })
 const emit = defineEmits<{ done: [] }>()
@@ -28,6 +29,9 @@ const dragOver = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const selectedFiles = ref<FileStatus[]>([])
 const includeInRandom = ref(false)
+const box = ref<HTMLElement | null>(null)
+
+useDialog(open, () => (open.value = false), box)
 
 const pendingCount = computed(() => selectedFiles.value.filter((f) => f.state === 'pending').length)
 const allDone = computed(
@@ -160,7 +164,7 @@ async function handleUpload() {
 <template>
   <div v-if="open" class="modal">
     <div class="modal-backdrop" @click="open = false" />
-    <div class="modal-box" role="dialog" aria-modal="true" aria-label="Add to vault">
+    <div ref="box" class="modal-box" role="dialog" aria-modal="true" aria-label="Add to vault">
       <div class="modal-head">
         <h2>Add to vault</h2>
         <button type="button" class="btn btn-sm btn-icon" aria-label="Close" @click="open = false">✕</button>
@@ -177,6 +181,7 @@ async function handleUpload() {
           placeholder="https://..."
           aria-label="URL"
           class="input"
+          data-autofocus
         />
         <div class="radios">
           <label class="check">

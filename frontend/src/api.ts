@@ -40,16 +40,35 @@ export interface Album {
   media: MediaItem[]
 }
 
+/** Queue item lifecycle. Mirrors the `queue_items.status` strings the backend writes (`src/db.rs`, `src/queue.rs`, `src/routes/queue.rs`, `src/discord.rs`, `src/fluxer.rs`). */
+export type QueueStatus = 'pending' | 'downloading' | 'completed' | 'failed' | 'cancelled'
+
+/** Sources that are chat bots rather than a person in the web UI or an API client. */
+export type ChatSource = 'discord' | 'fluxer'
+
+/** Where a queue item was submitted from. Mirrors the `source` passed to `insert_queue_item` in the backend. */
+export type QueueSource = 'web' | 'api' | ChatSource
+
+/** Still in the queue: waiting or downloading, so it can be cancelled. */
+export function isActive(status: QueueStatus): boolean {
+  return status === 'pending' || status === 'downloading'
+}
+
+/** Submitted from a chat bot (Discord/Fluxer): the bot owns retries and replies, so it gets no Retry button and no Vault pending card. */
+export function isChatSource(source: QueueSource): source is ChatSource {
+  return source === 'discord' || source === 'fluxer'
+}
+
 export interface QueueItem {
   id: string
   url: string
   downloader: string
-  status: string
+  status: QueueStatus
   progress: number
   error: string | null
   created_at: string
   completed_at: string | null
-  source: string
+  source: QueueSource
   source_label: string | null
   include_in_random: number
 }
