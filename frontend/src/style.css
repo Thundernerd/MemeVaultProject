@@ -71,6 +71,8 @@
   --bw: 3px;                 /* border width */
   --bw-thin: 2px;
   --lift: 4px;               /* hard shadow offset */
+  --header-h: 68px;          /* app header, excluding its --bw bottom border */
+  --shell-max: 72rem;        /* width of the header and main column */
   --font-display: "Arial Black", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-body: "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -161,7 +163,7 @@
   .btn:hover { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--shadow); }
   .btn:active { transform: translate(var(--lift), var(--lift)); box-shadow: 0 0 0 var(--shadow); }
   .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: var(--lift) var(--lift) 0 var(--shadow); }
-  .btn:focus-visible, .chip:focus-visible {
+  .btn:focus-visible, .chip:focus-visible, .nav-link:focus-visible {
     outline: var(--bw) dashed var(--accent); outline-offset: 3px;
   }
 
@@ -174,7 +176,7 @@
   .btn-sm:active { transform: translate(3px, 3px); }
   .btn-sm:disabled { box-shadow: 3px 3px 0 var(--shadow); }
   .btn-block { width: 100%; }
-  .btn-icon { width: 40px; padding: 0; }
+  .btn-icon { width: 40px; padding: 0; font-size: 1rem; }  /* after .btn-sm, so glyphs keep their size */
 
   /* inputs */
 
@@ -247,6 +249,74 @@
   @media (prefers-reduced-motion: reduce) {
     .state-loading .state-tag { animation: none; }
   }
+
+  /* shell: header, nav, theme switcher, mobile drawer (layouts/MainLayout.vue) */
+
+  .header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    background: var(--surface-1);
+    border-bottom: var(--bw) solid var(--border);
+  }
+  .header-inner {
+    max-width: var(--shell-max); margin: 0 auto; height: var(--header-h);
+    display: flex; align-items: center; gap: 20px; padding: 0 16px;
+  }
+  .logo {
+    display: flex; align-items: stretch; flex: none;
+    border: var(--bw) solid var(--border); box-shadow: 3px 3px 0 var(--shadow);
+  }
+  .logo-mark {
+    background: var(--text-primary); color: var(--surface-1);
+    font-family: var(--font-display); font-size: 1.15rem; padding: 4px 8px; letter-spacing: -0.02em;
+  }
+  .logo-ver {
+    display: flex; align-items: center; padding: 0 6px;
+    background: var(--pop-1); color: var(--on-pop); border-left: var(--bw) solid var(--border);
+    font-family: var(--font-mono); font-size: 0.65rem; font-weight: 800;
+  }
+
+  .nav { display: flex; gap: 8px; }
+  .nav-link {
+    padding: 8px 14px; border: var(--bw) solid transparent; text-decoration: none;
+    font-family: var(--font-mono); font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--text-secondary);
+  }
+  .nav-link:hover { border-color: var(--border); color: var(--text-primary); }
+  .nav-link.active { background: var(--accent); color: var(--on-accent); border-color: var(--border); box-shadow: 3px 3px 0 var(--shadow); }
+
+  .header-tools { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .theme-switch { display: flex; align-items: center; gap: 8px; }
+  .swatches { display: flex; gap: 4px; }
+  /* Each swatch carries its own data-accent, so var(--accent) is that accent's colour. */
+  .swatch { width: 20px; height: 20px; padding: 0; background: var(--accent); border: var(--bw-thin) solid var(--border); cursor: pointer; }
+  .swatch[aria-pressed="true"] { outline: var(--bw) solid var(--border); outline-offset: 2px; }
+  .swatch:focus-visible { outline: var(--bw) dashed var(--border); outline-offset: 2px; }
+  .signout {
+    font-family: var(--font-mono); font-size: 0.75rem; font-weight: 800; text-transform: uppercase;
+    color: var(--text-muted); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 2px;
+  }
+  .menu-btn { display: none; }
+
+  .drawer { position: fixed; inset: 0; z-index: 40; }
+  .drawer-backdrop { position: absolute; inset: 0; background: var(--overlay); }
+  .drawer-panel {
+    position: absolute; top: calc(var(--header-h) + var(--bw)); left: 0; right: 0;
+    background: var(--surface-1); border-bottom: var(--bw) solid var(--border);
+    display: flex; flex-direction: column;
+  }
+  .drawer-panel .nav-link { padding: 16px; border: 0; border-bottom: var(--bw-thin) solid var(--border); font-size: 1rem; box-shadow: none; }
+  .drawer-panel .nav-link.active { border-left: 10px solid var(--border); }
+
+  /* <main> scrolls under the fixed header; this is its centred column. */
+  .main-column { max-width: var(--shell-max); margin: 0 auto; padding: 28px 16px 96px; }
+
+  @media (max-width: 767px) {
+    .nav, .signout { display: none; }
+    .menu-btn { display: inline-flex; }
+    .header-inner { gap: 10px; }
+    .swatch { width: 18px; height: 18px; }
+  }
+  @media (min-width: 768px) { .drawer { display: none; } }
 }
 
 @keyframes brutal-slide { from { transform: translateX(-110%); } to { transform: translateX(300%); } }
