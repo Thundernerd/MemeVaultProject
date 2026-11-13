@@ -413,6 +413,16 @@ impl QueueSource {
     pub fn is_chat_bot(self) -> bool {
         matches!(self, Self::Discord | Self::Fluxer)
     }
+
+    /// The `source_label` a chat bot stores on its queue items: the bot's
+    /// display name. `None` for sources that are not chat bots.
+    pub fn chat_bot_label(self) -> Option<&'static str> {
+        match self {
+            Self::Discord => Some("Discord"),
+            Self::Fluxer => Some("Fluxer"),
+            Self::Web | Self::Api => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1589,6 +1599,25 @@ mod tests {
         assert!(!QueueSource::Api.is_chat_bot());
         assert!(QueueSource::Discord.is_chat_bot());
         assert!(QueueSource::Fluxer.is_chat_bot());
+    }
+
+    #[test]
+    fn chat_bot_label_names_the_bot_and_is_none_otherwise() {
+        assert_eq!(QueueSource::Web.chat_bot_label(), None);
+        assert_eq!(QueueSource::Api.chat_bot_label(), None);
+        assert_eq!(QueueSource::Discord.chat_bot_label(), Some("Discord"));
+        assert_eq!(QueueSource::Fluxer.chat_bot_label(), Some("Fluxer"));
+    }
+
+    #[test]
+    fn every_chat_bot_has_a_label_and_nothing_else_does() {
+        for source in QueueSource::ALL {
+            assert_eq!(
+                source.chat_bot_label().is_some(),
+                source.is_chat_bot(),
+                "{source:?}"
+            );
+        }
     }
 
     #[test]
