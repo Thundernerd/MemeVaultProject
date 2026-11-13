@@ -76,7 +76,7 @@
         groups[ns].push(t)
       })
       order.sort(function (a, b) { return a.localeCompare(b) }) // as TagsView.vue
-      if (!order.length) body.appendChild(B.stateBlock('empty', 'No tags yet'))
+      if (!order.length) body.appendChild(B.stateBlock('empty', M.states.tags.empty))
       order.forEach(function (ns) {
         body.appendChild(h('section', { class: 'tag-group' },
           h('h2', { class: 'tag-ns' }, h('span', { text: ns }), h('span', { class: 'label muted', text: groups[ns].length + '' })),
