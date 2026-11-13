@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '@/api'
+import { useActionError } from './useActionError'
 import SaveRow from './SaveRow.vue'
 
 interface ApiKeyRow {
@@ -16,25 +17,15 @@ const keys = ref<ApiKeyRow[]>([])
 const name = ref('')
 const permission = ref<'read' | 'read_write'>('read_write')
 const created = ref<ApiKeyRow | null>(null)
-const error = ref('')
 
 async function load() {
   keys.value = await api('/api/api-keys')
 }
 
-/** Runs a key action, showing "<prefix>: <message>" if it fails and clearing it if it succeeds. */
-async function run(prefix: string, action: () => Promise<void>) {
-  try {
-    await action()
-    error.value = ''
-  } catch (e) {
-    error.value = `${prefix}: ${e instanceof Error ? e.message : String(e)}`
-  }
-  await load()
-}
+const { error, attempt } = useActionError(load)
 
 async function create() {
-  await run('Create failed', async () => {
+  await attempt('Create failed', async () => {
     created.value = await api('/api/api-keys', {
       method: 'POST',
       body: JSON.stringify({ name: name.value, permission: permission.value }),
@@ -44,7 +35,7 @@ async function create() {
 }
 
 async function revoke(id: string) {
-  await run('Revoke failed', () => api(`/api/api-keys/${id}`, { method: 'DELETE' }))
+  await attempt('Revoke failed', () => api(`/api/api-keys/${id}`, { method: 'DELETE' }))
 }
 
 onMounted(load)
