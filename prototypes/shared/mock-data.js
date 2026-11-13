@@ -385,7 +385,6 @@
     },
     queue: {
       empty: 'Queue is empty',
-      // QueueView.vue has no loading copy today; styles may design one.
       loading: 'Loading…',
       error: 'Failed',
     },
