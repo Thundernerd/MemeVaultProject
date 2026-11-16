@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-16
+
 ### Features
 - New brutalist visual design across the whole app: header, nav and mobile drawer, vault grid and cards, Add-to-vault and media detail modals, Queue, Tags, all seven Settings tabs, and the public share page
 - Modals keep keyboard focus inside them, close on Escape, lock background scroll, and nested dialogs stack correctly
